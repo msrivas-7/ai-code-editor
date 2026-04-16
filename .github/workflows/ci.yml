@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  typecheck:
-    name: Typecheck (${{ matrix.os }})
+  build:
+    name: Build (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -26,11 +26,12 @@ jobs:
           cache-dependency-path: |
             backend/package-lock.json
             frontend/package-lock.json
-      - name: Backend — install & typecheck
+      - name: Backend — install, typecheck, test
         working-directory: backend
         run: |
           npm ci
           npx tsc --noEmit
+          npm test
       - name: Frontend — install & typecheck
         working-directory: frontend
         run: |

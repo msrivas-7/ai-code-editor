@@ -10,7 +10,7 @@ export interface ProjectFile {
  * Normalise a file path relative to the workspace. Rejects traversal (`..`),
  * absolute paths, and anything that would escape the session workspace.
  */
-function safeResolve(workspace: string, relative: string): string {
+export function safeResolve(workspace: string, relative: string): string {
   const cleaned = relative.replace(/\\/g, "/").replace(/^\/+/, "");
   if (cleaned === "" || cleaned.includes("..")) {
     throw new Error(`invalid path: "${relative}"`);
