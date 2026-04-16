@@ -143,11 +143,24 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /
 
 ## Using it
 
-Open <http://localhost:5173>. The editor seeds with a starter project for the selected language. Edit any file, hit **Run** (or `⌘↵`), and stdout/stderr stream back into the output panel with an exit code, duration, and error classification (`compile`, `runtime`, `timeout`, `system`). Switch to the **stdin** tab in the output panel to edit the input piped into the program on the next Run.
+Open <http://localhost:5173>. The editor seeds with a starter project for the selected language.
 
-To enable the tutor, click the gear in the right sidebar, paste an OpenAI key, validate, pick a model, and choose a persona (beginner / intermediate / advanced) that shapes how explanations are phrased. Ask a question in the tutor panel — Enter sends, Shift+Enter inserts a newline, `⌘K` / `Ctrl+K` jumps here from the editor. Highlight code in the editor to attach it as context — a preview chip above the composer shows exactly what will be sent. Responses stream section-by-section (summary → explanation → example → hint → next step); click **Stop** to cancel and keep the partial answer. The first response leans on diagnostic questions; follow-ups add hints; when the tutor flags you as stuck — based on your prose ("I'm stuck", "just tell me") and activity signals like repeated failed runs — it unlocks a stronger pointer and a concrete next step. `file.ext:line` references in the response jump the editor there on click. Each assistant turn carries a token/cost chip, with a session total in the header. The tab strip and output panel also surface one-click action chips ("Walk me through this", "Why did my last run fail?") that fire asks directly.
+### Edit and run
 
-Switching the language dropdown replaces the current project with that language's starter (with a confirmation prompt so you don't accidentally nuke work).
+- Edit any file, hit **Run** (`⌘↵` / `Ctrl+Enter`). Stdout, stderr, exit code, duration, and error classification stream into the output panel.
+- Switch to the **stdin** tab to edit the input piped to the program on the next Run.
+- Switching the language dropdown replaces the project with that language's starter (confirmation prompt so you don't nuke work).
+
+### Use the tutor
+
+- Click the gear in the right sidebar → paste an OpenAI key → validate → pick a model and persona (beginner / intermediate / advanced).
+- Type a question in the tutor panel — **Enter** sends, **Shift+Enter** inserts a newline.
+- Highlight code in the editor to auto-attach it as context — a preview chip above the composer shows exactly what will be sent. `⌘K` / `Ctrl+K` jumps focus to the composer from the editor.
+- Responses stream section-by-section (summary → explanation → example → hint → next step). Click **Stop** to cancel and keep the partial answer.
+- The tutor starts with diagnostic questions; follow-ups add hints. When it flags you as stuck (based on your prose + activity signals like repeated failed runs), it unlocks a stronger pointer and a concrete next step.
+- `file.ext:line` references in the response jump the editor there on click.
+- Each turn shows a token/cost chip; a session total lives in the header.
+- One-click action chips — "Walk me through this" (tab strip), "Why did my last run fail?" (output panel on error) — fire asks directly, no typing needed.
 
 ## Architecture
 
@@ -160,9 +173,27 @@ Switching the language dropdown replaces the current project with that language'
      :5173                       :4000                     --network none
 ```
 
-- **One container per active editor session.** Started lazily on the first Run, reaped 2 minutes after the last heartbeat or immediately on tab close (`pagehide` → `navigator.sendBeacon`).
-- **Bind-mounted workspace.** Files live at `./temp/sessions/{sessionId}` on the host and are mounted into the runner at `/workspace`. Each Run wipes and re-writes this directory from the frontend snapshot, so backend restarts don't lose user code.
-- **Sandboxing.** Network disabled, CPU/memory/PID caps, non-root user inside the container, `no-new-privileges`, 10s wall-clock on every exec.
+### Frontend — React + Vite + Monaco + Zustand
+
+- **Single-page app** served by Vite at `:5173`. All state (project files, session phase, AI history, layout) lives in Zustand stores — no Redux, no prop drilling.
+- **Monaco editor** loaded via `@monaco-editor/react` with custom dark theme, bracket-pair colorization, and JetBrains Mono. Keybindings and selection capture use the Monaco `IStandaloneCodeEditor` API directly.
+- **AI panel** streams SSE responses (`EventSource`-style fetch with `AbortController`) and paints structured JSON sections incrementally. Token/cost accounting uses `response.completed.usage` from the OpenAI Responses API.
+- **Session lifecycle** managed client-side: heartbeat pings every 30s, `pagehide` + `navigator.sendBeacon` for tab-close cleanup, automatic rebind-to-same-ID recovery on backend restart.
+
+### Backend — Express + TypeScript + dockerode
+
+- **Sibling-container pattern.** The backend doesn't run code itself — it asks the host Docker daemon (via mounted `/var/run/docker.sock`) to spawn isolated runner containers. Each session gets one container; the backend orchestrates create/exec/destroy.
+- **Cross-platform host-path discovery.** At startup, the backend self-inspects its own container via the Docker API to learn the host-side mount source for `/workspace-root`. This means the same code works on macOS (`/Users/…`), Linux (`/home/…`), and Windows Docker Desktop (`C:\Users\…`) without any per-OS branching.
+- **Dual-path session model.** Each `SessionRecord` stores two paths: `workspacePath` (backend-internal Linux path for `fs.*` I/O) and `hostWorkspacePath` (host-format path passed to Docker `Binds` when spawning runners). Separator detection is based on the root string, not `process.platform` — the backend always runs on Linux regardless of host OS.
+- **AI provider abstraction.** Prompt building, response parsing, and provider calls are separated behind a `Provider` interface. Only OpenAI is implemented; swapping in another provider doesn't touch routes or prompt code. The OpenAI key is forwarded per-request via `X-OpenAI-Key` — never stored server-side.
+- **Session sweeper.** A `setInterval` loop reaps sessions idle longer than `SESSION_IDLE_TIMEOUT_MS` (default 2 min), destroying the runner container and cleaning up the workspace directory.
+
+### Runner container — polyglot sandbox
+
+- **Single Docker image** (`runner-image/Dockerfile`) with Python, Node.js, `tsx`, gcc/g++, JDK, Go, Rust, and Ruby. Built once at first launch by a one-shot Compose service.
+- **Hard sandbox.** `--network none`, 512 MB memory, 1 vCPU, 256 PID cap, non-root `runner` user (uid 1100), `no-new-privileges`, 10s wall-clock timeout on every `docker exec`.
+- **Bind-mounted workspace.** Host directory `./temp/sessions/{id}` is mounted at `/workspace` inside the runner. Each Run wipes and re-snapshots from the frontend, so backend restarts never lose student code.
+- **Two-phase execution.** For compiled languages (C, C++, Java, Go, Rust), the backend runs a compile step first; if it fails, the error is classified as `compile` and the run step is skipped. Interpreted languages go straight to run.
 
 ### API surface
 
