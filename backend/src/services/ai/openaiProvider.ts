@@ -1,0 +1,206 @@
+import type {
+  AIAskParams,
+  AIAskResult,
+  AIModel,
+  AIProvider,
+  TutorSections,
+} from "./provider.js";
+import {
+  TUTOR_RESPONSE_SCHEMA,
+  buildSystemPrompt,
+  buildUserTurn,
+  studentSeemsStuck,
+} from "./promptBuilder.js";
+
+const OPENAI_BASE = "https://api.openai.com/v1";
+
+// Truncate long strings for the log so the terminal stays readable. Full
+// payloads go to OpenAI regardless; this is just what we print.
+function clip(s: string, n = 800): string {
+  if (s.length <= n) return s;
+  return s.slice(0, n) + ` … [+${s.length - n} chars]`;
+}
+
+function keyFingerprint(key: string): string {
+  // Log only a safe fingerprint of the key so we can tell two requests apart
+  // without leaking the key itself.
+  if (key.length < 10) return "***";
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+// Allow-list of model id prefixes we expose in the dropdown. OpenAI's /models
+// endpoint returns hundreds of entries (fine-tunes, embeddings, TTS, whisper…);
+// most of them can't run the Responses API or aren't useful for tutoring. We
+// filter for chat-capable GPT families. Ordered roughly by how useful they are
+// for a code tutor.
+const USEFUL_MODEL_PREFIXES = ["gpt-4.1", "gpt-4o", "gpt-4-turbo", "o4-mini", "o3", "gpt-4", "gpt-3.5"];
+
+function rank(id: string): number {
+  for (let i = 0; i < USEFUL_MODEL_PREFIXES.length; i++) {
+    if (id.startsWith(USEFUL_MODEL_PREFIXES[i])) return i;
+  }
+  return 999;
+}
+
+function isUsefulModel(id: string): boolean {
+  // Drop non-chat model families explicitly.
+  const bad = ["embedding", "whisper", "tts", "dall-e", "davinci", "babbage", "moderation", "audio", "realtime", "image"];
+  if (bad.some((b) => id.includes(b))) return false;
+  return USEFUL_MODEL_PREFIXES.some((p) => id.startsWith(p));
+}
+
+async function openaiFetch(path: string, key: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${OPENAI_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+}
+
+async function parseError(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: { message?: string } };
+    return body?.error?.message ?? `HTTP ${res.status}`;
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
+export const openaiProvider: AIProvider = {
+  async validateKey(key) {
+    console.log(`[openai] validate-key fingerprint=${keyFingerprint(key)}`);
+    if (!key.startsWith("sk-") && !key.startsWith("sk_")) {
+      console.log(`[openai] validate-key result=invalid reason=bad-prefix`);
+      return { valid: false, error: "key doesn't look like an OpenAI key (expected sk-… prefix)" };
+    }
+    const res = await openaiFetch("/models", key, { method: "GET" });
+    if (res.ok) {
+      console.log(`[openai] validate-key result=valid`);
+      return { valid: true };
+    }
+    const error = await parseError(res);
+    console.log(`[openai] validate-key result=invalid reason=${clip(error, 120)}`);
+    return { valid: false, error };
+  },
+
+  async listModels(key) {
+    console.log(`[openai] list-models fingerprint=${keyFingerprint(key)}`);
+    const res = await openaiFetch("/models", key, { method: "GET" });
+    if (!res.ok) {
+      const err = await parseError(res);
+      console.log(`[openai] list-models error=${clip(err, 120)}`);
+      throw new Error(err);
+    }
+    const body = (await res.json()) as { data: { id: string }[] };
+    const filtered = body.data.filter((m) => isUsefulModel(m.id));
+    console.log(`[openai] list-models total=${body.data.length} chat-capable=${filtered.length}`);
+    const models: AIModel[] = filtered
+      .sort((a, b) => {
+        const ra = rank(a.id);
+        const rb = rank(b.id);
+        if (ra !== rb) return ra - rb;
+        return a.id.localeCompare(b.id);
+      })
+      .map((m) => ({ id: m.id, label: m.id }));
+    return models;
+  },
+
+  async ask(params: AIAskParams): Promise<AIAskResult> {
+    const userTurn = buildUserTurn({
+      question: params.question,
+      files: params.files,
+      activeFile: params.activeFile,
+      language: params.language,
+      lastRun: params.lastRun,
+      history: params.history,
+    });
+
+    const instructions = buildSystemPrompt(params.history, params.question);
+
+    const priorTutorTurns = params.history.filter((m) => m.role === "assistant").length;
+    const stuck = studentSeemsStuck(params.question);
+    const mode = priorTutorTurns === 0 && !stuck
+      ? "first-turn"
+      : stuck
+        ? "stuck"
+        : "follow-up";
+
+    console.log(`\n[openai] ask start -----------------------------`);
+    console.log(`[openai]   model=${params.model}  fingerprint=${keyFingerprint(params.key)}`);
+    console.log(`[openai]   mode=${mode}  priorTutorTurns=${priorTutorTurns}  stuck=${stuck}`);
+    console.log(`[openai]   language=${params.language ?? "(none)"}  activeFile=${params.activeFile ?? "(none)"}  files=${params.files.length}`);
+    console.log(`[openai]   lastRun=${params.lastRun ? `${params.lastRun.stage}/exit=${params.lastRun.exitCode}/type=${params.lastRun.errorType}` : "(none)"}`);
+    console.log(`[openai]   question: ${clip(params.question, 300)}`);
+    console.log(`[openai]   --- instructions (system) ---\n${clip(instructions, 1500)}`);
+    console.log(`[openai]   --- input (user turn) ---\n${clip(userTurn, 1500)}`);
+
+    const body = {
+      model: params.model,
+      instructions,
+      input: userTurn,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "tutor_response",
+          schema: TUTOR_RESPONSE_SCHEMA,
+          strict: true,
+        },
+      },
+    };
+
+    const started = Date.now();
+    const res = await openaiFetch("/responses", params.key, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await parseError(res);
+      console.log(`[openai] ask error status=${res.status} body=${clip(err, 300)}`);
+      throw new Error(err);
+    }
+
+    // The Responses API returns `output_text` as a convenience concat of all
+    // text content in the response. For json_schema format this is the JSON
+    // document. Fall back to walking `output[].content[].text` if absent.
+    const json = (await res.json()) as {
+      output_text?: string;
+      output?: { content?: { type?: string; text?: string }[] }[];
+      usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+    };
+
+    let raw = json.output_text ?? "";
+    if (!raw && json.output) {
+      raw = json.output
+        .flatMap((o) => o.content ?? [])
+        .filter((c) => c.type === "output_text" || typeof c.text === "string")
+        .map((c) => c.text ?? "")
+        .join("");
+    }
+
+    let sections: TutorSections = {};
+    let parseOk = true;
+    try {
+      sections = JSON.parse(raw) as TutorSections;
+    } catch {
+      parseOk = false;
+      // Model bypassed structured output (shouldn't happen with strict=true).
+      // Fall back to putting the whole reply in "whatIThink" so the user sees
+      // something rather than an error.
+      sections = { whatIThink: raw };
+    }
+
+    const elapsed = Date.now() - started;
+    const filled = Object.entries(sections)
+      .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+      .map(([k]) => k);
+    console.log(`[openai]   --- response (${elapsed}ms, tokens in=${json.usage?.input_tokens ?? "?"} out=${json.usage?.output_tokens ?? "?"}) ---`);
+    console.log(`[openai]   parseOk=${parseOk}  sectionsFilled=[${filled.join(", ") || "(none)"}]`);
+    console.log(`[openai]   raw: ${clip(raw, 1500)}`);
+    console.log(`[openai] ask end -------------------------------\n`);
+
+    return { sections, raw };
+  },
+};

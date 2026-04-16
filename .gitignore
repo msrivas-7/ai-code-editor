@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.DS_Store
+*.log
+
+# Per-session workspaces written by backend at runtime
+temp/sessions/*
+!temp/sessions/.gitkeep
+
+# Terminal window IDs recorded by start.sh for stop.sh to close
+.ai-code-editor-terminals
+
+# Editor / tooling
+.vscode/
+.idea/

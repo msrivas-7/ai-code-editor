@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  letter-spacing: -0.005em;
+}
+
+/* Slightly tighter Monaco integration. The editor's own font-face wins
+   inside the editor; this affects any non-editor font-mono usage. */
+code, pre, .font-mono {
+  font-feature-settings: "calt", "liga";
+}
+
+/* App-wide scrollbar styling so dark panels don't get glaring light scroll
+   thumbs. Firefox uses scrollbar-* properties; webkit uses the pseudo-elts. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1f2a44 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #1f2a44;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #2a3753;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* Keycap styling — reused across the app for ⌘↵, Shift+Enter, etc. */
+.kbd {
+  @apply inline-flex items-center gap-0.5 rounded border border-border bg-elevated px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted shadow-soft;
+}
+
+/* Shimmer skeleton for loading states in the Assistant panel. */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0.45) 0%,
+    rgba(51, 65, 85, 0.6) 50%,
+    rgba(30, 41, 59, 0.45) 100%
+  );
+  background-size: 200% 100%;
+  @apply animate-shimmer rounded;
+}
+
+/* Visible focus ring for buttons/inputs without the blue default outline. */
+:where(button, input, select, textarea):focus-visible {
+  @apply outline-none ring-2 ring-accent/60 ring-offset-1 ring-offset-bg;
+}

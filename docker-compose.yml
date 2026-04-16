@@ -1,0 +1,45 @@
+services:
+  # One-shot "service" whose only job is to build the polyglot runner image
+  # that the backend will spawn per-session. It exits immediately; the backend
+  # waits for it via service_completed_successfully.
+  runner-image:
+    image: ai-code-editor-runner:latest
+    build:
+      context: ./runner-image
+    command: ["true"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      PORT: "4000"
+      CORS_ORIGIN: "http://localhost:5173"
+      RUNNER_IMAGE: "ai-code-editor-runner:latest"
+      # Must be a HOST path — backend spawns sibling containers on the host
+      # Docker daemon, and bind mounts are resolved by that daemon.
+      WORKSPACE_ROOT_HOST: "${PWD}/temp/sessions"
+    volumes:
+      # Sibling-container pattern: backend drives the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the host workspace into the backend at the same absolute path so
+      # the backend and its sibling runner containers see identical paths.
+      - ${PWD}/temp/sessions:${PWD}/temp/sessions
+    ports:
+      - "4000:4000"
+    depends_on:
+      runner-image:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      # Inside the frontend container, the vite dev server must proxy /api/*
+      # to the backend service via the compose network (not localhost).
+      VITE_BACKEND_URL: "http://backend:4000"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend

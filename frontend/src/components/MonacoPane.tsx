@@ -1,0 +1,93 @@
+import Editor, { type Monaco } from "@monaco-editor/react";
+import { useProjectStore } from "../state/projectStore";
+import { monacoLangFor } from "../types";
+
+// Custom dark theme tuned to the app palette so the editor feels like part of
+// the product instead of a drop-in. Colors lean on the same semantic tokens
+// (bg/panel/elevated/border/ink/muted/accent/violet/success).
+function defineTheme(monaco: Monaco) {
+  monaco.editor.defineTheme("ai-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "", foreground: "e6ecf5" },
+      { token: "comment", foreground: "64748b", fontStyle: "italic" },
+      { token: "keyword", foreground: "c084fc" },
+      { token: "string", foreground: "34d399" },
+      { token: "number", foreground: "fbbf24" },
+      { token: "type", foreground: "38bdf8" },
+      { token: "delimiter", foreground: "94a3b8" },
+      { token: "identifier", foreground: "e6ecf5" },
+      { token: "function", foreground: "38bdf8" },
+      { token: "variable", foreground: "e6ecf5" },
+      { token: "namespace", foreground: "c084fc" },
+    ],
+    colors: {
+      "editor.background": "#0b1020",
+      "editor.foreground": "#e6ecf5",
+      "editor.lineHighlightBackground": "#131b2e",
+      "editor.selectionBackground": "#38bdf833",
+      "editor.inactiveSelectionBackground": "#38bdf81a",
+      "editorLineNumber.foreground": "#475569",
+      "editorLineNumber.activeForeground": "#94a3b8",
+      "editorCursor.foreground": "#38bdf8",
+      "editorIndentGuide.background": "#1a243b",
+      "editorIndentGuide.activeBackground": "#334155",
+      "editorBracketMatch.background": "#38bdf822",
+      "editorBracketMatch.border": "#38bdf866",
+      "editorWidget.background": "#131b2e",
+      "editorWidget.border": "#1f2a44",
+      "editorSuggestWidget.background": "#131b2e",
+      "editorSuggestWidget.border": "#1f2a44",
+      "editorSuggestWidget.selectedBackground": "#38bdf822",
+      "editorGutter.background": "#0b1020",
+      "scrollbarSlider.background": "#1f2a4488",
+      "scrollbarSlider.hoverBackground": "#2a3753aa",
+      "scrollbarSlider.activeBackground": "#38bdf866",
+    },
+  });
+}
+
+export function MonacoPane() {
+  const { activeFile, files, setContent } = useProjectStore();
+
+  if (!activeFile) {
+    return (
+      <div className="flex h-full items-center justify-center bg-bg text-sm text-muted">
+        No file open. Create or select one from the file tree.
+      </div>
+    );
+  }
+
+  return (
+    <Editor
+      key={activeFile}
+      path={activeFile}
+      language={monacoLangFor(activeFile)}
+      value={files[activeFile] ?? ""}
+      onChange={(v) => setContent(activeFile, v ?? "")}
+      theme="ai-dark"
+      beforeMount={defineTheme}
+      options={{
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
+        fontLigatures: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        tabSize: 2,
+        wordWrap: "on",
+        renderWhitespace: "selection",
+        renderLineHighlight: "all",
+        smoothScrolling: true,
+        cursorBlinking: "smooth",
+        cursorSmoothCaretAnimation: "on",
+        padding: { top: 12, bottom: 12 },
+        scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+        guides: { indentation: true, bracketPairs: true },
+        bracketPairColorization: { enabled: true },
+      }}
+      loading={<div className="p-4 text-sm text-muted">Loading editor…</div>}
+    />
+  );
+}

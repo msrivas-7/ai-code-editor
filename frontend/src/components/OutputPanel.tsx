@@ -1,0 +1,118 @@
+import { useState } from "react";
+import { useRunStore } from "../state/runStore";
+import type { ErrorType } from "../types";
+
+const TYPE_LABEL: Record<ErrorType, string> = {
+  none: "OK",
+  compile: "Compile error",
+  runtime: "Runtime error",
+  timeout: "Timed out",
+  system: "System error",
+};
+
+const TYPE_STYLE: Record<ErrorType, string> = {
+  none: "bg-success/15 text-success ring-success/30",
+  compile: "bg-warn/15 text-warn ring-warn/30",
+  runtime: "bg-danger/15 text-danger ring-danger/30",
+  timeout: "bg-violet/15 text-violet ring-violet/40",
+  system: "bg-muted/15 text-muted ring-muted/30",
+};
+
+type Tab = "combined" | "stdout" | "stderr";
+
+export function OutputPanel() {
+  const { running, result, error } = useRunStore();
+  const [tab, setTab] = useState<Tab>("combined");
+  const [copied, setCopied] = useState(false);
+
+  const hasResult = Boolean(result);
+
+  const stdout = result?.stdout ?? "";
+  const stderr = result?.stderr ?? "";
+  const combined = [
+    stderr && `--- stderr ---\n${stderr}`,
+    stdout && `--- stdout ---\n${stdout}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const body =
+    tab === "stdout" ? stdout : tab === "stderr" ? stderr : combined || stdout || stderr;
+
+  const copy = async () => {
+    if (!body) return;
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard API unavailable — ignore */
+    }
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-panel">
+      <div className="flex items-center gap-3 border-b border-border px-3 py-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Output
+        </span>
+        <div className="flex gap-0.5 rounded-md bg-elevated p-0.5 text-[11px]">
+          {(["combined", "stdout", "stderr"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded px-2 py-0.5 transition ${
+                tab === t
+                  ? "bg-bg text-ink shadow-soft"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2 text-[11px]">
+          {running && (
+            <span className="flex items-center gap-1.5 text-accent">
+              <span className="inline-block h-1.5 w-1.5 animate-pulseDot rounded-full bg-accent" />
+              Running…
+            </span>
+          )}
+          {hasResult && (
+            <>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${TYPE_STYLE[result!.errorType]}`}
+              >
+                {TYPE_LABEL[result!.errorType]}
+              </span>
+              <span className="font-mono text-faint">
+                exit {result!.exitCode} · {result!.durationMs}ms · {result!.stage}
+              </span>
+              <button
+                onClick={copy}
+                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted transition hover:border-accent/60 hover:text-ink"
+                title="Copy output to clipboard"
+              >
+                {copied ? "✓ copied" : "copy"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap bg-bg p-3 font-mono text-xs leading-relaxed text-ink">
+        {error ? (
+          <span className="text-danger">{error}</span>
+        ) : hasResult ? (
+          body || <span className="text-faint">(no output)</span>
+        ) : running ? (
+          <span className="text-muted">Running…</span>
+        ) : (
+          <span className="text-faint">
+            Press <span className="kbd">⌘↵</span> or click{" "}
+            <span className="text-ink">▶ Run</span> to execute the current project.
+          </span>
+        )}
+      </pre>
+    </div>
+  );
+}

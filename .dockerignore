@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/build
+**/.git
+**/.vscode
+**/.idea
+temp/sessions/*
+!temp/sessions/.gitkeep
+.env
+.env.local
