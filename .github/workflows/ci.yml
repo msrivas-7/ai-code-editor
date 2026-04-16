@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - name: Backend — install & typecheck
+        working-directory: backend
+        run: |
+          npm ci
+          npx tsc --noEmit
+      - name: Frontend — install & typecheck
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+  powershell:
+    name: PowerShell parse + lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all .ps1 files
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -File -Include *.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$errors
+            ) | Out-Null
+            if ($errors -and $errors.Count -gt 0) {
+              Write-Host "Parse errors in $($_.FullName):" -ForegroundColor Red
+              $errors | ForEach-Object { Write-Host "  $_" }
+              $script:failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+      - name: PSScriptAnalyzer (errors only)
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          if ($results) {
+            $results | Format-Table -AutoSize
+            exit 1
+          }
+          Write-Host "No PSScriptAnalyzer errors."
+
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run shellcheck
+        run: |
+          find . -type f -name "*.sh" \
+            -not -path "*/node_modules/*" \
+            -not -path "./temp/*" \
+            -print0 | xargs -0 --no-run-if-empty shellcheck
+
+  line-endings:
+    name: Line-endings (Windows checkout)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: .sh files must be LF
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem -Recurse -File -Include *.sh |
+            Where-Object { $_.FullName -notmatch "node_modules" } |
+            ForEach-Object {
+              $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+              if (($bytes | Where-Object { $_ -eq 13 }).Count -gt 0) {
+                $failed += $_.FullName
+              }
+            }
+          if ($failed) {
+            Write-Host ".sh files with CR bytes (expected LF only):" -ForegroundColor Red
+            $failed | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "All .sh files are LF."
+      - name: .ps1 files must be CRLF
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem -Recurse -File -Include *.ps1 |
+            Where-Object { $_.FullName -notmatch "node_modules" } |
+            ForEach-Object {
+              $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+              $cr = ($bytes | Where-Object { $_ -eq 13 }).Count
+              $lf = ($bytes | Where-Object { $_ -eq 10 }).Count
+              if ($lf -gt 0 -and $cr -ne $lf) {
+                $failed += $_.FullName
+              }
+            }
+          if ($failed) {
+            Write-Host ".ps1 files missing CRLF line endings:" -ForegroundColor Red
+            $failed | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "All .ps1 files are CRLF."
