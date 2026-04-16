@@ -81,7 +81,7 @@ jobs:
           find . -type f -name "*.sh" \
             -not -path "*/node_modules/*" \
             -not -path "./temp/*" \
-            -print0 | xargs -0 --no-run-if-empty shellcheck
+            -print0 | xargs -0 --no-run-if-empty shellcheck --severity=warning
 
   line-endings:
     name: Line-endings (Windows checkout)

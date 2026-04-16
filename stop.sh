@@ -8,7 +8,6 @@ cd "$(dirname "$0")"
 
 c_cyan="\033[36m"
 c_green="\033[32m"
-c_dim="\033[2m"
 c_reset="\033[0m"
 
 close_log_terminals_macos() {
