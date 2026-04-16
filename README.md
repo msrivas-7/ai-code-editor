@@ -8,10 +8,18 @@ A local-first, web-based coding editor with an AI tutor. Write small single- or 
 
 ## Features
 
-- **Multi-file editor** powered by Monaco with a custom dark theme, bracket-pair colorization, and JetBrains Mono ligatures.
+- **Multi-file editor** powered by Monaco with a custom dark theme, bracket-pair colorization, and JetBrains Mono ligatures. Tabs above the editor (click to switch, middle-click or ✕ to close); file tree on the left.
+- **Flexible layout.** Resizable left (files), right (tutor), and bottom (output) panes with draggable splitters — double-click a splitter to reset to its default width. Files and tutor panels collapse to a thin rail so the editor gets the full screen when you want it.
 - **One-click Run** (`⌘↵` / `Ctrl+↵`) in a per-session Docker container: network disabled, CPU/memory/PID limits, non-root user, 10s wall-clock cap.
-- **Nine languages** — Python, JavaScript, TypeScript, C, C++, Java, Go, Rust, Ruby. Each ships with a runnable starter project (stats, word frequency, CSV summary, array ops, palindromes, matrix ops, trait-based shapes, inventory).
-- **AI tutor** via the OpenAI Responses API with a strict JSON schema. Turn-aware prompting: a first question gets diagnostic nudges; follow-ups unlock hints; only explicit "stuck" phrasing unlocks a stronger pointer — never the full fix.
+- **Stdin support.** Dedicated **stdin** tab in the output panel; every starter reads from stdin and is pre-filled with sample input so the first Run produces meaningful output.
+- **Nine languages** — Python, JavaScript, TypeScript, C, C++, Java, Go, Rust, Ruby. Each ships with a runnable multi-file starter project.
+- **AI tutor** via the OpenAI Responses API with a strict JSON schema, streamed over SSE so summary/explanation/hint/next-step sections paint as they arrive. Per-turn context includes a diff of files edited since the last turn plus run/edit counters, so the tutor sees what the student actually changed.
+- **Persona slider** — beginner / intermediate / advanced, set in Settings, reshapes the system prompt every turn (vocabulary depth, assumed background, explanation density).
+- **Stuckness detection.** The model emits a `stuckness: low | medium | high` signal each turn, combined with client-side run/edit activity. When stuckness goes high, the tutor unlocks a stronger hint and a concrete next step — still never the full fix.
+- **Clickable error + code references.** `file.ext:line[:col]` in tutor prose and stderr becomes a button that jumps the editor to the location.
+- **"Walk me through this"** button on the editor tab strip. One click asks the tutor to walk through the active file step by step — great for reading an unfamiliar file or onboarding to a starter project.
+- **Quick-action chips.** One-click "Why did my last run fail?" on errored runs, plus follow-up suggestions after a tutor turn — all fire asks directly instead of prefilling the composer.
+- **Long-conversation compression.** Once history crosses a threshold, older turns are summarized in the background and injected as a synthetic context head on subsequent turns — non-blocking; the current ask never waits for it.
 - **Bring-your-own key.** Held in-memory on the frontend by default, or in `localStorage` behind an explicit opt-in. Sent server-side via `X-OpenAI-Key` per request; never logged, never written to disk.
 - **Resilient sessions.** Silent heartbeat retries, a `Reconnecting…` status, and rebind-to-same-ID recovery when the backend session expires.
 - **Keyboard-first UI.** Status bar, color-coded file icons, output panel with copy-to-clipboard, error-type chips, and inline keyboard hints.
@@ -119,9 +127,9 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /
 
 ## Using it
 
-Open <http://localhost:5173>. The editor seeds with a starter project for the selected language. Edit any file, hit **Run** (or `⌘↵`), and stdout/stderr stream back into the output panel with an exit code, duration, and error classification (`compile`, `runtime`, `timeout`, `system`).
+Open <http://localhost:5173>. The editor seeds with a starter project for the selected language. Edit any file, hit **Run** (or `⌘↵`), and stdout/stderr stream back into the output panel with an exit code, duration, and error classification (`compile`, `runtime`, `timeout`, `system`). Switch to the **stdin** tab in the output panel to edit the input piped into the program on the next Run.
 
-To enable the tutor, click the gear in the right sidebar, paste an OpenAI key, validate, and pick a model. Then ask a question in the tutor panel — Enter sends, Shift+Enter inserts a newline. The first response leans on diagnostic questions; follow-ups add hints; phrases like *"I'm stuck"* or *"just tell me"* unlock a stronger pointer.
+To enable the tutor, click the gear in the right sidebar, paste an OpenAI key, validate, pick a model, and choose a persona (beginner / intermediate / advanced) that shapes how explanations are phrased. Ask a question in the tutor panel — Enter sends, Shift+Enter inserts a newline. Responses stream section-by-section (summary → explanation → example → hint → next step). The first response leans on diagnostic questions; follow-ups add hints; when the tutor flags you as stuck — based on your prose ("I'm stuck", "just tell me") and activity signals like repeated failed runs — it unlocks a stronger pointer and a concrete next step. `file.ext:line` references in the response jump the editor there on click. The tab strip and output panel also surface one-click action chips ("Walk me through this", "Why did my last run fail?") that fire asks directly.
 
 Switching the language dropdown replaces the current project with that language's starter (with a confirmation prompt so you don't accidentally nuke work).
 
@@ -152,7 +160,9 @@ Switching the language dropdown replaces the current project with that language'
 | `POST` | `/api/execute` | Compile (if needed) and run |
 | `POST` | `/api/ai/validate-key` | Check an OpenAI key |
 | `GET`  | `/api/ai/models` | List chat-capable models for the key |
-| `POST` | `/api/ai/ask` | Tutor turn (structured JSON response) |
+| `POST` | `/api/ai/ask/stream` | Tutor turn (SSE stream of structured JSON sections) |
+| `POST` | `/api/ai/ask` | Tutor turn (non-streaming; same schema) |
+| `POST` | `/api/ai/summarize` | Compress older history into a short narrative for long conversations |
 
 ### Docker socket note
 
@@ -200,6 +210,10 @@ Running the full stack via `./start.sh` or `docker compose up` needs no host-sid
 # Type-check without running the stack
 (cd frontend && npx tsc --noEmit)
 (cd backend  && npx tsc --noEmit)
+
+# Run unit tests (vitest / node:test)
+(cd frontend && npm test)
+(cd backend  && npm test)
 
 # Iterate on the frontend only (backend in Docker)
 docker compose up -d backend
