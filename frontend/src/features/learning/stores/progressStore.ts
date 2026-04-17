@@ -22,6 +22,18 @@ export function loadSavedCode(
   return lp?.lastCode ?? null;
 }
 
+export function loadAllLessonProgress(
+  courseId: string,
+  lessonIds: string[],
+): LessonProgress[] {
+  const results: LessonProgress[] = [];
+  for (const id of lessonIds) {
+    const lp = loadJson<LessonProgress>(LESSON_KEY(courseId, id));
+    if (lp) results.push(lp);
+  }
+  return results;
+}
+
 function saveJson(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));

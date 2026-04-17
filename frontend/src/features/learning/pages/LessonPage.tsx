@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import confetti from "canvas-confetti";
 import type { Lesson } from "../types";
 import { loadFullLesson, loadCourse } from "../content/courseLoader";
 import { useProgressStore, loadSavedCode } from "../stores/progressStore";
@@ -220,6 +221,7 @@ export default function LessonPage() {
     setValidation(v);
     if (v.passed) {
       completeLesson(identity.learnerId, courseId, lessonId, totalLessons);
+      confetti({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
     }
   }, [lesson, courseId, lessonId, completeLesson, identity.learnerId, totalLessons]);
 
