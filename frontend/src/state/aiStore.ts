@@ -8,10 +8,10 @@ import type {
   TutorSections,
 } from "../types";
 
-const LS_KEY = "aicodeeditor:openai-key";
-const LS_MODEL = "aicodeeditor:openai-model";
-const LS_REMEMBER = "aicodeeditor:openai-remember";
-const LS_PERSONA = "aicodeeditor:openai-persona";
+const LS_KEY = "codetutor:openai-key";
+const LS_MODEL = "codetutor:openai-model";
+const LS_REMEMBER = "codetutor:openai-remember";
+const LS_PERSONA = "codetutor:openai-persona";
 
 export type KeyStatus = "none" | "validating" | "valid" | "invalid";
 export type ModelsStatus = "idle" | "loading" | "loaded" | "error";

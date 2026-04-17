@@ -4,7 +4,7 @@ export const config = {
   port: num(process.env.PORT, 4000),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
 
-  runnerImage: process.env.RUNNER_IMAGE ?? "ai-code-editor-runner:latest",
+  runnerImage: process.env.RUNNER_IMAGE ?? "codetutor-ai-runner:latest",
 
   // Backend-internal path where per-session workspaces live (always a Linux
   // path because the backend runs inside a Linux container on every host).

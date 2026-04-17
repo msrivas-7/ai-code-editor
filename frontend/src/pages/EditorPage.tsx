@@ -95,7 +95,7 @@ export default function EditorPage() {
             AI
           </div>
           <h1 className="text-sm font-semibold tracking-tight text-ink">
-            AI Code Editor
+            CodeTutor AI
           </h1>
         </div>
         <div className="flex items-center gap-4">

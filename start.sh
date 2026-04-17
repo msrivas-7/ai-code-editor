@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# start.sh — one-command launcher for AI Code Editor.
+# start.sh — one-command launcher for CodeTutor AI.
 # Ensures Docker is reachable, brings up the stack, waits for it to be ready,
 # and opens the UI in your browser.
 
@@ -33,7 +33,7 @@ else
   ok "Docker daemon reachable"
 fi
 
-log "Building + starting AI Code Editor (this is fast after the first run)…"
+log "Building + starting CodeTutor AI (this is fast after the first run)…"
 docker compose up --build -d
 
 log "Waiting for backend on :4000…"
@@ -75,7 +75,7 @@ end tell
 APPLESCRIPT
 ) || return 1
   [[ -z "$ids" ]] && return 1
-  printf "%s\n" "$ids" > "$root/.ai-code-editor-terminals"
+  printf "%s\n" "$ids" > "$root/.codetutor-ai-terminals"
 }
 
 if [[ "$(uname)" == "Darwin" ]]; then
@@ -92,7 +92,7 @@ fi
 
 echo ""
 printf "${c_green}──────────────────────────────────────────────${c_reset}\n"
-printf "  AI Code Editor is running\n"
+printf "  CodeTutor AI is running\n"
 printf "  ${c_cyan}UI      ${c_reset}  http://localhost:5173\n"
 printf "  ${c_cyan}Backend ${c_reset}  http://localhost:4000\n"
 printf "${c_green}──────────────────────────────────────────────${c_reset}\n"

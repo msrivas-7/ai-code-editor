@@ -10,7 +10,7 @@ export default function StartPage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet text-lg font-bold text-bg shadow-glow">
             AI
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Code Editor</h1>
+          <h1 className="text-2xl font-bold tracking-tight">CodeTutor AI</h1>
           <p className="max-w-md text-center text-sm text-muted">
             Write code, run it in a sandbox, and learn with an AI tutor —
             all in the browser.
@@ -65,7 +65,7 @@ export default function StartPage() {
       </div>
 
       <footer className="border-t border-border bg-panel/60 px-4 py-2 text-center text-[10px] text-faint">
-        AI Code Editor — local-first, sandboxed, open source
+        CodeTutor AI — local-first, sandboxed, open source
       </footer>
     </div>
   );

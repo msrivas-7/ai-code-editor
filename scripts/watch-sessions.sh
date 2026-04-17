@@ -13,7 +13,7 @@ c_yellow="\033[33m"
 c_magenta="\033[35m"
 c_reset="\033[0m"
 
-PREFIX="ai-code-editor-session-"
+PREFIX="codetutor-ai-session-"
 
 color_event() {
   case "$1" in

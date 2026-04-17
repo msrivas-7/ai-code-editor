@@ -20,5 +20,5 @@ backend to drive it via `docker exec`. The backend is responsible for:
 Build locally:
 
 ```bash
-docker build -t ai-code-editor-runner ./runner-image
+docker build -t codetutor-ai-runner ./runner-image
 ```

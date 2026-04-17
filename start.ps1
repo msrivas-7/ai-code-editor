@@ -1,4 +1,4 @@
-﻿# start.ps1 — one-command launcher for AI Code Editor on Windows.
+﻿# start.ps1 — one-command launcher for CodeTutor AI on Windows.
 # Parallel to start.sh. Expected invocation:
 #     powershell -ExecutionPolicy Bypass -File .\start.ps1
 #
@@ -46,7 +46,7 @@ Remove-Item -ErrorAction SilentlyContinue $marker
 
 # --- Bring the stack up -----------------------------------------------
 
-Write-Step "Building + starting AI Code Editor (this is fast after the first run)..."
+Write-Step "Building + starting CodeTutor AI (this is fast after the first run)..."
 docker compose up --build -d
 if ($LASTEXITCODE -ne 0) {
     Write-Warn "docker compose up failed."
@@ -80,7 +80,7 @@ Wait-For-Url "http://localhost:5173" "frontend on :5173" 30 | Out-Null
 # we opened. (Windows Terminal `wt.exe` is prettier but doesn't give us a
 # clean per-tab PID to close later — separate windows are simpler.)
 
-$pidFile = Join-Path $PSScriptRoot ".ai-code-editor-terminals"
+$pidFile = Join-Path $PSScriptRoot ".codetutor-ai-terminals"
 Remove-Item -ErrorAction SilentlyContinue $pidFile
 
 function Start-LogWindow($title, $command) {
@@ -109,7 +109,7 @@ try {
 
 Write-Host ""
 Write-Host "----------------------------------------------" -ForegroundColor Green
-Write-Host "  AI Code Editor is running"
+Write-Host "  CodeTutor AI is running"
 Write-Host "  UI       http://localhost:5173" -ForegroundColor Cyan
 Write-Host "  Backend  http://localhost:4000" -ForegroundColor Cyan
 Write-Host "----------------------------------------------" -ForegroundColor Green

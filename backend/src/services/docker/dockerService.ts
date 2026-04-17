@@ -128,7 +128,7 @@ export async function createSessionContainer(
 ): Promise<CreatedContainer> {
   const container = await docker.createContainer({
     Image: config.runnerImage,
-    name: `ai-code-editor-session-${sessionId}`,
+    name: `codetutor-ai-session-${sessionId}`,
     Cmd: ["sleep", "infinity"],
     WorkingDir: "/workspace",
     User: "runner",

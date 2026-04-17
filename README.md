@@ -1,4 +1,4 @@
-# AI Code Editor
+# CodeTutor AI
 
 A dual-mode, web-based coding platform with an AI tutor. **Editor mode** is a free-form playground for nine languages. **Guided Learning mode** walks beginners through structured Python lessons with progress tracking, lesson-aware AI hints, and auto-validated exercises. Everything runs locally in Docker — bring your own OpenAI key.
 
@@ -67,8 +67,8 @@ Optional: an **OpenAI API key** ([get one](https://platform.openai.com/api-keys)
 ### macOS / Linux
 
 ```bash
-git clone https://github.com/msrivas-7/ai-code-editor.git
-cd ai-code-editor
+git clone https://github.com/msrivas-7/codetutor-ai.git
+cd codetutor-ai
 ./start.sh
 ```
 
@@ -77,8 +77,8 @@ First launch builds Docker images (~2-3 min). After that, `./start.sh` takes ~10
 ### Windows
 
 ```powershell
-git clone https://github.com/msrivas-7/ai-code-editor.git
-cd ai-code-editor
+git clone https://github.com/msrivas-7/codetutor-ai.git
+cd codetutor-ai
 powershell -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
@@ -188,7 +188,7 @@ The Docker socket mount gives the backend root-equivalent access to the local da
 ## Project Layout
 
 ```
-ai-code-editor/
+codetutor-ai/
 ├── backend/                 Express + TypeScript
 │   └── src/services/ai/
 │       ├── prompts/         Modular prompt components (8 modules)

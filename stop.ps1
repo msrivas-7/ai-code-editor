@@ -4,11 +4,11 @@
 $ErrorActionPreference = "Continue"
 Set-Location -Path $PSScriptRoot
 
-Write-Host "> Stopping AI Code Editor..." -ForegroundColor Cyan
+Write-Host "> Stopping CodeTutor AI..." -ForegroundColor Cyan
 docker compose down --remove-orphans
 
 # Close the three log windows recorded by start.ps1 (if any).
-$pidFile = Join-Path $PSScriptRoot ".ai-code-editor-terminals"
+$pidFile = Join-Path $PSScriptRoot ".codetutor-ai-terminals"
 if (Test-Path $pidFile) {
     $ids = (Get-Content $pidFile -Raw).Trim()
     Remove-Item -ErrorAction SilentlyContinue $pidFile

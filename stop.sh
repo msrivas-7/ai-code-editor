@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# stop.sh — tear down the AI Code Editor stack and close the log terminals
+# stop.sh — tear down the CodeTutor AI stack and close the log terminals
 # that start.sh opened.
 
 set -euo pipefail
@@ -11,7 +11,7 @@ c_green="\033[32m"
 c_reset="\033[0m"
 
 close_log_terminals_macos() {
-  local file=".ai-code-editor-terminals"
+  local file=".codetutor-ai-terminals"
   [[ ! -f "$file" ]] && return 0
   local ids
   ids=$(cat "$file")
@@ -32,7 +32,7 @@ close_log_terminals_macos() {
   /usr/bin/osascript -e "$script" >/dev/null 2>&1 || true
 }
 
-printf "${c_cyan}▸${c_reset} Stopping AI Code Editor…\n"
+printf "${c_cyan}▸${c_reset} Stopping CodeTutor AI…\n"
 docker compose down --remove-orphans
 
 if [[ "$(uname)" == "Darwin" ]]; then

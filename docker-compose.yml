@@ -3,7 +3,7 @@ services:
   # that the backend will spawn per-session. It exits immediately; the backend
   # waits for it via service_completed_successfully.
   runner-image:
-    image: ai-code-editor-runner:latest
+    image: codetutor-ai-runner:latest
     build:
       context: ./runner-image
     command: ["true"]
@@ -15,7 +15,7 @@ services:
     environment:
       PORT: "4000"
       CORS_ORIGIN: "http://localhost:5173"
-      RUNNER_IMAGE: "ai-code-editor-runner:latest"
+      RUNNER_IMAGE: "codetutor-ai-runner:latest"
       # Backend-internal path for workspace I/O. Same on every host OS —
       # the host path is discovered at startup via Docker self-inspect and
       # used separately when spawning sibling containers. See

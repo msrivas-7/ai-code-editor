@@ -7,7 +7,7 @@
 
 $ErrorActionPreference = "Continue"
 
-$PREFIX = "ai-code-editor-session-"
+$PREFIX = "codetutor-ai-session-"
 
 function Colour-Event($status) {
     switch ($status) {
