@@ -25,10 +25,11 @@ Write, run, and debug code in **9 languages** with a Monaco-powered editor and a
 A 10-lesson Python fundamentals course with instructions, starter code, and auto-validated exercises. Built for beginners.
 
 - **Lesson workspace** — three-panel layout: instructions (left), editor + output (center), lesson-aware tutor (right). All panels resizable and collapsible.
-- **10 complete lessons** — Hello World, Variables, Input/Output, Conditionals, Loops, Functions, Lists, Dictionaries, Debugging Basics, and a Mini Project that ties everything together.
-- **Auto-validation** — "Check Solution" compares run output and file contents against completion rules. Pass to unlock the next lesson.
-- **Progress tracking** — lesson status, run count, hint count, attempt count, code snapshots, and last output persist in `localStorage` across browser sessions. Returning to a lesson restores your code from where you left off.
-- **Lesson-aware AI tutor** — the tutor knows the lesson objectives, concepts, and completion criteria. It guides toward the solution without giving it away, and stays within the scope of what the lesson has taught so far.
+- **10 complete lessons** — Hello World, Variables, Input/Output, Conditionals, Loops, Functions, Lists, Dictionaries, Debugging Basics, and a Mini Project that ties everything together. Each lesson includes a post-completion recap and practice prompts.
+- **Auto-validation** — "Check Solution" compares run output and file contents against completion rules. Pass to see a celebration with confetti, a recap of concepts learned, and suggested practice challenges. "Next Lesson" button appears on completion.
+- **Progress tracking** — lesson status, run count, hint count, attempt count, code snapshots, and last output persist in `localStorage` across browser sessions. Returning to a lesson restores your code with a "Resuming where you left off" indicator. Reset individual lesson progress or the entire course from the UI.
+- **Lesson-aware AI tutor** — the tutor knows the lesson objectives, concepts, and completion criteria. It guides toward the solution without giving it away, and stays within the scope of what the lesson has taught so far. Three-level hint ladder (gentle hint → stronger hint → show approach), one-click "Explain Error" button when runs produce stderr.
+- **Learning dashboard** — progress summary with gradient bar, "Next up" card, recent activity feed (last 3 lessons with timestamps), and "Might Need Review" indicators for lessons that took extra effort.
 - **Anonymous learner identity** — auto-generated, persisted locally. Ready for future auth.
 
 ### Shared across both modes
@@ -112,10 +113,10 @@ Open **http://localhost:5173**. You land on the **Start page** with two cards:
 
 ### Guided Learning mode
 
-- Click **Guided Course** from the start page, then open **Python Fundamentals**.
+- Click **Guided Course** from the start page to see your dashboard with progress, recent activity, and next-up recommendations. Open **Python Fundamentals**.
 - Pick a lesson. Read the instructions on the left, write code in the center, run it, and click **Check Solution**.
-- The tutor panel on the right knows your lesson context — ask it for help and it will guide you without spoiling the answer.
-- Your progress (completions, code, run counts) persists in the browser.
+- The tutor panel on the right knows your lesson context — ask it for help and it will guide you without spoiling the answer. Use the hint ladder for progressive help, or click **Explain Error** when your code fails.
+- Your progress (completions, code, run counts) persists in the browser. Use **Reset Lesson** to start a lesson fresh, or **Reset Course** from the course overview to clear all progress.
 
 ### Settings
 
@@ -159,8 +160,9 @@ Click the **gear icon** in the header bar (visible on every page) to configure y
 ### Guided Learning System
 
 - **File-based courses** — `frontend/public/courses/{courseId}/lessons/{lessonId}/` containing `lesson.json` (metadata, objectives, completion rules), `content.md` (instructions), and `starter/` (initial files).
-- **Client-side validation** — `expected_stdout` (output comparison) and `required_file_contains` (code content checks). Runs against the latest `RunResult` without a backend round-trip.
-- **localStorage persistence** — versioned keys (`learner:v1:progress:{courseId}`, `learner:v1:lesson:{courseId}:{lessonId}`). Course/lesson status, timestamps, attempt/run/hint counts, code snapshots, and last output. Lesson code is restored from localStorage on return; editor-mode files are session-scoped only (in-memory).
+- **Client-side validation** — `expected_stdout` (output comparison) and `required_file_contains` (code content checks). Runs against the latest `RunResult` without a backend round-trip. Completion triggers confetti, a recap panel, and practice prompts.
+- **localStorage persistence** — versioned keys (`learner:v1:progress:{courseId}`, `learner:v1:lesson:{courseId}:{lessonId}`). Course/lesson status, timestamps, attempt/run/hint counts, code snapshots, and last output. Lesson code is restored from localStorage on return; editor-mode files are session-scoped only (in-memory). Progress can be reset per-lesson or per-course.
+- **Atomic state mutations** — all progress counters (run count, hint count, attempt count) use Zustand's `set()` callback for race-condition-free read-modify-write, with automatic localStorage fallback for hydration.
 - **Repository abstraction** — `LearningRepository` interface with `LocalLearningRepository` (localStorage) and `RemoteLearningRepository` (stub) for future backend persistence.
 
 ### API Surface

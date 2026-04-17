@@ -92,6 +92,8 @@ interface ProgressState {
     code: Record<string, string>
   ) => void;
   saveOutput: (courseId: string, lessonId: string, output: string) => void;
+  resetLessonProgress: (learnerId: string, courseId: string, lessonId: string) => void;
+  resetCourseProgress: (learnerId: string, courseId: string, lessonIds: string[]) => void;
 }
 
 export const useProgressStore = create<ProgressState>()((set, get) => ({
@@ -188,7 +190,20 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
       const courseKey = COURSE_KEY(courseId);
       const cp = resolveCourse(s.courseProgress, courseId);
       let courseUpdate = s.courseProgress;
-      if (cp && cp.status === "not_started") {
+      if (!cp) {
+        const freshCp: CourseProgress = {
+          learnerId,
+          courseId,
+          status: "in_progress",
+          startedAt: now(),
+          updatedAt: now(),
+          completedAt: null,
+          lastLessonId: lessonId,
+          completedLessonIds: [],
+        };
+        saveJson(courseKey, freshCp);
+        courseUpdate = { ...s.courseProgress, [courseId]: freshCp };
+      } else if (cp.status === "not_started") {
         const updatedCp: CourseProgress = {
           ...cp,
           status: "in_progress",
@@ -198,7 +213,7 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
         };
         saveJson(courseKey, updatedCp);
         courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
-      } else if (cp) {
+      } else {
         const updatedCp: CourseProgress = {
           ...cp,
           updatedAt: now(),
@@ -242,21 +257,29 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
       const courseKey = COURSE_KEY(courseId);
       const cp = resolveCourse(s.courseProgress, courseId);
       let courseUpdate = s.courseProgress;
-      if (cp) {
-        const completed = cp.completedLessonIds.includes(lessonId)
-          ? cp.completedLessonIds
-          : [...cp.completedLessonIds, lessonId];
-        const allDone = completed.length >= totalLessons;
-        const updatedCp: CourseProgress = {
-          ...cp,
-          status: allDone ? "completed" : "in_progress",
-          updatedAt: now(),
-          completedAt: allDone ? now() : cp.completedAt,
-          completedLessonIds: completed,
-        };
-        saveJson(courseKey, updatedCp);
-        courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
-      }
+      const baseCp: CourseProgress = cp ?? {
+        learnerId,
+        courseId,
+        status: "in_progress",
+        startedAt: now(),
+        updatedAt: now(),
+        completedAt: null,
+        lastLessonId: lessonId,
+        completedLessonIds: [],
+      };
+      const completed = baseCp.completedLessonIds.includes(lessonId)
+        ? baseCp.completedLessonIds
+        : [...baseCp.completedLessonIds, lessonId];
+      const allDone = completed.length >= totalLessons;
+      const updatedCp: CourseProgress = {
+        ...baseCp,
+        status: allDone ? "completed" : "in_progress",
+        updatedAt: now(),
+        completedAt: allDone ? now() : baseCp.completedAt,
+        completedLessonIds: completed,
+      };
+      saveJson(courseKey, updatedCp);
+      courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
 
       return {
         lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
@@ -310,6 +333,67 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
       const updated = { ...current, lastOutput: output, updatedAt: now() };
       saveJson(lsKey, updated);
       return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
+  },
+
+  resetLessonProgress(learnerId, courseId, lessonId) {
+    const compositeKey = `${courseId}/${lessonId}`;
+    const lsKey = LESSON_KEY(courseId, lessonId);
+    startedThisSession.delete(compositeKey);
+    try { localStorage.removeItem(lsKey); } catch { /* */ }
+
+    set((s) => {
+      const cp = resolveCourse(s.courseProgress, courseId);
+      let courseUpdate = s.courseProgress;
+      if (cp) {
+        const updatedCp: CourseProgress = {
+          ...cp,
+          completedLessonIds: cp.completedLessonIds.filter((id) => id !== lessonId),
+          status: cp.completedLessonIds.filter((id) => id !== lessonId).length === 0
+            ? "not_started"
+            : "in_progress",
+          completedAt: null,
+          updatedAt: now(),
+        };
+        saveJson(COURSE_KEY(courseId), updatedCp);
+        courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
+      }
+
+      const { [compositeKey]: _, ...restLessons } = s.lessonProgress;
+      return { lessonProgress: restLessons, courseProgress: courseUpdate };
+    });
+  },
+
+  resetCourseProgress(learnerId, courseId, lessonIds) {
+    for (const lid of lessonIds) {
+      const compositeKey = `${courseId}/${lid}`;
+      startedThisSession.delete(compositeKey);
+      try { localStorage.removeItem(LESSON_KEY(courseId, lid)); } catch { /* */ }
+    }
+    try { localStorage.removeItem(COURSE_KEY(courseId)); } catch { /* */ }
+
+    set((s) => {
+      const updated = { ...s.lessonProgress };
+      for (const lid of lessonIds) {
+        delete updated[`${courseId}/${lid}`];
+      }
+
+      const freshCp: CourseProgress = {
+        learnerId,
+        courseId,
+        status: "not_started",
+        startedAt: null,
+        updatedAt: now(),
+        completedAt: null,
+        lastLessonId: null,
+        completedLessonIds: [],
+      };
+      saveJson(COURSE_KEY(courseId), freshCp);
+
+      return {
+        lessonProgress: updated,
+        courseProgress: { ...s.courseProgress, [courseId]: freshCp },
+      };
     });
   },
 }));

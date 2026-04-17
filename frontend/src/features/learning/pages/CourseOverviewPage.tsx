@@ -13,12 +13,14 @@ export default function CourseOverviewPage() {
   const { identity } = useLearnerStore();
   const loadCourseProgress = useProgressStore((s) => s.loadCourseProgress);
   const loadLessonProgress = useProgressStore((s) => s.loadLessonProgress);
+  const resetCourseProgress = useProgressStore((s) => s.resetCourseProgress);
   const courseProgressMap = useProgressStore((s) => s.courseProgress);
   const lessonProgressMap = useProgressStore((s) => s.lessonProgress);
 
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<LessonMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
     if (!courseId) return;
@@ -88,6 +90,15 @@ export default function CourseOverviewPage() {
               <span className="text-xs font-medium text-muted">
                 {completedIds.length}/{lessons.length} lessons
               </span>
+              {cp && cp.status !== "not_started" && (
+                <button
+                  onClick={() => setConfirmReset(true)}
+                  className="rounded-md px-2 py-1 text-[10px] text-muted transition hover:bg-red-500/10 hover:text-red-400"
+                  title="Reset all progress for this course"
+                >
+                  Reset Course
+                </button>
+              )}
             </div>
 
             <LessonList
@@ -105,6 +116,33 @@ export default function CourseOverviewPage() {
           </div>
         )}
       </div>
+      {confirmReset && course && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-red-500/30 bg-panel p-5 shadow-xl">
+            <h2 className="text-sm font-bold text-ink">Reset Course Progress?</h2>
+            <p className="mt-2 text-xs leading-relaxed text-muted">
+              This will clear all progress for every lesson in <span className="font-semibold text-ink">{course.title}</span> — attempts, runs, hints, saved code, and completion status. You'll start the entire course from scratch.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={() => setConfirmReset(false)}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  resetCourseProgress(identity.learnerId, courseId, course.lessonOrder);
+                  setConfirmReset(false);
+                }}
+                className="flex-1 rounded-lg bg-red-500/15 px-4 py-2 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25"
+              >
+                Reset Course
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

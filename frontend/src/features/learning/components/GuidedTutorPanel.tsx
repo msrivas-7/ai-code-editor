@@ -21,9 +21,10 @@ interface GuidedTutorPanelProps {
   totalLessons: number;
   progressSummary: string;
   onCollapse?: () => void;
+  resetNonce?: number;
 }
 
-export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, onCollapse }: GuidedTutorPanelProps) {
+export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, onCollapse, resetNonce }: GuidedTutorPanelProps) {
   const incrementHint = useProgressStore((s) => s.incrementHint);
   const {
     apiKey,
@@ -68,6 +69,13 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
   useEffect(() => {
     setHintLevel(0);
   }, [lessonMeta.id]);
+
+  useEffect(() => {
+    if (!resetNonce) return;
+    setHintLevel(0);
+    setDraft("");
+    clearConversation();
+  }, [resetNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -206,7 +214,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
           <button
             onClick={() => { clearConversation(); setHintLevel(0); setDraft(""); }}
             className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
-            disabled={history.length === 0}
+            disabled={history.length === 0 || asking}
             title="Clear conversation"
           >
             clear

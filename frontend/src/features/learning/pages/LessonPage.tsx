@@ -64,6 +64,7 @@ export default function LessonPage() {
   const incrementRun = useProgressStore((s) => s.incrementRun);
   const saveCode = useProgressStore((s) => s.saveCode);
   const saveOutput = useProgressStore((s) => s.saveOutput);
+  const resetLessonProgress = useProgressStore((s) => s.resetLessonProgress);
   const lessonProgressMap = useProgressStore((s) => s.lessonProgress);
 
   const switchChatContext = useAIStore((s) => s.switchChatContext);
@@ -95,6 +96,8 @@ export default function LessonPage() {
   const [showComplete, setShowComplete] = useState(false);
   const [resumed, setResumed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [resetNonce, setResetNonce] = useState(0);
+  const [confirmResetLesson, setConfirmResetLesson] = useState(false);
   const [outputH, setOutputH] = useState(() => loadNum(LS_OUT_H, DEFAULT_OUT));
   const [instrW, setInstrW] = useState(() => loadNum(LS_INSTR_W, DEFAULT_INSTR));
   const [tutorW, setTutorW] = useState(() => loadNum(LS_TUTOR_W, DEFAULT_TUTOR));
@@ -276,6 +279,29 @@ export default function LessonPage() {
     if (tutorCollapsed) setTutorCollapsed(false);
   }, [lastResult, setPendingAsk, tutorCollapsed]);
 
+  const handleResetLessonProgress = useCallback(() => {
+    if (!lesson || !courseId || !lessonId) return;
+    resetLessonProgress(identity.learnerId, courseId, lessonId);
+    const files: Record<string, string> = {};
+    const order: string[] = [];
+    for (const f of lesson.starterFiles) {
+      files[f.path] = f.content;
+      order.push(f.path);
+    }
+    if (order.length === 0) {
+      files["main.py"] = "# Write your code here\n";
+      order.push("main.py");
+    }
+    useProjectStore.setState({ files, order, activeFile: order[0], openTabs: [order[0]] });
+    useRunStore.getState().setResult(null);
+    useRunStore.getState().setError(null);
+    setValidation(null);
+    setShowComplete(false);
+    setConfirmResetLesson(false);
+    setResetNonce((n) => n + 1);
+    startLesson(identity.learnerId, courseId, lessonId);
+  }, [lesson, courseId, lessonId, identity.learnerId, resetLessonProgress, startLesson]);
+
   const nextLessonId = (() => {
     if (!lessonId || lessonOrder.length === 0) return null;
     const idx = lessonOrder.indexOf(lessonId);
@@ -437,7 +463,15 @@ export default function LessonPage() {
                 className="rounded-lg px-3 py-1.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
                 title="Reset code to starter"
               >
-                Reset
+                Reset Code
+              </button>
+              <button
+                onClick={() => setConfirmResetLesson(true)}
+                disabled={running}
+                className="rounded-lg px-3 py-1.5 text-[11px] text-muted transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                title="Reset all lesson progress (attempts, runs, hints, code)"
+              >
+                Reset Lesson
               </button>
               {hasStderr && !running && (
                 <button
@@ -527,6 +561,7 @@ export default function LessonPage() {
                       : "first attempt"
                   }
                   onCollapse={() => setTutorCollapsed(true)}
+                  resetNonce={resetNonce}
                 />
               </aside>
             </>
@@ -546,6 +581,30 @@ export default function LessonPage() {
         />
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {confirmResetLesson && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-red-500/30 bg-panel p-5 shadow-xl">
+            <h2 className="text-sm font-bold text-ink">Reset Lesson Progress?</h2>
+            <p className="mt-2 text-xs leading-relaxed text-muted">
+              This will clear all progress for this lesson — attempts, runs, hints, saved code, and completion status. You'll start fresh as if you've never opened this lesson.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={() => setConfirmResetLesson(false)}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetLessonProgress}
+                className="flex-1 rounded-lg bg-red-500/15 px-4 py-2 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25"
+              >
+                Reset Lesson
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
