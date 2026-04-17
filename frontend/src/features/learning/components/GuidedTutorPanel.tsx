@@ -56,11 +56,16 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
   const stdin = useRunStore((s) => s.stdin);
 
   const [draft, setDraft] = useState("");
+  const [hintLevel, setHintLevel] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const configured = keyStatus === "valid" && !!selectedModel;
+
+  useEffect(() => {
+    setHintLevel(0);
+  }, [lessonMeta.id]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -197,7 +202,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={clearConversation}
+            onClick={() => { clearConversation(); setHintLevel(0); }}
             className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
             disabled={history.length === 0}
             title="Clear conversation"
@@ -228,10 +233,29 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
 
         {history.length === 0 && !asking && configured && (
           <div className="rounded-md border border-border bg-elevated/60 p-3 text-xs leading-relaxed text-muted">
-            <div className="mb-1.5 font-semibold text-ink">Ask about this lesson.</div>
-            The tutor guides you through the lesson without giving away the answer.
-            <div className="mt-2 text-[11px] text-faint">
-              Try: <span className="italic">"I don't understand what I need to do here"</span>
+            <div className="mb-1.5 font-semibold text-ink">
+              Lesson {lessonMeta.order}: {lessonMeta.title}
+            </div>
+            Your tutor is here to help — ask anything about this lesson. I'll guide you without giving away the answer.
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setPendingAsk("What should I do in this lesson?")}
+                className="rounded-md border border-border bg-bg/60 px-2 py-1 text-[11px] text-ink/80 transition hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
+              >
+                What should I do?
+              </button>
+              <button
+                onClick={() => setPendingAsk("I don't understand the instructions. Can you explain?")}
+                className="rounded-md border border-border bg-bg/60 px-2 py-1 text-[11px] text-ink/80 transition hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
+              >
+                Explain the task
+              </button>
+              <button
+                onClick={() => setPendingAsk("Give me a hint to get started.")}
+                className="rounded-md border border-border bg-bg/60 px-2 py-1 text-[11px] text-ink/80 transition hover:border-accent/40 hover:bg-accent/10 hover:text-accent"
+              >
+                Give me a hint
+              </button>
             </div>
           </div>
         )}
@@ -259,15 +283,34 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
                 </div>
               )}
               {(isLatestAssistant || (m.role === "assistant" && m.usage)) && (
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                  {isLatestAssistant ? (
-                    <ActionChips onAsk={setPendingAsk} disabled={asking} />
-                  ) : (
-                    <span />
+                <div className="flex flex-col gap-1.5 pt-0.5">
+                  {isLatestAssistant && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {hintLevel < 3 && (
+                        <button
+                          onClick={() => {
+                            const prompts = [
+                              "Give me a gentle hint — don't reveal the answer.",
+                              "I need a stronger hint. Point me in the right direction without giving the full solution.",
+                              "I'm really stuck. Walk me through the approach step by step.",
+                            ];
+                            setPendingAsk(prompts[hintLevel]);
+                            setHintLevel((l) => l + 1);
+                          }}
+                          disabled={asking}
+                          className="rounded-full border border-warn/40 bg-warn/10 px-2 py-[2px] text-[10px] font-medium text-warn transition hover:bg-warn/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {hintLevel === 0 ? "💡 Hint" : hintLevel === 1 ? "💡 Stronger hint" : "💡 Show approach"}
+                        </button>
+                      )}
+                      <ActionChips onAsk={setPendingAsk} disabled={asking} />
+                    </div>
                   )}
-                  {m.role === "assistant" && m.usage && (
-                    <UsageChip usage={m.usage} modelId={selectedModel} />
-                  )}
+                  <div className="flex items-center justify-end">
+                    {m.role === "assistant" && m.usage && (
+                      <UsageChip usage={m.usage} modelId={selectedModel} />
+                    )}
+                  </div>
                 </div>
               )}
             </div>

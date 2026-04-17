@@ -88,6 +88,7 @@ export default function LessonPage() {
   const [lessonOrder, setLessonOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [resumed, setResumed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [outputH, setOutputH] = useState(() => loadNum(LS_OUT_H, DEFAULT_OUT));
   const [instrW, setInstrW] = useState(() => loadNum(LS_INSTR_W, DEFAULT_INSTR));
@@ -139,6 +140,8 @@ export default function LessonPage() {
         files[path] = content;
         order.push(path);
       }
+      setResumed(true);
+      setTimeout(() => setResumed(false), 3000);
     } else {
       for (const f of lesson.starterFiles) {
         files[f.path] = f.content;
@@ -185,6 +188,30 @@ export default function LessonPage() {
     }
   }, [sessionId, sessionPhase, running, courseId, lessonId, setRunning, setRunError, setResult, incrementRun, saveOutput, saveCode]);
 
+  const handleReset = useCallback(() => {
+    if (!lesson || !courseId || !lessonId) return;
+    const files: Record<string, string> = {};
+    const order: string[] = [];
+    for (const f of lesson.starterFiles) {
+      files[f.path] = f.content;
+      order.push(f.path);
+    }
+    if (order.length === 0) {
+      files["main.py"] = "# Write your code here\n";
+      order.push("main.py");
+    }
+    useProjectStore.setState({
+      files,
+      order,
+      activeFile: order[0],
+      openTabs: [order[0]],
+    });
+    useRunStore.getState().setResult(null);
+    useRunStore.getState().setError(null);
+    setValidation(null);
+    saveCode(courseId, lessonId, files);
+  }, [lesson, courseId, lessonId, saveCode]);
+
   const handleCheck = useCallback(() => {
     if (!lesson || !courseId || !lessonId) return;
     const files = useProjectStore.getState().snapshot();
@@ -208,10 +235,34 @@ export default function LessonPage() {
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [handleRun]);
 
+  // Auto-save code to localStorage on edits (debounced)
+  const projectFiles = useProjectStore((s) => s.files);
+  useEffect(() => {
+    if (!courseId || !lessonId || !initialized.current) return;
+    const timer = setTimeout(() => {
+      const snap = useProjectStore.getState().snapshot();
+      if (snap.length === 0) return;
+      const codeMap: Record<string, string> = {};
+      for (const f of snap) codeMap[f.path] = f.content;
+      saveCode(courseId, lessonId, codeMap);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [projectFiles, courseId, lessonId, saveCode]);
+
   if (!courseId || !lessonId) return null;
 
   const lp = lessonProgressMap[`${courseId}/${lessonId}`];
   const canRun = !!sessionId && sessionPhase === "active" && !running;
+  const lastResult = useRunStore((s) => s.result);
+  const hasStderr = !!(lastResult?.stderr?.trim());
+  const setPendingAsk = useAIStore((s) => s.setPendingAsk);
+
+  const handleExplainError = useCallback(() => {
+    if (!lastResult?.stderr) return;
+    const errText = lastResult.stderr.trim().slice(0, 500);
+    setPendingAsk(`I got this error when I ran my code:\n\`\`\`\n${errText}\n\`\`\`\nCan you help me understand what went wrong?`);
+    if (tutorCollapsed) setTutorCollapsed(false);
+  }, [lastResult, setPendingAsk, tutorCollapsed]);
 
   const nextLessonId = (() => {
     if (!lessonId || lessonOrder.length === 0) return null;
@@ -307,6 +358,15 @@ export default function LessonPage() {
 
           {/* Editor + Output */}
           <section className="flex min-w-0 flex-1 flex-col">
+            {resumed && (
+              <div className="flex items-center gap-2 border-b border-accent/20 bg-accent/5 px-3 py-1.5 text-[11px] text-accent animate-pulse">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+                Resuming where you left off
+              </div>
+            )}
             <EditorTabs />
             <div className="min-h-0 flex-1">
               <MonacoPane />
@@ -359,15 +419,49 @@ export default function LessonPage() {
                 </svg>
                 Check Solution
               </button>
+              <button
+                onClick={handleReset}
+                disabled={running}
+                className="rounded-lg px-3 py-1.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
+                title="Reset code to starter"
+              >
+                Reset
+              </button>
+              {hasStderr && !running && (
+                <button
+                  onClick={handleExplainError}
+                  className="flex items-center gap-1 rounded-lg bg-red-500/10 px-3 py-1.5 text-[11px] font-medium text-red-400 ring-1 ring-red-500/20 transition hover:bg-red-500/20"
+                  title="Ask the tutor to explain this error"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  Explain Error
+                </button>
+              )}
               <span className="text-[10px] text-faint">Cmd+Enter</span>
               <div className="flex-1" />
-              {validation && (
-                <div className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium ${
-                  validation.passed
-                    ? "bg-green-500/15 text-green-400"
-                    : "bg-red-500/10 text-red-400"
-                }`}>
-                  {validation.passed ? "Passed!" : validation.feedback[0] ?? "Not quite."}
+              {validation && !validation.passed && (
+                <div className="flex flex-col gap-0.5 rounded-lg bg-red-500/10 px-3 py-1 text-xs font-medium text-red-400">
+                  <span>{validation.feedback[0] ?? "Not quite."}</span>
+                  {validation.nextHints?.[0] && (
+                    <span className="text-[10px] font-normal opacity-70">{validation.nextHints[0]}</span>
+                  )}
+                </div>
+              )}
+              {validation?.passed && (
+                <div className="flex items-center gap-2 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-medium text-green-400">
+                  <span className="text-base">🎉</span>
+                  <div className="flex flex-col">
+                    <span>Lesson complete!</span>
+                    {lesson?.conceptTags && lesson.conceptTags.length > 0 && (
+                      <span className="text-[10px] font-normal text-green-400/70">
+                        You practiced: {lesson.conceptTags.join(", ")}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
               {showNext && (

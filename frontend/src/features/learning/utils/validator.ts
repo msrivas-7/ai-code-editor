@@ -32,9 +32,13 @@ export function validateLesson(
         const actual = (result.stdout ?? "").trim();
         if (actual.includes(expected)) {
           feedback.push(`Output contains "${expected}" — correct!`);
+        } else if (actual.length === 0) {
+          feedback.push("Your code ran but produced no output. Make sure you're using print().");
+          nextHints.push("Add a print() statement to display your result.");
+          allPassed = false;
         } else {
-          feedback.push(`Expected output to contain "${expected}" but got: "${actual.slice(0, 100)}"`);
-          nextHints.push("Check your print() statement and make sure the output matches exactly.");
+          feedback.push(`Expected "${expected}" in output, but got: "${actual.slice(0, 80)}"`);
+          nextHints.push("Compare your output carefully — check spelling, spacing, and punctuation.");
           allPassed = false;
         }
         break;
