@@ -81,6 +81,22 @@ const askBody = z.object({
   editsSinceLastTurn: z.number().int().min(0).optional(),
   persona: z.enum(["beginner", "intermediate", "advanced"]).optional(),
   selection: selectionSchema.nullish(),
+  lessonContext: z.object({
+    courseId: z.string(),
+    lessonId: z.string(),
+    lessonTitle: z.string(),
+    lessonObjectives: z.array(z.string()),
+    conceptTags: z.array(z.string()),
+    completionRules: z.array(z.object({
+      type: z.string(),
+      expected: z.string().optional(),
+      file: z.string().optional(),
+      pattern: z.string().optional(),
+    })),
+    studentProgressSummary: z.string(),
+    lessonOrder: z.number().int().optional(),
+    totalLessons: z.number().int().optional(),
+  }).nullish(),
 });
 
 const summarizeBody = z.object({
@@ -111,6 +127,7 @@ aiRouter.post("/ask", async (req, res, next) => {
       editsSinceLastTurn: parsed.data.editsSinceLastTurn,
       persona: parsed.data.persona,
       selection: parsed.data.selection ?? null,
+      lessonContext: parsed.data.lessonContext ?? null,
     });
     res.json(result);
   } catch (err) {
@@ -166,6 +183,7 @@ aiRouter.post("/ask/stream", async (req, res) => {
       editsSinceLastTurn: parsed.data.editsSinceLastTurn,
       persona: parsed.data.persona,
       selection: parsed.data.selection ?? null,
+      lessonContext: parsed.data.lessonContext ?? null,
     },
     {
       onDelta: (chunk) => {

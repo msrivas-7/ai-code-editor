@@ -109,6 +109,9 @@ interface AIState {
 
   clearConversation: () => void;
   forgetKey: () => void;
+
+  chatContext: string | null;
+  switchChatContext: (contextKey: string) => void;
 }
 
 function loadInitial(): {
@@ -136,6 +139,21 @@ function loadInitial(): {
 }
 
 const initial = loadInitial();
+
+interface ChatSnapshot {
+  history: AIMessage[];
+  conversationSummary: string | null;
+  summarizedThrough: number;
+  sessionUsage: TokenUsage;
+}
+
+const chatCache = new Map<string, ChatSnapshot>();
+
+function saveChatToCache(get: () => AIState): void {
+  const { chatContext, history, conversationSummary, summarizedThrough, sessionUsage } = get();
+  if (!chatContext) return;
+  chatCache.set(chatContext, { history, conversationSummary, summarizedThrough, sessionUsage });
+}
 
 export const useAIStore = create<AIState>((set, get) => ({
   apiKey: initial.apiKey,
@@ -169,6 +187,8 @@ export const useAIStore = create<AIState>((set, get) => ({
   activeSelection: null,
   focusComposerNonce: 0,
   sessionUsage: { inputTokens: 0, outputTokens: 0 },
+
+  chatContext: null,
 
   setApiKey: (key) => {
     set({ apiKey: key, keyStatus: "none", keyError: null, models: [], modelsStatus: "idle" });
@@ -231,8 +251,11 @@ export const useAIStore = create<AIState>((set, get) => ({
   setActiveSelection: (sel) => set({ activeSelection: sel }),
   bumpFocusComposer: () => set((s) => ({ focusComposerNonce: s.focusComposerNonce + 1 })),
 
-  pushUser: (content) => set((s) => ({ history: [...s.history, { role: "user", content }] })),
-  pushAssistant: (content, sections, usage) =>
+  pushUser: (content) => {
+    set((s) => ({ history: [...s.history, { role: "user", content }] }));
+    saveChatToCache(get);
+  },
+  pushAssistant: (content, sections, usage) => {
     set((s) => ({
       history: [...s.history, { role: "assistant", content, sections, usage }],
       sessionUsage: usage
@@ -241,7 +264,9 @@ export const useAIStore = create<AIState>((set, get) => ({
             outputTokens: s.sessionUsage.outputTokens + usage.outputTokens,
           }
         : s.sessionUsage,
-    })),
+    }));
+    saveChatToCache(get);
+  },
 
   setAsking: (on) => set({ asking: on }),
   setAskError: (e) => set({ askError: e }),
@@ -259,7 +284,8 @@ export const useAIStore = create<AIState>((set, get) => ({
       editsSinceLastTurn: 0,
     }),
 
-  clearConversation: () =>
+  clearConversation: () => {
+    const ctx = get().chatContext;
     set({
       history: [],
       askError: null,
@@ -272,7 +298,9 @@ export const useAIStore = create<AIState>((set, get) => ({
       summarizing: false,
       activeSelection: null,
       sessionUsage: { inputTokens: 0, outputTokens: 0 },
-    }),
+    });
+    if (ctx) chatCache.delete(ctx);
+  },
 
   forgetKey: () => {
     set({
@@ -289,5 +317,36 @@ export const useAIStore = create<AIState>((set, get) => ({
       localStorage.removeItem(LS_KEY);
       localStorage.removeItem(LS_MODEL);
     } catch {}
+  },
+
+  switchChatContext: (contextKey) => {
+    const state = get();
+    if (state.chatContext) {
+      chatCache.set(state.chatContext, {
+        history: state.history,
+        conversationSummary: state.conversationSummary,
+        summarizedThrough: state.summarizedThrough,
+        sessionUsage: state.sessionUsage,
+      });
+    }
+
+    if (state.chatContext === contextKey) return;
+
+    const saved = chatCache.get(contextKey);
+
+    set({
+      chatContext: contextKey,
+      history: saved?.history ?? [],
+      conversationSummary: saved?.conversationSummary ?? null,
+      summarizedThrough: saved?.summarizedThrough ?? 0,
+      summarizing: false,
+      askError: null,
+      pending: null,
+      lastTurnFiles: null,
+      runsSinceLastTurn: 0,
+      editsSinceLastTurn: 0,
+      activeSelection: null,
+      sessionUsage: saved?.sessionUsage ?? { inputTokens: 0, outputTokens: 0 },
+    });
   },
 }));

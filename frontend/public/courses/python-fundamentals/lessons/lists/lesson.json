@@ -1,0 +1,21 @@
+{
+  "id": "lists",
+  "courseId": "python-fundamentals",
+  "title": "Lists",
+  "description": "Store and manipulate ordered collections of data.",
+  "order": 7,
+  "language": "python",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Create and modify lists",
+    "Use indexing and slicing",
+    "Iterate over lists with for loops",
+    "Use list comprehensions"
+  ],
+  "conceptTags": ["list", "indexing", "slicing", "append", "remove", "comprehension", "len"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": "append(" },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "for " }
+  ],
+  "prerequisiteLessonIds": ["functions"]
+}

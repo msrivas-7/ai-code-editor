@@ -1,0 +1,20 @@
+{
+  "id": "functions",
+  "courseId": "python-fundamentals",
+  "title": "Functions",
+  "description": "Organize code into reusable functions.",
+  "order": 6,
+  "language": "python",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Define functions with def",
+    "Use parameters and return values",
+    "Understand scope (local vs global)"
+  ],
+  "conceptTags": ["def", "parameters", "return", "scope", "default-arguments"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": "def " },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "return " }
+  ],
+  "prerequisiteLessonIds": ["loops"]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "input-output",
+  "courseId": "python-fundamentals",
+  "title": "Input and Output",
+  "description": "Read user input and convert between types.",
+  "order": 3,
+  "language": "python",
+  "estimatedMinutes": 15,
+  "objectives": [
+    "Read input with input()",
+    "Convert strings to numbers with int() and float()",
+    "Build a simple interactive program"
+  ],
+  "conceptTags": ["input", "type-conversion", "int()", "float()", "print"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": "input(" },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "int(" }
+  ],
+  "prerequisiteLessonIds": ["variables"]
+}

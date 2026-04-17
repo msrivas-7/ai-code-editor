@@ -13,7 +13,11 @@ import {
   buildSystemPrompt,
   buildUserTurn,
   studentSeemsStuck,
-} from "./promptBuilder.js";
+} from "./editorPromptBuilder.js";
+import {
+  buildGuidedSystemPrompt,
+  buildGuidedUserTurn,
+} from "./guidedPromptBuilder.js";
 import type { AIMessage } from "./provider.js";
 
 const OPENAI_BASE = "https://api.openai.com/v1";
@@ -113,23 +117,43 @@ export const openaiProvider: AIProvider = {
   },
 
   async ask(params: AIAskParams): Promise<AIAskResult> {
-    const userTurn = buildUserTurn({
-      question: params.question,
-      files: params.files,
-      activeFile: params.activeFile,
-      language: params.language,
-      lastRun: params.lastRun,
-      history: params.history,
-      stdin: params.stdin,
-      diffSinceLastTurn: params.diffSinceLastTurn,
-      selection: params.selection,
-    });
+    const guided = !!params.lessonContext;
 
-    const instructions = buildSystemPrompt(params.history, params.question, {
-      runsSinceLastTurn: params.runsSinceLastTurn,
-      editsSinceLastTurn: params.editsSinceLastTurn,
-      persona: params.persona,
-    });
+    const userTurn = guided
+      ? buildGuidedUserTurn({
+          question: params.question,
+          files: params.files,
+          activeFile: params.activeFile,
+          language: params.language,
+          lastRun: params.lastRun,
+          history: params.history,
+          stdin: params.stdin,
+          diffSinceLastTurn: params.diffSinceLastTurn,
+          selection: params.selection,
+        })
+      : buildUserTurn({
+          question: params.question,
+          files: params.files,
+          activeFile: params.activeFile,
+          language: params.language,
+          lastRun: params.lastRun,
+          history: params.history,
+          stdin: params.stdin,
+          diffSinceLastTurn: params.diffSinceLastTurn,
+          selection: params.selection,
+        });
+
+    const instructions = guided
+      ? buildGuidedSystemPrompt(params.history, params.question, params.lessonContext!, {
+          runsSinceLastTurn: params.runsSinceLastTurn,
+          editsSinceLastTurn: params.editsSinceLastTurn,
+          persona: params.persona,
+        })
+      : buildSystemPrompt(params.history, params.question, {
+          runsSinceLastTurn: params.runsSinceLastTurn,
+          editsSinceLastTurn: params.editsSinceLastTurn,
+          persona: params.persona,
+        });
 
     const priorTutorTurns = params.history.filter((m) => m.role === "assistant").length;
     const stuck = studentSeemsStuck(params.question);
@@ -266,22 +290,43 @@ export const openaiProvider: AIProvider = {
   },
 
   async askStream(params: AIAskParams, handlers: AIStreamHandlers): Promise<void> {
-    const userTurn = buildUserTurn({
-      question: params.question,
-      files: params.files,
-      activeFile: params.activeFile,
-      language: params.language,
-      lastRun: params.lastRun,
-      history: params.history,
-      stdin: params.stdin,
-      diffSinceLastTurn: params.diffSinceLastTurn,
-      selection: params.selection,
-    });
-    const instructions = buildSystemPrompt(params.history, params.question, {
-      runsSinceLastTurn: params.runsSinceLastTurn,
-      editsSinceLastTurn: params.editsSinceLastTurn,
-      persona: params.persona,
-    });
+    const guided = !!params.lessonContext;
+
+    const userTurn = guided
+      ? buildGuidedUserTurn({
+          question: params.question,
+          files: params.files,
+          activeFile: params.activeFile,
+          language: params.language,
+          lastRun: params.lastRun,
+          history: params.history,
+          stdin: params.stdin,
+          diffSinceLastTurn: params.diffSinceLastTurn,
+          selection: params.selection,
+        })
+      : buildUserTurn({
+          question: params.question,
+          files: params.files,
+          activeFile: params.activeFile,
+          language: params.language,
+          lastRun: params.lastRun,
+          history: params.history,
+          stdin: params.stdin,
+          diffSinceLastTurn: params.diffSinceLastTurn,
+          selection: params.selection,
+        });
+
+    const instructions = guided
+      ? buildGuidedSystemPrompt(params.history, params.question, params.lessonContext!, {
+          runsSinceLastTurn: params.runsSinceLastTurn,
+          editsSinceLastTurn: params.editsSinceLastTurn,
+          persona: params.persona,
+        })
+      : buildSystemPrompt(params.history, params.question, {
+          runsSinceLastTurn: params.runsSinceLastTurn,
+          editsSinceLastTurn: params.editsSinceLastTurn,
+          persona: params.persona,
+        });
 
     const priorTutorTurns = params.history.filter((m) => m.role === "assistant").length;
     const stuck = studentSeemsStuck(params.question);

@@ -1,0 +1,20 @@
+{
+  "id": "loops",
+  "courseId": "python-fundamentals",
+  "title": "Loops",
+  "description": "Repeat actions with for and while loops.",
+  "order": 5,
+  "language": "python",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Use for loops with range()",
+    "Use while loops with a condition",
+    "Control loops with break and continue"
+  ],
+  "conceptTags": ["for", "while", "range", "break", "continue", "iteration"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": "for " },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "range(" }
+  ],
+  "prerequisiteLessonIds": ["conditionals"]
+}

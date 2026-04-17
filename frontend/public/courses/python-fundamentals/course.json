@@ -1,0 +1,18 @@
+{
+  "id": "python-fundamentals",
+  "title": "Python Fundamentals",
+  "description": "Learn Python from scratch — variables, control flow, functions, data structures, and debugging. No prior programming experience required.",
+  "language": "python",
+  "lessonOrder": [
+    "hello-world",
+    "variables",
+    "input-output",
+    "conditionals",
+    "loops",
+    "functions",
+    "lists",
+    "dictionaries",
+    "debugging-basics",
+    "mini-project"
+  ]
+}

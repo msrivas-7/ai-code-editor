@@ -558,6 +558,16 @@ export function starterStdin(lang: Language): string {
   return STARTER[lang].stdin;
 }
 
+interface ProjectSnapshot {
+  language: Language;
+  files: Record<string, string>;
+  order: string[];
+  activeFile: string | null;
+  openTabs: string[];
+}
+
+const projectCache = new Map<string, ProjectSnapshot>();
+
 // Signal MonacoPane uses to move the cursor after a jump (e.g. clicking a
 // file:line reference in the output or tutor). The ticket makes repeated
 // reveals to the same location still fire the useEffect.
@@ -578,6 +588,7 @@ interface ProjectState {
   // file-tree order) so the user can reorder tabs independently.
   openTabs: string[];
   pendingReveal: RevealTarget | null;
+  projectContext: string | null;
   setLanguage: (lang: Language) => void;
   setActive: (path: string) => void;
   openFile: (path: string) => void;
@@ -589,6 +600,16 @@ interface ProjectState {
   renameFile: (from: string, to: string) => { ok: boolean; error?: string };
   snapshot: () => ProjectFile[];
   resetToStarter: (lang: Language) => void;
+  switchProjectContext: (
+    contextKey: string,
+    defaults?: {
+      language?: Language;
+      files: Record<string, string>;
+      order: string[];
+      activeFile: string | null;
+      openTabs: string[];
+    },
+  ) => void;
 }
 
 function seedFor(lang: Language) {
@@ -608,6 +629,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   language: "python",
   ...seedFor("python"),
   pendingReveal: null,
+  projectContext: null,
   setLanguage: (lang) => set({ language: lang }),
   setActive: (path) => set({ activeFile: path }),
   openFile: (path) =>
@@ -696,4 +718,51 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
   resetToStarter: (lang) =>
     set({ language: lang, ...seedFor(lang) }),
+
+  switchProjectContext: (contextKey, defaults) => {
+    const state = get();
+    if (state.projectContext) {
+      projectCache.set(state.projectContext, {
+        language: state.language,
+        files: state.files,
+        order: state.order,
+        activeFile: state.activeFile,
+        openTabs: state.openTabs,
+      });
+    }
+
+    if (state.projectContext === contextKey) return;
+
+    const saved = projectCache.get(contextKey);
+
+    if (saved) {
+      set({
+        projectContext: contextKey,
+        language: saved.language,
+        files: saved.files,
+        order: saved.order,
+        activeFile: saved.activeFile,
+        openTabs: saved.openTabs,
+        pendingReveal: null,
+      });
+    } else if (defaults) {
+      set({
+        projectContext: contextKey,
+        language: defaults.language ?? "python",
+        files: defaults.files,
+        order: defaults.order,
+        activeFile: defaults.activeFile,
+        openTabs: defaults.openTabs,
+        pendingReveal: null,
+      });
+    } else {
+      const seed = seedFor("python");
+      set({
+        projectContext: contextKey,
+        language: "python",
+        ...seed,
+        pendingReveal: null,
+      });
+    }
+  },
 }));

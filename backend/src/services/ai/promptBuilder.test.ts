@@ -5,7 +5,7 @@ import {
   buildSystemPrompt,
   buildUserTurn,
   TUTOR_RESPONSE_SCHEMA,
-} from "./promptBuilder.js";
+} from "./editorPromptBuilder.js";
 
 describe("studentSeemsStuck", () => {
   it.each([

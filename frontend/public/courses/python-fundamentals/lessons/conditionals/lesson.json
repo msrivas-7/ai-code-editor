@@ -1,0 +1,21 @@
+{
+  "id": "conditionals",
+  "courseId": "python-fundamentals",
+  "title": "Conditionals",
+  "description": "Make decisions in your code with if, elif, and else.",
+  "order": 4,
+  "language": "python",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Write if/elif/else statements",
+    "Use comparison operators (==, !=, <, >, <=, >=)",
+    "Combine conditions with and, or, not"
+  ],
+  "conceptTags": ["if", "elif", "else", "comparison", "boolean", "and", "or", "not"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": "if " },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "elif " },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "else:" }
+  ],
+  "prerequisiteLessonIds": ["input-output"]
+}

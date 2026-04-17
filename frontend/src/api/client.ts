@@ -43,6 +43,17 @@ export interface AskStreamRequest {
   editsSinceLastTurn?: number;
   persona?: Persona;
   selection?: EditorSelection | null;
+  lessonContext?: {
+    courseId: string;
+    lessonId: string;
+    lessonTitle: string;
+    lessonObjectives: string[];
+    conceptTags: string[];
+    completionRules: { type: string; expected?: string; file?: string; pattern?: string }[];
+    studentProgressSummary: string;
+    lessonOrder?: number;
+    totalLessons?: number;
+  } | null;
 }
 
 export interface AskStreamHandlers {

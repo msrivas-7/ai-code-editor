@@ -1,0 +1,68 @@
+import type { AIMessage, EditorSelection, ProjectFile, RunResult } from "../provider.js";
+
+const MAX_FILE_CHARS = 4000;
+const MAX_RUN_CHARS = 2000;
+const MAX_HISTORY = 6;
+const MAX_STDIN_CHARS = 1500;
+const MAX_DIFF_CHARS = 3000;
+const MAX_SELECTION_CHARS = 2000;
+
+export function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max) + `\n… [truncated, ${s.length - max} more chars]`;
+}
+
+export function renderFiles(files: ProjectFile[], activeFile?: string): string {
+  const sorted = [...files].sort((a, b) => {
+    if (a.path === activeFile) return -1;
+    if (b.path === activeFile) return 1;
+    return a.path.localeCompare(b.path);
+  });
+  return sorted
+    .map((f) => {
+      const marker = f.path === activeFile ? " (ACTIVE)" : "";
+      const body = truncate(f.content, MAX_FILE_CHARS);
+      return `--- ${f.path}${marker} ---\n${body}`;
+    })
+    .join("\n\n");
+}
+
+export function renderRun(run: RunResult | null | undefined): string {
+  if (!run) return "No run yet.";
+  const lines = [
+    `stage: ${run.stage}`,
+    `exitCode: ${run.exitCode}`,
+    `errorType: ${run.errorType}`,
+    `durationMs: ${run.durationMs}`,
+  ];
+  if (run.stdout) lines.push(`stdout:\n${truncate(run.stdout, MAX_RUN_CHARS)}`);
+  if (run.stderr) lines.push(`stderr:\n${truncate(run.stderr, MAX_RUN_CHARS)}`);
+  return lines.join("\n");
+}
+
+export function renderHistory(history: AIMessage[]): string {
+  if (!history.length) return "(no prior turns)";
+  return history
+    .slice(-MAX_HISTORY)
+    .map((m) => `${m.role.toUpperCase()}: ${truncate(m.content, 800)}`)
+    .join("\n\n");
+}
+
+export function renderStdin(stdin: string | null | undefined): string {
+  if (!stdin || !stdin.trim()) return "(no stdin provided)";
+  return truncate(stdin, MAX_STDIN_CHARS);
+}
+
+export function renderDiff(diff: string | null | undefined): string {
+  if (!diff) return "(first tutor turn — no prior snapshot)";
+  return truncate(diff, MAX_DIFF_CHARS);
+}
+
+export function renderSelection(sel: EditorSelection | null | undefined): string | null {
+  if (!sel || !sel.text.trim()) return null;
+  const span =
+    sel.startLine === sel.endLine
+      ? `line ${sel.startLine}`
+      : `lines ${sel.startLine}-${sel.endLine}`;
+  return `--- ${sel.path} (${span}) ---\n${truncate(sel.text, MAX_SELECTION_CHARS)}`;
+}

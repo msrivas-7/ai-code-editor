@@ -1,0 +1,21 @@
+{
+  "id": "dictionaries",
+  "courseId": "python-fundamentals",
+  "title": "Dictionaries",
+  "description": "Store data as key-value pairs for fast lookup.",
+  "order": 8,
+  "language": "python",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Create and access dictionaries",
+    "Add, update, and remove key-value pairs",
+    "Iterate over keys, values, and items",
+    "Use .get() for safe access"
+  ],
+  "conceptTags": ["dict", "key-value", "get", "items", "keys", "values", "nesting"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "for " }
+  ],
+  "prerequisiteLessonIds": ["lists"]
+}

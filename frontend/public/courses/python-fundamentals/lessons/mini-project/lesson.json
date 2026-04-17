@@ -1,0 +1,21 @@
+{
+  "id": "mini-project",
+  "courseId": "python-fundamentals",
+  "title": "Mini Project: Student Grade Book",
+  "description": "Combine everything you've learned into a complete program.",
+  "order": 10,
+  "language": "python",
+  "estimatedMinutes": 30,
+  "objectives": [
+    "Combine functions, lists, dictionaries, loops, and conditionals",
+    "Design a program from requirements",
+    "Parse structured input and produce formatted output"
+  ],
+  "conceptTags": ["project", "functions", "lists", "dictionaries", "loops", "conditionals", "design"],
+  "completionRules": [
+    { "type": "required_file_contains", "file": "main.py", "pattern": "def " },
+    { "type": "required_file_contains", "file": "main.py", "pattern": "for " },
+    { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" }
+  ],
+  "prerequisiteLessonIds": ["debugging-basics"]
+}

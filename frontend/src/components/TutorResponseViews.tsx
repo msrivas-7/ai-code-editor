@@ -1,0 +1,495 @@
+import { useProjectStore } from "../state/projectStore";
+import { linkifyRefs } from "../util/linkifyRefs";
+import type {
+  Stuckness,
+  TokenUsage,
+  TutorCitation,
+  TutorIntent,
+  TutorSections,
+  TutorWalkStep,
+} from "../types";
+import { estimateCost, formatCost, formatTokens } from "../util/pricing";
+
+export type Tone =
+  | "think"
+  | "check"
+  | "hint"
+  | "step"
+  | "stronger"
+  | "explain"
+  | "example"
+  | "pitfall";
+
+const TONE: Record<
+  Tone,
+  { border: string; accent: string; pill: string; icon: string }
+> = {
+  think: {
+    border: "border-accent/50",
+    accent: "text-accent",
+    pill: "bg-accent/10 text-accent",
+    icon: "◆",
+  },
+  check: {
+    border: "border-success/50",
+    accent: "text-success",
+    pill: "bg-success/10 text-success",
+    icon: "?",
+  },
+  hint: {
+    border: "border-warn/50",
+    accent: "text-warn",
+    pill: "bg-warn/10 text-warn",
+    icon: "✦",
+  },
+  step: {
+    border: "border-violet/50",
+    accent: "text-violet",
+    pill: "bg-violet/10 text-violet",
+    icon: "→",
+  },
+  stronger: {
+    border: "border-danger/50",
+    accent: "text-danger",
+    pill: "bg-danger/10 text-danger",
+    icon: "!",
+  },
+  explain: {
+    border: "border-violet/50",
+    accent: "text-violet",
+    pill: "bg-violet/10 text-violet",
+    icon: "◈",
+  },
+  example: {
+    border: "border-accent/50",
+    accent: "text-accent",
+    pill: "bg-accent/10 text-accent",
+    icon: "‹›",
+  },
+  pitfall: {
+    border: "border-warn/50",
+    accent: "text-warn",
+    pill: "bg-warn/10 text-warn",
+    icon: "⚠",
+  },
+};
+
+const INTENT_LABEL: Record<TutorIntent, string> = {
+  debug: "Debug",
+  concept: "Concept",
+  howto: "How-to",
+  walkthrough: "Walkthrough",
+  checkin: "Check-in",
+};
+
+export function SectionView({ label, text, tone }: { label: string; text: string; tone: Tone }) {
+  const t = TONE[tone];
+  const order = useProjectStore((s) => s.order);
+  const revealAt = useProjectStore((s) => s.revealAt);
+  return (
+    <div
+      className={`rounded-md border-l-2 ${t.border} bg-elevated/60 px-3 py-2 shadow-soft`}
+    >
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className={`text-[10px] ${t.accent}`}>{t.icon}</span>
+        <span className={`rounded px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider ${t.pill}`}>
+          {label}
+        </span>
+      </div>
+      <div className="whitespace-pre-wrap text-xs leading-relaxed text-ink/90">
+        {linkifyRefs(text, order, revealAt)}
+      </div>
+    </div>
+  );
+}
+
+export function IntentBadge({ intent }: { intent?: TutorIntent | null }) {
+  if (!intent) return null;
+  return (
+    <span className="rounded-full border border-border bg-elevated px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wider text-muted">
+      {INTENT_LABEL[intent]}
+    </span>
+  );
+}
+
+const STUCKNESS_STYLE: Record<Stuckness, { label: string; cls: string }> = {
+  low: {
+    label: "Making progress",
+    cls: "border-success/40 bg-success/10 text-success",
+  },
+  medium: {
+    label: "Spinning",
+    cls: "border-warn/40 bg-warn/10 text-warn",
+  },
+  high: {
+    label: "Stuck — escalating",
+    cls: "border-danger/40 bg-danger/10 text-danger",
+  },
+};
+
+export function StucknessBadge({ level }: { level?: Stuckness | null }) {
+  if (!level) return null;
+  const s = STUCKNESS_STYLE[level];
+  return (
+    <span
+      className={`rounded-full border px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wider ${s.cls}`}
+      title="The tutor's read on how stuck you are"
+    >
+      {s.label}
+    </span>
+  );
+}
+
+export function WalkthroughView({ steps }: { steps: TutorWalkStep[] }) {
+  const order = useProjectStore((s) => s.order);
+  const revealAt = useProjectStore((s) => s.revealAt);
+  return (
+    <div className="rounded-md border-l-2 border-violet/50 bg-elevated/60 px-3 py-2 shadow-soft">
+      <div className="mb-2 flex items-center gap-1.5">
+        <span className="text-[10px] text-violet">→</span>
+        <span className="rounded px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider bg-violet/10 text-violet">
+          Walkthrough
+        </span>
+      </div>
+      <ol className="space-y-1.5 text-xs leading-relaxed text-ink/90">
+        {steps.map((s, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="mt-[1px] shrink-0 font-mono text-[10px] text-faint">{i + 1}.</span>
+            <div className="min-w-0 flex-1">
+              <span className="whitespace-pre-wrap">
+                {linkifyRefs(s.body, order, revealAt)}
+              </span>
+              {s.path && s.line != null && order.includes(s.path) && (
+                <button
+                  onClick={() => revealAt(s.path!, s.line!)}
+                  className="ml-1.5 rounded bg-violet/10 px-1 py-0 font-mono text-[10px] text-violet transition hover:bg-violet/20"
+                  title={`Jump to ${s.path}:${s.line}`}
+                >
+                  {s.path}:{s.line}
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+export function CheckQuestionsView({
+  questions,
+  onAsk,
+  disabled,
+}: {
+  questions: string[];
+  onAsk?: (q: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="rounded-md border-l-2 border-success/50 bg-elevated/60 px-3 py-2 shadow-soft">
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="text-[10px] text-success">?</span>
+        <span className="rounded bg-success/10 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-success">
+          Check these
+        </span>
+      </div>
+      <ul className="space-y-1 text-xs leading-relaxed text-ink/90">
+        {questions.map((q, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="mt-[1px] shrink-0 text-success">•</span>
+            {onAsk ? (
+              <button
+                onClick={() => onAsk(q)}
+                disabled={disabled}
+                className="flex-1 cursor-pointer rounded px-1 py-0 text-left transition hover:bg-success/10 hover:text-success disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-inherit"
+                title="Ask this directly"
+              >
+                {q}
+              </button>
+            ) : (
+              <span>{q}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function ComprehensionCheckView({
+  text,
+  onAsk,
+  disabled,
+}: {
+  text: string;
+  onAsk?: (q: string) => void;
+  disabled?: boolean;
+}) {
+  const body = (
+    <div className="text-xs leading-relaxed text-ink/90">{text}</div>
+  );
+  return (
+    <div className="rounded-md border border-accent/40 bg-accent/5 px-3 py-2 shadow-soft">
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="text-[10px] text-accent">↻</span>
+        <span className="rounded bg-accent/15 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-accent">
+          Your turn
+        </span>
+      </div>
+      {onAsk ? (
+        <button
+          onClick={() => onAsk(`Answering your check: ${text}`)}
+          disabled={disabled}
+          className="w-full cursor-pointer rounded text-left transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+          title="Answer this now — the tutor will guide you"
+        >
+          {body}
+          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-accent/80">
+            tap to take a swing →
+          </div>
+        </button>
+      ) : (
+        body
+      )}
+    </div>
+  );
+}
+
+export function CitationsStrip({ citations }: { citations: TutorCitation[] }) {
+  const order = useProjectStore((s) => s.order);
+  const revealAt = useProjectStore((s) => s.revealAt);
+  const valid = citations.filter((c) => order.includes(c.path));
+  if (valid.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1 pt-0.5">
+      <span className="text-[9px] font-semibold uppercase tracking-wider text-faint">
+        Refs
+      </span>
+      {valid.map((c, i) => (
+        <button
+          key={i}
+          onClick={() => revealAt(c.path, c.line, c.column ?? undefined)}
+          className="rounded-full border border-border bg-elevated px-2 py-[1px] font-mono text-[10px] text-accent transition hover:border-accent/60 hover:bg-accent/10"
+          title={c.reason}
+        >
+          {c.path}:{c.line}
+          {c.column ? `:${c.column}` : ""}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function hasTutorContent(s: TutorSections): boolean {
+  return Boolean(
+    s.summary ||
+      s.diagnose ||
+      s.explain ||
+      s.example ||
+      (s.walkthrough && s.walkthrough.length > 0) ||
+      (s.checkQuestions && s.checkQuestions.length > 0) ||
+      s.hint ||
+      s.nextStep ||
+      s.strongerHint ||
+      s.pitfalls ||
+      s.comprehensionCheck ||
+      (s.citations && s.citations.length > 0),
+  );
+}
+
+export function TutorResponseView({
+  sections,
+  onAsk,
+  disabled,
+}: {
+  sections: TutorSections;
+  onAsk?: (q: string) => void;
+  disabled?: boolean;
+}) {
+  if (!hasTutorContent(sections)) {
+    return <div className="text-xs italic text-faint">(empty response)</div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {(sections.intent || sections.summary || sections.stuckness) && (
+        <div className="flex flex-wrap items-start gap-2">
+          <IntentBadge intent={sections.intent} />
+          <StucknessBadge level={sections.stuckness} />
+          {sections.summary && (
+            <span className="flex-1 text-xs italic text-ink/80">{sections.summary}</span>
+          )}
+        </div>
+      )}
+      {sections.diagnose && (
+        <SectionView label="What I think" text={sections.diagnose} tone="think" />
+      )}
+      {sections.explain && (
+        <SectionView label="Explanation" text={sections.explain} tone="explain" />
+      )}
+      {sections.example && (
+        <SectionView label="Example" text={sections.example} tone="example" />
+      )}
+      {sections.walkthrough && sections.walkthrough.length > 0 && (
+        <WalkthroughView steps={sections.walkthrough} />
+      )}
+      {sections.checkQuestions && sections.checkQuestions.length > 0 && (
+        <CheckQuestionsView
+          questions={sections.checkQuestions}
+          onAsk={onAsk}
+          disabled={disabled}
+        />
+      )}
+      {sections.hint && <SectionView label="Hint" text={sections.hint} tone="hint" />}
+      {sections.nextStep && (
+        <SectionView label="Next step" text={sections.nextStep} tone="step" />
+      )}
+      {sections.strongerHint && (
+        <SectionView
+          label="Stronger hint"
+          text={sections.strongerHint}
+          tone="stronger"
+        />
+      )}
+      {sections.pitfalls && (
+        <SectionView label="Pitfalls" text={sections.pitfalls} tone="pitfall" />
+      )}
+      {sections.comprehensionCheck && (
+        <ComprehensionCheckView
+          text={sections.comprehensionCheck}
+          onAsk={onAsk}
+          disabled={disabled}
+        />
+      )}
+      {sections.citations && sections.citations.length > 0 && (
+        <CitationsStrip citations={sections.citations} />
+      )}
+    </div>
+  );
+}
+
+const CHIPS: { label: string; prompt: string }[] = [
+  {
+    label: "still stuck",
+    prompt: "I'm still stuck on this — can you give me a stronger hint?",
+  },
+  {
+    label: "explain more",
+    prompt: "Can you explain that in more detail?",
+  },
+  {
+    label: "concrete example",
+    prompt: "Can you show me a concrete example of that in my code?",
+  },
+  {
+    label: "why it matters",
+    prompt: "Why does this matter for what I'm trying to do?",
+  },
+];
+
+export function ActionChips({
+  onAsk,
+  disabled,
+}: {
+  onAsk: (q: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {CHIPS.map((c) => (
+        <button
+          key={c.label}
+          onClick={() => onAsk(c.prompt)}
+          disabled={disabled}
+          className="rounded-full border border-border bg-elevated/60 px-2 py-[2px] text-[10px] text-muted transition hover:border-accent/60 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-elevated disabled:hover:text-muted"
+          title={c.prompt}
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function UsageChip({
+  usage,
+  modelId,
+  size = "sm",
+}: {
+  usage: TokenUsage;
+  modelId?: string | null;
+  size?: "sm" | "xs";
+}) {
+  const total = usage.inputTokens + usage.outputTokens;
+  const cost = modelId ? estimateCost(modelId, usage) : null;
+  const title =
+    cost !== null
+      ? `${usage.inputTokens.toLocaleString()} input + ${usage.outputTokens.toLocaleString()} output tokens · approx ${formatCost(cost)}`
+      : `${usage.inputTokens.toLocaleString()} input + ${usage.outputTokens.toLocaleString()} output tokens`;
+  const textCls = size === "xs" ? "text-[9px]" : "text-[10px]";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border border-border bg-elevated/70 px-1.5 py-[1px] ${textCls} text-faint`}
+      title={title}
+    >
+      <span className="font-mono">{formatTokens(total)}</span>
+      <span className="text-muted">tokens</span>
+      {cost !== null && (
+        <>
+          <span className="text-border">·</span>
+          <span className="font-mono text-muted">~{formatCost(cost)}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+export function ThinkingSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="rounded-md border-l-2 border-accent/30 bg-elevated/40 px-3 py-2">
+        <div className="mb-2 h-3 w-24 skeleton" />
+        <div className="mb-1 h-2.5 w-full skeleton" />
+        <div className="mb-1 h-2.5 w-11/12 skeleton" />
+        <div className="h-2.5 w-3/4 skeleton" />
+      </div>
+      <div className="rounded-md border-l-2 border-success/30 bg-elevated/40 px-3 py-2">
+        <div className="mb-2 h-3 w-28 skeleton" />
+        <div className="mb-1 h-2.5 w-5/6 skeleton" />
+        <div className="h-2.5 w-2/3 skeleton" />
+      </div>
+    </div>
+  );
+}
+
+export function AskErrorView({ message }: { message: string }) {
+  const { title, hint } = classifyAskError(message);
+  return (
+    <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs">
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className="text-danger">!</span>
+        <span className="rounded bg-danger/20 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-danger">
+          {title}
+        </span>
+      </div>
+      {hint && <div className="mb-1.5 text-ink/90">{hint}</div>}
+      <div className="whitespace-pre-wrap break-words font-mono text-[11px] text-muted">
+        {message}
+      </div>
+    </div>
+  );
+}
+
+function classifyAskError(raw: string): { kind: string; title: string; hint?: string } {
+  const m = raw.toLowerCase();
+  if (m.includes("insufficient_quota") || m.includes("exceeded your current quota") || m.includes("billing")) {
+    return { kind: "quota", title: "OpenAI quota exceeded", hint: "Your API key has no remaining credits. Check billing on the OpenAI dashboard, then try again." };
+  }
+  if (m.includes("rate limit") || m.includes("rate_limit") || m.includes(" 429")) {
+    return { kind: "rateLimit", title: "Rate limited", hint: "OpenAI is throttling requests. Wait a few seconds and try again." };
+  }
+  if (m.includes("incorrect api key") || m.includes("invalid_api_key") || m.includes(" 401")) {
+    return { kind: "auth", title: "Key rejected", hint: "The API key is no longer valid. Open Settings and validate a fresh key." };
+  }
+  return { kind: "generic", title: "Request failed" };
+}

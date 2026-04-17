@@ -1,0 +1,19 @@
+{
+  "id": "hello-world",
+  "courseId": "python-fundamentals",
+  "title": "Hello, World!",
+  "description": "Write and run your first Python program.",
+  "order": 1,
+  "language": "python",
+  "estimatedMinutes": 10,
+  "objectives": [
+    "Run a Python program",
+    "Use the print() function",
+    "Understand strings and quotes"
+  ],
+  "conceptTags": ["print", "strings", "syntax"],
+  "completionRules": [
+    { "type": "expected_stdout", "expected": "Hello, World!" }
+  ],
+  "prerequisiteLessonIds": []
+}

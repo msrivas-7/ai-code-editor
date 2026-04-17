@@ -1,0 +1,19 @@
+{
+  "id": "variables",
+  "courseId": "python-fundamentals",
+  "title": "Variables and Types",
+  "description": "Store data in variables and work with basic Python types.",
+  "order": 2,
+  "language": "python",
+  "estimatedMinutes": 15,
+  "objectives": [
+    "Create and assign variables",
+    "Understand int, float, str, and bool types",
+    "Use f-strings for formatted output"
+  ],
+  "conceptTags": ["variables", "types", "int", "float", "str", "bool", "f-strings"],
+  "completionRules": [
+    { "type": "expected_stdout", "expected": "Name: Alice\nAge: 25\nHeight: 1.68 meters\nStudent: True" }
+  ],
+  "prerequisiteLessonIds": ["hello-world"]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "debugging-basics",
+  "courseId": "python-fundamentals",
+  "title": "Debugging Basics",
+  "description": "Learn to read errors, find bugs, and fix them systematically.",
+  "order": 9,
+  "language": "python",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Read and understand Python tracebacks",
+    "Identify common error types (SyntaxError, TypeError, NameError, IndexError)",
+    "Use print() to debug step by step"
+  ],
+  "conceptTags": ["debugging", "traceback", "SyntaxError", "TypeError", "NameError", "IndexError", "print-debugging"],
+  "completionRules": [
+    { "type": "expected_stdout", "expected": "All bugs fixed!\nResult: [2, 4, 6, 8, 10]" }
+  ],
+  "prerequisiteLessonIds": ["dictionaries"]
+}
