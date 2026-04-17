@@ -67,7 +67,7 @@ Optional: an **OpenAI API key** ([get one](https://platform.openai.com/api-keys)
 ### macOS / Linux
 
 ```bash
-git clone https://github.com/msrivas-7/codetutor-ai.git
+git clone https://github.com/msrivas-7/CodeTutor-AI.git
 cd codetutor-ai
 ./start.sh
 ```
@@ -77,7 +77,7 @@ First launch builds Docker images (~2-3 min). After that, `./start.sh` takes ~10
 ### Windows
 
 ```powershell
-git clone https://github.com/msrivas-7/codetutor-ai.git
+git clone https://github.com/msrivas-7/CodeTutor-AI.git
 cd codetutor-ai
 powershell -ExecutionPolicy Bypass -File .\start.ps1
 ```
