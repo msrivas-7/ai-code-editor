@@ -84,6 +84,8 @@ export default function LessonPage() {
   const setRunning = useRunStore((s) => s.setRunning);
   const setResult = useRunStore((s) => s.setResult);
   const setRunError = useRunStore((s) => s.setError);
+  const lastResult = useRunStore((s) => s.result);
+  const setPendingAsk = useAIStore((s) => s.setPendingAsk);
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [totalLessons, setTotalLessons] = useState(10);
@@ -103,6 +105,11 @@ export default function LessonPage() {
     try { return localStorage.getItem(LS_TUTOR_COLLAPSED) === "1"; } catch { return false; }
   });
   const initialized = useRef(false);
+  const resumedTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => clearTimeout(resumedTimer.current);
+  }, []);
 
   useEffect(() => save(LS_OUT_H, outputH), [outputH]);
   useEffect(() => save(LS_INSTR_W, instrW), [instrW]);
@@ -145,7 +152,7 @@ export default function LessonPage() {
         order.push(path);
       }
       setResumed(true);
-      setTimeout(() => setResumed(false), 3000);
+      resumedTimer.current = setTimeout(() => setResumed(false), 3000);
     } else {
       for (const f of lesson.starterFiles) {
         files[f.path] = f.content;
@@ -213,6 +220,7 @@ export default function LessonPage() {
     useRunStore.getState().setResult(null);
     useRunStore.getState().setError(null);
     setValidation(null);
+    setShowComplete(false);
     saveCode(courseId, lessonId, files);
   }, [lesson, courseId, lessonId, saveCode]);
 
@@ -222,12 +230,12 @@ export default function LessonPage() {
     const result = useRunStore.getState().result;
     const v = validateLesson(result, files, lesson.completionRules);
     setValidation(v);
-    if (v.passed) {
+    if (v.passed && !validation?.passed) {
       completeLesson(identity.learnerId, courseId, lessonId, totalLessons);
       confetti({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
       setShowComplete(true);
     }
-  }, [lesson, courseId, lessonId, completeLesson, identity.learnerId, totalLessons]);
+  }, [lesson, courseId, lessonId, completeLesson, identity.learnerId, totalLessons, validation]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -259,9 +267,7 @@ export default function LessonPage() {
 
   const lp = lessonProgressMap[`${courseId}/${lessonId}`];
   const canRun = !!sessionId && sessionPhase === "active" && !running;
-  const lastResult = useRunStore((s) => s.result);
   const hasStderr = !!(lastResult?.stderr?.trim());
-  const setPendingAsk = useAIStore((s) => s.setPendingAsk);
 
   const handleExplainError = useCallback(() => {
     if (!lastResult?.stderr) return;

@@ -8,7 +8,7 @@ interface LessonCompletePanelProps {
 
 export function LessonCompletePanel({ lesson, onNext, onDismiss }: LessonCompletePanelProps) {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
       <div className="mx-4 w-full max-w-md rounded-xl border border-green-500/30 bg-panel p-6 shadow-xl">
         <div className="mb-4 text-center">
           <span className="text-4xl">🎉</span>

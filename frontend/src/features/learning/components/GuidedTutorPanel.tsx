@@ -204,7 +204,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => { clearConversation(); setHintLevel(0); }}
+            onClick={() => { clearConversation(); setHintLevel(0); setDraft(""); }}
             className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
             disabled={history.length === 0}
             title="Clear conversation"
@@ -296,8 +296,9 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
                               "I need a stronger hint. Point me in the right direction without giving the full solution.",
                               "I'm really stuck. Walk me through the approach step by step.",
                             ];
-                            setPendingAsk(prompts[hintLevel]);
-                            setHintLevel((l) => l + 1);
+                            const idx = Math.min(hintLevel, prompts.length - 1);
+                            setPendingAsk(prompts[idx]);
+                            setHintLevel((l) => Math.min(l + 1, prompts.length));
                             incrementHint(lessonMeta.courseId, lessonMeta.id);
                           }}
                           disabled={asking}

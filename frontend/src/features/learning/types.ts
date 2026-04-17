@@ -93,4 +93,6 @@ export interface LessonContext {
   conceptTags: string[];
   completionRules: CompletionRule[];
   studentProgressSummary: string;
+  lessonOrder: number;
+  totalLessons: number;
 }

@@ -48,6 +48,24 @@ function now(): string {
 
 const startedThisSession = new Set<string>();
 
+function resolveLesson(
+  storeProgress: Record<string, LessonProgress>,
+  courseId: string,
+  lessonId: string,
+): LessonProgress | null {
+  const compositeKey = `${courseId}/${lessonId}`;
+  return storeProgress[compositeKey]
+    ?? loadJson<LessonProgress>(LESSON_KEY(courseId, lessonId));
+}
+
+function resolveCourse(
+  storeCourses: Record<string, CourseProgress>,
+  courseId: string,
+): CourseProgress | null {
+  return storeCourses[courseId]
+    ?? loadJson<CourseProgress>(COURSE_KEY(courseId));
+}
+
 interface ProgressState {
   courseProgress: Record<string, CourseProgress>;
   lessonProgress: Record<string, LessonProgress>;
@@ -74,17 +92,6 @@ interface ProgressState {
     code: Record<string, string>
   ) => void;
   saveOutput: (courseId: string, lessonId: string, output: string) => void;
-}
-
-function resolveLesson(
-  state: ProgressState,
-  courseId: string,
-  lessonId: string,
-): LessonProgress | null {
-  const compositeKey = `${courseId}/${lessonId}`;
-  const fromStore = state.lessonProgress[compositeKey];
-  if (fromStore) return fromStore;
-  return loadJson<LessonProgress>(LESSON_KEY(courseId, lessonId));
 }
 
 export const useProgressStore = create<ProgressState>()((set, get) => ({
@@ -151,156 +158,158 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
   startLesson(learnerId, courseId, lessonId) {
     const compositeKey = `${courseId}/${lessonId}`;
     const lsKey = LESSON_KEY(courseId, lessonId);
-    const current = resolveLesson(get(), courseId, lessonId);
 
     const isNewSession = !startedThisSession.has(compositeKey);
     startedThisSession.add(compositeKey);
 
-    const shouldBumpAttempt =
-      isNewSession && current?.status !== "completed";
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      const shouldBumpAttempt = isNewSession && current?.status !== "completed";
 
-    const updated: LessonProgress = {
-      ...(current ?? {
-        learnerId,
-        courseId,
-        lessonId,
-        completedAt: null,
-        attemptCount: 0,
-        runCount: 0,
-        hintCount: 0,
-        lastCode: null,
-        lastOutput: null,
-      }),
-      status: current?.status === "completed" ? "completed" : "in_progress",
-      startedAt: current?.startedAt ?? now(),
-      updatedAt: now(),
-      attemptCount: (current?.attemptCount ?? 0) + (shouldBumpAttempt ? 1 : 0),
-    };
-    saveJson(lsKey, updated);
-    set((s) => ({
-      lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
-    }));
+      const updated: LessonProgress = {
+        ...(current ?? {
+          learnerId,
+          courseId,
+          lessonId,
+          completedAt: null,
+          attemptCount: 0,
+          runCount: 0,
+          hintCount: 0,
+          lastCode: null,
+          lastOutput: null,
+        }),
+        status: current?.status === "completed" ? "completed" : "in_progress",
+        startedAt: current?.startedAt ?? now(),
+        updatedAt: now(),
+        attemptCount: (current?.attemptCount ?? 0) + (shouldBumpAttempt ? 1 : 0),
+      };
+      saveJson(lsKey, updated);
 
-    const courseKey = COURSE_KEY(courseId);
-    const cp = get().courseProgress[courseId]
-      ?? loadJson<CourseProgress>(courseKey);
-    if (cp && cp.status === "not_started") {
-      const updatedCp: CourseProgress = {
-        ...cp,
-        status: "in_progress",
-        startedAt: cp.startedAt ?? now(),
-        updatedAt: now(),
-        lastLessonId: lessonId,
+      const courseKey = COURSE_KEY(courseId);
+      const cp = resolveCourse(s.courseProgress, courseId);
+      let courseUpdate = s.courseProgress;
+      if (cp && cp.status === "not_started") {
+        const updatedCp: CourseProgress = {
+          ...cp,
+          status: "in_progress",
+          startedAt: cp.startedAt ?? now(),
+          updatedAt: now(),
+          lastLessonId: lessonId,
+        };
+        saveJson(courseKey, updatedCp);
+        courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
+      } else if (cp) {
+        const updatedCp: CourseProgress = {
+          ...cp,
+          updatedAt: now(),
+          lastLessonId: lessonId,
+        };
+        saveJson(courseKey, updatedCp);
+        courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
+      }
+
+      return {
+        lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
+        courseProgress: courseUpdate,
       };
-      saveJson(courseKey, updatedCp);
-      set((s) => ({
-        courseProgress: { ...s.courseProgress, [courseId]: updatedCp },
-      }));
-    } else if (cp) {
-      const updatedCp: CourseProgress = {
-        ...cp,
-        updatedAt: now(),
-        lastLessonId: lessonId,
-      };
-      saveJson(courseKey, updatedCp);
-      set((s) => ({
-        courseProgress: { ...s.courseProgress, [courseId]: updatedCp },
-      }));
-    }
+    });
   },
 
   completeLesson(learnerId, courseId, lessonId, totalLessons) {
     const compositeKey = `${courseId}/${lessonId}`;
     const lsKey = LESSON_KEY(courseId, lessonId);
-    const current = resolveLesson(get(), courseId, lessonId);
-    const updated: LessonProgress = {
-      ...(current ?? {
-        learnerId,
-        courseId,
-        lessonId,
-        startedAt: now(),
-        attemptCount: 1,
-        runCount: 0,
-        hintCount: 0,
-        lastCode: null,
-        lastOutput: null,
-      }),
-      status: "completed",
-      updatedAt: now(),
-      completedAt: now(),
-    };
-    saveJson(lsKey, updated);
-    set((s) => ({
-      lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
-    }));
 
-    const courseKey = COURSE_KEY(courseId);
-    const cp = get().courseProgress[courseId]
-      ?? loadJson<CourseProgress>(courseKey);
-    if (cp) {
-      const completed = cp.completedLessonIds.includes(lessonId)
-        ? cp.completedLessonIds
-        : [...cp.completedLessonIds, lessonId];
-      const allDone = completed.length >= totalLessons;
-      const updatedCp: CourseProgress = {
-        ...cp,
-        status: allDone ? "completed" : "in_progress",
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      const updated: LessonProgress = {
+        ...(current ?? {
+          learnerId,
+          courseId,
+          lessonId,
+          startedAt: now(),
+          attemptCount: 1,
+          runCount: 0,
+          hintCount: 0,
+          lastCode: null,
+          lastOutput: null,
+        }),
+        status: "completed",
         updatedAt: now(),
-        completedAt: allDone ? now() : cp.completedAt,
-        completedLessonIds: completed,
+        completedAt: now(),
       };
-      saveJson(courseKey, updatedCp);
-      set((s) => ({
-        courseProgress: { ...s.courseProgress, [courseId]: updatedCp },
-      }));
-    }
+      saveJson(lsKey, updated);
+
+      const courseKey = COURSE_KEY(courseId);
+      const cp = resolveCourse(s.courseProgress, courseId);
+      let courseUpdate = s.courseProgress;
+      if (cp) {
+        const completed = cp.completedLessonIds.includes(lessonId)
+          ? cp.completedLessonIds
+          : [...cp.completedLessonIds, lessonId];
+        const allDone = completed.length >= totalLessons;
+        const updatedCp: CourseProgress = {
+          ...cp,
+          status: allDone ? "completed" : "in_progress",
+          updatedAt: now(),
+          completedAt: allDone ? now() : cp.completedAt,
+          completedLessonIds: completed,
+        };
+        saveJson(courseKey, updatedCp);
+        courseUpdate = { ...s.courseProgress, [courseId]: updatedCp };
+      }
+
+      return {
+        lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
+        courseProgress: courseUpdate,
+      };
+    });
   },
 
   incrementRun(courseId, lessonId) {
     const compositeKey = `${courseId}/${lessonId}`;
     const lsKey = LESSON_KEY(courseId, lessonId);
-    const current = resolveLesson(get(), courseId, lessonId);
-    if (!current) return;
-    const updated = { ...current, runCount: current.runCount + 1, updatedAt: now() };
-    saveJson(lsKey, updated);
-    set((s) => ({
-      lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
-    }));
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const updated = { ...current, runCount: current.runCount + 1, updatedAt: now() };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
   },
 
   incrementHint(courseId, lessonId) {
     const compositeKey = `${courseId}/${lessonId}`;
     const lsKey = LESSON_KEY(courseId, lessonId);
-    const current = resolveLesson(get(), courseId, lessonId);
-    if (!current) return;
-    const updated = { ...current, hintCount: current.hintCount + 1, updatedAt: now() };
-    saveJson(lsKey, updated);
-    set((s) => ({
-      lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
-    }));
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const updated = { ...current, hintCount: current.hintCount + 1, updatedAt: now() };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
   },
 
   saveCode(courseId, lessonId, code) {
     const compositeKey = `${courseId}/${lessonId}`;
     const lsKey = LESSON_KEY(courseId, lessonId);
-    const current = resolveLesson(get(), courseId, lessonId);
-    if (!current) return;
-    const updated = { ...current, lastCode: code, updatedAt: now() };
-    saveJson(lsKey, updated);
-    set((s) => ({
-      lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
-    }));
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const updated = { ...current, lastCode: code, updatedAt: now() };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
   },
 
   saveOutput(courseId, lessonId, output) {
     const compositeKey = `${courseId}/${lessonId}`;
     const lsKey = LESSON_KEY(courseId, lessonId);
-    const current = resolveLesson(get(), courseId, lessonId);
-    if (!current) return;
-    const updated = { ...current, lastOutput: output, updatedAt: now() };
-    saveJson(lsKey, updated);
-    set((s) => ({
-      lessonProgress: { ...s.lessonProgress, [compositeKey]: updated },
-    }));
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const updated = { ...current, lastOutput: output, updatedAt: now() };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
   },
 }));
