@@ -15,6 +15,16 @@ export interface CompletionRule {
   pattern?: string;
 }
 
+export interface PracticeExercise {
+  id: string;
+  title: string;
+  prompt: string;
+  goal: string;
+  starterCode?: string;
+  completionRules: CompletionRule[];
+  hints?: string[];
+}
+
 export interface LessonMeta {
   id: string;
   courseId: string;
@@ -29,6 +39,7 @@ export interface LessonMeta {
   prerequisiteLessonIds: string[];
   recap?: string;
   practicePrompts?: string[];
+  practiceExercises?: PracticeExercise[];
 }
 
 export interface Lesson extends LessonMeta {
@@ -73,6 +84,7 @@ export interface LessonProgress {
   hintCount: number;
   lastCode: Record<string, string> | null;
   lastOutput: string | null;
+  practiceCompletedIds?: string[];
 }
 
 // ── Validation ─────────────────────────────────────────────────────

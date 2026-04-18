@@ -443,4 +443,174 @@ describe("progressStore", () => {
       expect(lp.hintCount).toBe(2);
     });
   });
+
+  describe("completePracticeExercise", () => {
+    it("appends an exerciseId to practiceCompletedIds", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.practiceCompletedIds).toEqual(["ex-1"]);
+    });
+
+    it("dedups repeated completions of the same exercise", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.practiceCompletedIds).toEqual(["ex-1"]);
+    });
+
+    it("accumulates multiple distinct exercises in order", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-2");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-3");
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.practiceCompletedIds).toEqual(["ex-1", "ex-2", "ex-3"]);
+    });
+
+    it("persists practice completions to localStorage", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-2");
+
+      const raw = storage.get(LESSON_KEY);
+      expect(raw).toBeDefined();
+      const parsed = JSON.parse(raw!);
+      expect(parsed.practiceCompletedIds).toEqual(["ex-1", "ex-2"]);
+    });
+
+    it("does not change lesson completion status", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completeLesson(LEARNER, COURSE, LESSON, 10);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.status).toBe("completed");
+      expect(lp.practiceCompletedIds).toEqual(["ex-1"]);
+    });
+
+    it("does nothing when lesson has no progress", () => {
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp).toBeUndefined();
+    });
+
+    it("preserves runCount, hintCount, and lastCode", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementRun(COURSE, LESSON);
+      useProgressStore.getState().incrementHint(COURSE, LESSON);
+      useProgressStore.getState().saveCode(COURSE, LESSON, { "main.py": "print(1)" });
+
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.runCount).toBe(1);
+      expect(lp.hintCount).toBe(1);
+      expect(lp.lastCode).toEqual({ "main.py": "print(1)" });
+    });
+  });
+
+  describe("resetPracticeProgress", () => {
+    it("clears practiceCompletedIds", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-2");
+
+      useProgressStore.getState().resetPracticeProgress(COURSE, LESSON);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.practiceCompletedIds).toEqual([]);
+    });
+
+    it("preserves lesson completion status", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completeLesson(LEARNER, COURSE, LESSON, 10);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      useProgressStore.getState().resetPracticeProgress(COURSE, LESSON);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.status).toBe("completed");
+      expect(lp.completedAt).toBeTruthy();
+      expect(lp.practiceCompletedIds).toEqual([]);
+    });
+
+    it("preserves runCount, hintCount, and lastCode", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementRun(COURSE, LESSON);
+      useProgressStore.getState().incrementHint(COURSE, LESSON);
+      useProgressStore.getState().saveCode(COURSE, LESSON, { "main.py": "x = 1" });
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      useProgressStore.getState().resetPracticeProgress(COURSE, LESSON);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.runCount).toBe(1);
+      expect(lp.hintCount).toBe(1);
+      expect(lp.lastCode).toEqual({ "main.py": "x = 1" });
+    });
+
+    it("persists the cleared state to localStorage", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+
+      useProgressStore.getState().resetPracticeProgress(COURSE, LESSON);
+
+      const raw = storage.get(LESSON_KEY);
+      const parsed = JSON.parse(raw!);
+      expect(parsed.practiceCompletedIds).toEqual([]);
+    });
+
+    it("does nothing when lesson has no progress", () => {
+      useProgressStore.getState().resetPracticeProgress(COURSE, LESSON);
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp).toBeUndefined();
+    });
+  });
+
+  describe("resetLessonProgress removes practice completions too", () => {
+    it("wipes practiceCompletedIds along with the rest", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-2");
+
+      useProgressStore.getState().resetLessonProgress(LEARNER, COURSE, LESSON);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp).toBeUndefined();
+      expect(storage.has(LESSON_KEY)).toBe(false);
+    });
+  });
+
+  describe("practice progress survives reload", () => {
+    it("can be read back from localStorage into a fresh store", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-1");
+      useProgressStore.getState().completePracticeExercise(COURSE, LESSON, "ex-2");
+
+      useProgressStore.setState({ courseProgress: {}, lessonProgress: {} });
+
+      const reloaded = useProgressStore
+        .getState()
+        .loadLessonProgress(LEARNER, COURSE, LESSON);
+      expect(reloaded.practiceCompletedIds).toEqual(["ex-1", "ex-2"]);
+    });
+  });
 });

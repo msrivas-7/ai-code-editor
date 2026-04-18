@@ -33,5 +33,49 @@
   "practicePrompts": [
     "Create a variable for temperature in Celsius and convert it to Fahrenheit.",
     "Try swapping two variables without using a third variable."
+  ],
+  "practiceExercises": [
+    {
+      "id": "celsius-to-f",
+      "title": "Celsius to Fahrenheit",
+      "prompt": "Store a temperature in Celsius (use 20), convert it to Fahrenheit using the formula F = C * 9/5 + 32, and print the result in the form `20C = 68.0F`.",
+      "goal": "Print the conversion using an f-string.",
+      "starterCode": "celsius = 20\n# Convert to Fahrenheit and print \"20C = 68.0F\"\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "20C = 68.0F" }
+      ],
+      "hints": [
+        "Create a new variable `fahrenheit = celsius * 9/5 + 32`.",
+        "Use an f-string: print(f\"{celsius}C = {fahrenheit}F\")."
+      ]
+    },
+    {
+      "id": "swap-values",
+      "title": "Swap two values",
+      "prompt": "Start with `a = 1` and `b = 2`. Swap the values so that `a` becomes 2 and `b` becomes 1, then print them in the form `a=2, b=1`.",
+      "goal": "Swap two variables and print the result.",
+      "starterCode": "a = 1\nb = 2\n# Swap the values, then print: a=2, b=1\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "a=2, b=1" }
+      ],
+      "hints": [
+        "Python lets you swap in one line: `a, b = b, a`.",
+        "Or use a temporary variable: tmp = a; a = b; b = tmp."
+      ]
+    },
+    {
+      "id": "profile-card",
+      "title": "Profile card",
+      "prompt": "Create variables `name = \"Bob\"`, `age = 30`, and `is_member = True`. Print them on three separate lines in this format:\nName: Bob\nAge: 30\nMember: True",
+      "goal": "Use three variables with an f-string to format a profile.",
+      "starterCode": "name = \"Bob\"\nage = 30\nis_member = True\n# Print a three-line profile card\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Name: Bob\nAge: 30\nMember: True" }
+      ],
+      "hints": [
+        "Use three print() calls, one per line.",
+        "F-strings can embed any variable: f\"Name: {name}\"."
+      ]
+    }
   ]
 }

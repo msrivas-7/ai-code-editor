@@ -2,11 +2,25 @@ import type { LessonMeta } from "../types";
 
 interface LessonCompletePanelProps {
   lesson: LessonMeta;
+  completedPracticeIds?: string[];
   onNext?: () => void;
   onDismiss: () => void;
+  onStartPractice?: () => void;
 }
 
-export function LessonCompletePanel({ lesson, onNext, onDismiss }: LessonCompletePanelProps) {
+export function LessonCompletePanel({
+  lesson,
+  completedPracticeIds = [],
+  onNext,
+  onDismiss,
+  onStartPractice,
+}: LessonCompletePanelProps) {
+  const practiceExercises = lesson.practiceExercises ?? [];
+  const practiceCount = practiceExercises.length;
+  const practiceDone = practiceExercises.filter((ex) =>
+    completedPracticeIds.includes(ex.id)
+  ).length;
+
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
       <div className="mx-4 w-full max-w-md rounded-xl border border-green-500/30 bg-panel p-6 shadow-xl">
@@ -40,7 +54,49 @@ export function LessonCompletePanel({ lesson, onNext, onDismiss }: LessonComplet
           </div>
         )}
 
-        {lesson.practicePrompts && lesson.practicePrompts.length > 0 && (
+        {practiceCount > 0 && (
+          <div className="mb-5 rounded-lg border border-violet/20 bg-violet/5 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-violet/80">
+                Practice challenges (optional)
+              </h3>
+              <span className="text-[10px] text-muted">
+                {practiceDone}/{practiceCount}
+              </span>
+            </div>
+            <ul className="mb-2 space-y-1.5">
+              {practiceExercises.map((ex, i) => {
+                const done = completedPracticeIds.includes(ex.id);
+                return (
+                  <li key={ex.id} className="flex items-start gap-2 text-xs text-ink/80">
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                        done
+                          ? "bg-green-500/20 text-green-400"
+                          : "bg-violet/15 text-violet"
+                      }`}
+                    >
+                      {done ? "✓" : i + 1}
+                    </span>
+                    <span className={done ? "line-through opacity-60" : ""}>
+                      {ex.title}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {onStartPractice && practiceDone < practiceCount && (
+              <button
+                onClick={onStartPractice}
+                className="w-full rounded-lg bg-violet/20 px-3 py-1.5 text-xs font-semibold text-violet transition hover:bg-violet/30"
+              >
+                {practiceDone === 0 ? "Start Practice" : "Continue Practice"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {lesson.practicePrompts && lesson.practicePrompts.length > 0 && practiceCount === 0 && (
           <div className="mb-5 rounded-lg border border-accent/20 bg-accent/5 px-4 py-3">
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-accent/70">
               Try these next

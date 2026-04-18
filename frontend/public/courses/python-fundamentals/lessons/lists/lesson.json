@@ -40,5 +40,55 @@
   "practicePrompts": [
     "Create a list of 5 names and print them in reverse order.",
     "Can you remove all duplicates from a list while keeping the original order?"
+  ],
+  "practiceExercises": [
+    {
+      "id": "reverse-print",
+      "title": "Print a list in reverse",
+      "prompt": "Given `names = [\"Ana\", \"Ben\", \"Cam\", \"Dee\"]`, print each name on its own line, in reverse order. Expected output:\nDee\nCam\nBen\nAna",
+      "goal": "Iterate over a list in reverse.",
+      "starterCode": "names = [\"Ana\", \"Ben\", \"Cam\", \"Dee\"]\n# Print each name in reverse order, one per line\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Dee\nCam\nBen\nAna" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "for " }
+      ],
+      "hints": [
+        "Slicing with [::-1] reverses a list: `for name in names[::-1]:`.",
+        "Or use `reversed(names)`.",
+        "Or loop with indices: `for i in range(len(names) - 1, -1, -1):`."
+      ]
+    },
+    {
+      "id": "sum-doubled",
+      "title": "Double, then sum",
+      "prompt": "Given `nums = [1, 2, 3, 4, 5]`, build a NEW list where each number is doubled (use append), then print the sum of the new list. Expected output: `30`.",
+      "goal": "Use append() to build a list, then sum it.",
+      "starterCode": "nums = [1, 2, 3, 4, 5]\ndoubled = []\n# Append each doubled number to doubled, then print sum(doubled)\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "30" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "append(" }
+      ],
+      "hints": [
+        "Loop: `for n in nums: doubled.append(n * 2)`.",
+        "sum(doubled) returns the total.",
+        "Then just `print(sum(doubled))`."
+      ]
+    },
+    {
+      "id": "unique-keep-order",
+      "title": "Remove duplicates, keep order",
+      "prompt": "Given `items = [3, 1, 2, 3, 1, 4, 2]`, build a new list with duplicates removed while keeping the first-seen order. Print the result. Expected output: `[3, 1, 2, 4]`.",
+      "goal": "Build a deduplicated list without reordering.",
+      "starterCode": "items = [3, 1, 2, 3, 1, 4, 2]\n# Build a list with duplicates removed, preserving order\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "[3, 1, 2, 4]" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "append(" }
+      ],
+      "hints": [
+        "Start with `result = []`.",
+        "Loop each item: `if item not in result: result.append(item)`.",
+        "Then `print(result)`."
+      ]
+    }
   ]
 }

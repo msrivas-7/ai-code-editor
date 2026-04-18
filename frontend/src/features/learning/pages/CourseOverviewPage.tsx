@@ -42,14 +42,29 @@ export default function CourseOverviewPage() {
   const cp = courseProgressMap[courseId];
   const completedIds = cp?.completedLessonIds ?? [];
   const progressMap: Record<string, ProgressStatus> = {};
+  const practiceProgressMap: Record<string, { done: number; total: number }> = {};
+  let practiceDoneTotal = 0;
+  let practiceGrandTotal = 0;
   for (const l of lessons) {
     const lp = lessonProgressMap[`${courseId}/${l.id}`];
     progressMap[l.id] = lp?.status ?? "not_started";
+    const total = l.practiceExercises?.length ?? 0;
+    if (total > 0) {
+      const doneIds = lp?.practiceCompletedIds ?? [];
+      const done = doneIds.filter((id) => l.practiceExercises!.some((e) => e.id === id)).length;
+      practiceProgressMap[l.id] = { done, total };
+      practiceDoneTotal += done;
+      practiceGrandTotal += total;
+    }
   }
 
   const pct =
     lessons.length > 0
       ? Math.round((completedIds.length / lessons.length) * 100)
+      : 0;
+  const practicePct =
+    practiceGrandTotal > 0
+      ? Math.round((practiceDoneTotal / practiceGrandTotal) * 100)
       : 0;
 
   return (
@@ -80,7 +95,7 @@ export default function CourseOverviewPage() {
               {course.description}
             </p>
 
-            <div className="mb-6 flex items-center gap-3">
+            <div className="mb-3 flex items-center gap-3">
               <div className="h-2 flex-1 rounded-full bg-elevated">
                 <div
                   className="h-full rounded-full bg-violet transition-all"
@@ -100,6 +115,19 @@ export default function CourseOverviewPage() {
                 </button>
               )}
             </div>
+            {practiceGrandTotal > 0 && (
+              <div className="mb-6 flex items-center gap-3">
+                <div className="h-1.5 flex-1 rounded-full bg-elevated">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-violet to-accent transition-all"
+                    style={{ width: `${practicePct}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-medium text-violet">
+                  {practiceDoneTotal}/{practiceGrandTotal} practice
+                </span>
+              </div>
+            )}
 
             {completedIds.length === 0 && (!cp || cp.status === "not_started") && lessons.length > 0 && (
               <div className="mb-5 flex items-center gap-3 rounded-lg border border-accent/20 bg-accent/5 px-4 py-3">
@@ -114,6 +142,7 @@ export default function CourseOverviewPage() {
               lessons={lessons}
               progressMap={progressMap}
               completedIds={completedIds}
+              practiceProgressMap={practiceProgressMap}
               onSelect={(lessonId) =>
                 nav(`/learn/course/${courseId}/lesson/${lessonId}`)
               }

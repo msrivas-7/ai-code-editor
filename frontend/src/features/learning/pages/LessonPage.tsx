@@ -6,6 +6,7 @@ import { loadFullLesson, loadCourse } from "../content/courseLoader";
 import { useProgressStore, loadSavedCode } from "../stores/progressStore";
 import { useLearnerStore } from "../stores/learnerStore";
 import { LessonInstructionsPanel } from "../components/LessonInstructionsPanel";
+import { PracticeInstructionsView } from "../components/PracticeInstructionsView";
 import { GuidedTutorPanel } from "../components/GuidedTutorPanel";
 import { MonacoPane } from "../../../components/MonacoPane";
 import { EditorTabs } from "../../../components/EditorTabs";
@@ -66,6 +67,8 @@ export default function LessonPage() {
   const saveCode = useProgressStore((s) => s.saveCode);
   const saveOutput = useProgressStore((s) => s.saveOutput);
   const resetLessonProgress = useProgressStore((s) => s.resetLessonProgress);
+  const completePracticeExercise = useProgressStore((s) => s.completePracticeExercise);
+  const resetPracticeProgress = useProgressStore((s) => s.resetPracticeProgress);
   const lessonProgressMap = useProgressStore((s) => s.lessonProgress);
 
   const switchChatContext = useAIStore((s) => s.switchChatContext);
@@ -103,6 +106,10 @@ export default function LessonPage() {
   const [hasRun, setHasRun] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
   const [failedCheckCount, setFailedCheckCount] = useState(0);
+  const [practiceMode, setPracticeMode] = useState(false);
+  const [practiceIndex, setPracticeIndex] = useState(0);
+  const [practiceValidation, setPracticeValidation] = useState<ValidationResult | null>(null);
+  const savedLessonCode = useRef<Record<string, string> | null>(null);
   const [outputH, setOutputH] = useState(() => loadNum(LS_OUT_H, DEFAULT_OUT));
   const [instrW, setInstrW] = useState(() => loadNum(LS_INSTR_W, DEFAULT_INSTR));
   const [tutorW, setTutorW] = useState(() => loadNum(LS_TUTOR_W, DEFAULT_TUTOR));
@@ -142,6 +149,10 @@ export default function LessonPage() {
     setHasRun(false);
     setHasChecked(false);
     setFailedCheckCount(0);
+    setPracticeMode(false);
+    setPracticeIndex(0);
+    setPracticeValidation(null);
+    savedLessonCode.current = null;
     Promise.all([
       loadFullLesson(courseId, lessonId),
       loadCourse(courseId),
@@ -214,21 +225,43 @@ export default function LessonPage() {
       setResult(result);
       setHasRun(true);
       incrementRun(courseId, lessonId);
-      if (result.stdout) {
-        saveOutput(courseId, lessonId, result.stdout);
+      if (!practiceMode) {
+        if (result.stdout) {
+          saveOutput(courseId, lessonId, result.stdout);
+        }
+        const codeMap: Record<string, string> = {};
+        for (const f of files) codeMap[f.path] = f.content;
+        saveCode(courseId, lessonId, codeMap);
       }
-      const codeMap: Record<string, string> = {};
-      for (const f of files) codeMap[f.path] = f.content;
-      saveCode(courseId, lessonId, codeMap);
     } catch (err) {
       setRunError((err as Error).message);
     } finally {
       setRunning(false);
     }
-  }, [sessionId, sessionPhase, running, courseId, lessonId, setRunning, setRunError, setResult, incrementRun, saveOutput, saveCode]);
+  }, [sessionId, sessionPhase, running, courseId, lessonId, setRunning, setRunError, setResult, incrementRun, saveOutput, saveCode, practiceMode]);
+
+  const applyPracticeStarter = useCallback((exerciseIndex: number) => {
+    if (!lesson?.practiceExercises) return;
+    const exercise = lesson.practiceExercises[exerciseIndex];
+    if (!exercise) return;
+    const starter = exercise.starterCode ?? "# Write your code here\n";
+    useProjectStore.setState({
+      files: { "main.py": starter },
+      order: ["main.py"],
+      activeFile: "main.py",
+      openTabs: ["main.py"],
+    });
+    useRunStore.getState().setResult(null);
+    useRunStore.getState().setError(null);
+    setPracticeValidation(null);
+  }, [lesson]);
 
   const handleReset = useCallback(() => {
     if (!lesson || !courseId || !lessonId) return;
+    if (practiceMode) {
+      applyPracticeStarter(practiceIndex);
+      return;
+    }
     const files: Record<string, string> = {};
     const order: string[] = [];
     for (const f of lesson.starterFiles) {
@@ -250,12 +283,29 @@ export default function LessonPage() {
     setValidation(null);
     setShowComplete(false);
     saveCode(courseId, lessonId, files);
-  }, [lesson, courseId, lessonId, saveCode]);
+  }, [lesson, courseId, lessonId, saveCode, practiceMode, practiceIndex, applyPracticeStarter]);
 
   const handleCheck = useCallback(() => {
     if (!lesson || !courseId || !lessonId) return;
     const files = useProjectStore.getState().snapshot();
     const result = useRunStore.getState().result;
+
+    if (practiceMode) {
+      const exercise = lesson.practiceExercises?.[practiceIndex];
+      if (!exercise) return;
+      const v = validateLesson(result, files, exercise.completionRules);
+      setPracticeValidation(v);
+      if (v.passed) {
+        const current = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
+        const alreadyDone = (current?.practiceCompletedIds ?? []).includes(exercise.id);
+        completePracticeExercise(courseId, lessonId, exercise.id);
+        if (!alreadyDone) {
+          confetti({ particleCount: 80, spread: 55, origin: { y: 0.7 } });
+        }
+      }
+      return;
+    }
+
     const v = validateLesson(result, files, lesson.completionRules);
     setValidation(v);
     setHasChecked(true);
@@ -265,7 +315,56 @@ export default function LessonPage() {
       confetti({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
       setShowComplete(true);
     }
-  }, [lesson, courseId, lessonId, completeLesson, identity.learnerId, totalLessons, validation]);
+  }, [lesson, courseId, lessonId, completeLesson, identity.learnerId, totalLessons, validation, practiceMode, practiceIndex, completePracticeExercise]);
+
+  const handleEnterPractice = useCallback(() => {
+    if (!lesson?.practiceExercises?.length) return;
+    savedLessonCode.current = useProjectStore.getState().snapshot().reduce(
+      (acc, f) => { acc[f.path] = f.content; return acc; },
+      {} as Record<string, string>,
+    );
+    setPracticeMode(true);
+    setPracticeIndex(0);
+    setShowComplete(false);
+    applyPracticeStarter(0);
+  }, [lesson, applyPracticeStarter]);
+
+  const handleExitPractice = useCallback(() => {
+    setPracticeMode(false);
+    setPracticeValidation(null);
+    if (savedLessonCode.current) {
+      const order = Object.keys(savedLessonCode.current);
+      useProjectStore.setState({
+        files: { ...savedLessonCode.current },
+        order,
+        activeFile: order[0],
+        openTabs: [order[0]],
+      });
+      savedLessonCode.current = null;
+    }
+    useRunStore.getState().setResult(null);
+    useRunStore.getState().setError(null);
+  }, []);
+
+  const handleSelectPracticeExercise = useCallback((index: number) => {
+    setPracticeIndex(index);
+    applyPracticeStarter(index);
+  }, [applyPracticeStarter]);
+
+  const handleNextPracticeExercise = useCallback(() => {
+    if (!lesson?.practiceExercises) return;
+    const next = practiceIndex + 1;
+    if (next >= lesson.practiceExercises.length) return;
+    setPracticeIndex(next);
+    applyPracticeStarter(next);
+  }, [lesson, practiceIndex, applyPracticeStarter]);
+
+  const handleResetPracticeProgress = useCallback(() => {
+    if (!courseId || !lessonId) return;
+    resetPracticeProgress(courseId, lessonId);
+    setPracticeValidation(null);
+    applyPracticeStarter(practiceIndex);
+  }, [courseId, lessonId, resetPracticeProgress, practiceIndex, applyPracticeStarter]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -285,9 +384,9 @@ export default function LessonPage() {
     if (initialized.current) setHasEdited(true);
   }, [projectFiles]);
 
-  // Auto-save code to localStorage on edits (debounced)
+  // Auto-save code to localStorage on edits (debounced, lesson mode only)
   useEffect(() => {
-    if (!courseId || !lessonId || !initialized.current) return;
+    if (!courseId || !lessonId || !initialized.current || practiceMode) return;
     const timer = setTimeout(() => {
       const snap = useProjectStore.getState().snapshot();
       if (snap.length === 0) return;
@@ -296,7 +395,7 @@ export default function LessonPage() {
       saveCode(courseId, lessonId, codeMap);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [projectFiles, courseId, lessonId, saveCode]);
+  }, [projectFiles, courseId, lessonId, saveCode, practiceMode]);
 
   if (!courseId || !lessonId) return null;
 
@@ -374,6 +473,15 @@ export default function LessonPage() {
         </h1>
 
         <div className="ml-auto flex items-center gap-3">
+          {!practiceMode && lesson?.practiceExercises?.length && lp?.status === "completed" && (
+            <button
+              onClick={handleEnterPractice}
+              className="rounded-full bg-violet/15 px-2.5 py-0.5 text-[10px] font-semibold text-violet transition hover:bg-violet/25"
+              title="Practice this lesson's concepts"
+            >
+              Practice ({(lp?.practiceCompletedIds ?? []).filter((id) => lesson.practiceExercises!.some((e) => e.id === id)).length}/{lesson.practiceExercises.length})
+            </button>
+          )}
           {lp && (
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
               lp.status === "completed"
@@ -428,12 +536,26 @@ export default function LessonPage() {
           ) : (
             <>
               <div ref={instrRef} style={{ width: instrW }} className="shrink-0 overflow-hidden border-r border-border">
-                <LessonInstructionsPanel
-                  meta={lesson}
-                  content={lesson.content}
-                  onCollapse={() => setInstrCollapsed(true)}
-                  coachState={coachState}
-                />
+                {practiceMode && lesson.practiceExercises ? (
+                  <PracticeInstructionsView
+                    exercises={lesson.practiceExercises}
+                    currentIndex={practiceIndex}
+                    completedIds={lp?.practiceCompletedIds ?? []}
+                    validation={practiceValidation}
+                    onSelectExercise={handleSelectPracticeExercise}
+                    onExitPractice={handleExitPractice}
+                    onNextExercise={handleNextPracticeExercise}
+                    onResetPractice={handleResetPracticeProgress}
+                    onCollapse={() => setInstrCollapsed(true)}
+                  />
+                ) : (
+                  <LessonInstructionsPanel
+                    meta={lesson}
+                    content={lesson.content}
+                    onCollapse={() => setInstrCollapsed(true)}
+                    coachState={coachState}
+                  />
+                )}
               </div>
               <Splitter
                 orientation="vertical"
@@ -540,7 +662,7 @@ export default function LessonPage() {
               )}
               <span className="text-[10px] text-faint">Cmd+Enter</span>
               <div className="flex-1" />
-              {validation && !validation.passed && (
+              {!practiceMode && validation && !validation.passed && (
                 <div className="flex flex-col gap-0.5 rounded-lg bg-red-500/10 px-3 py-1 text-xs font-medium text-red-400">
                   <span>{validation.feedback[0] ?? "Not quite."}</span>
                   {validation.nextHints?.[0] && (
@@ -548,7 +670,7 @@ export default function LessonPage() {
                   )}
                 </div>
               )}
-              {validation?.passed && (
+              {!practiceMode && validation?.passed && (
                 <div className="flex items-center gap-2 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-medium text-green-400">
                   <span className="text-base">🎉</span>
                   <div className="flex flex-col">
@@ -561,7 +683,12 @@ export default function LessonPage() {
                   </div>
                 </div>
               )}
-              {showNext && (
+              {practiceMode && (
+                <span className="rounded-full bg-violet/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet">
+                  Practice Mode
+                </span>
+              )}
+              {!practiceMode && showNext && (
                 <button
                   onClick={() => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`)}
                   className="flex items-center gap-1.5 rounded-lg bg-violet/20 px-4 py-1.5 text-xs font-semibold text-violet transition hover:bg-violet/30"
@@ -628,8 +755,10 @@ export default function LessonPage() {
       {showComplete && lesson && (
         <LessonCompletePanel
           lesson={lesson}
+          completedPracticeIds={lp?.practiceCompletedIds ?? []}
           onDismiss={() => setShowComplete(false)}
           onNext={nextLessonId ? () => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`) : undefined}
+          onStartPractice={lesson.practiceExercises?.length ? () => { setShowComplete(false); handleEnterPractice(); } : undefined}
         />
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}

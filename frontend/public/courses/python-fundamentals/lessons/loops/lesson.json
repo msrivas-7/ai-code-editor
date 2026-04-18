@@ -38,5 +38,55 @@
   "practicePrompts": [
     "Can you make the loop count backwards from 10 to 1?",
     "Try printing only the even numbers between 1 and 20 using a loop."
+  ],
+  "practiceExercises": [
+    {
+      "id": "count-down",
+      "title": "Count down from 5",
+      "prompt": "Use a for loop with range() to print the numbers 5, 4, 3, 2, 1 each on their own line.",
+      "goal": "Print a countdown from 5 to 1 using a loop.",
+      "starterCode": "# Print 5, 4, 3, 2, 1 each on a line\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "5\n4\n3\n2\n1" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "range(" }
+      ],
+      "hints": [
+        "range() takes three arguments: range(start, stop, step).",
+        "range(5, 0, -1) gives 5, 4, 3, 2, 1.",
+        "Remember: `stop` is exclusive."
+      ]
+    },
+    {
+      "id": "sum-to-n",
+      "title": "Sum from 1 to 10",
+      "prompt": "Use a for loop to add the numbers 1 through 10 together, then print the total. Output should be exactly `55`.",
+      "goal": "Accumulate a running total inside a loop.",
+      "starterCode": "# Compute 1 + 2 + ... + 10 and print it\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "55" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "for " }
+      ],
+      "hints": [
+        "Start with `total = 0` before the loop.",
+        "Inside the loop: `total += i` (or `total = total + i`).",
+        "range(1, 11) gives 1 through 10."
+      ]
+    },
+    {
+      "id": "evens-only",
+      "title": "Even numbers only",
+      "prompt": "Print the even numbers from 2 through 10, each on its own line. Use `continue` to skip odd numbers rather than stepping by 2.",
+      "goal": "Use `continue` to skip iterations.",
+      "starterCode": "# Print 2, 4, 6, 8, 10 — use continue to skip odd numbers\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "2\n4\n6\n8\n10" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "continue" }
+      ],
+      "hints": [
+        "Loop over range(1, 11).",
+        "Inside: `if i % 2 == 1: continue` — then print i.",
+        "`continue` jumps straight to the next iteration."
+      ]
+    }
   ]
 }

@@ -92,6 +92,12 @@ interface ProgressState {
     code: Record<string, string>
   ) => void;
   saveOutput: (courseId: string, lessonId: string, output: string) => void;
+  completePracticeExercise: (
+    courseId: string,
+    lessonId: string,
+    exerciseId: string
+  ) => void;
+  resetPracticeProgress: (courseId: string, lessonId: string) => void;
   resetLessonProgress: (learnerId: string, courseId: string, lessonId: string) => void;
   resetCourseProgress: (learnerId: string, courseId: string, lessonIds: string[]) => void;
 }
@@ -331,6 +337,40 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
       const current = resolveLesson(s.lessonProgress, courseId, lessonId);
       if (!current) return s;
       const updated = { ...current, lastOutput: output, updatedAt: now() };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
+  },
+
+  completePracticeExercise(courseId, lessonId, exerciseId) {
+    const compositeKey = `${courseId}/${lessonId}`;
+    const lsKey = LESSON_KEY(courseId, lessonId);
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const existing = current.practiceCompletedIds ?? [];
+      if (existing.includes(exerciseId)) return s;
+      const updated: LessonProgress = {
+        ...current,
+        practiceCompletedIds: [...existing, exerciseId],
+        updatedAt: now(),
+      };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
+  },
+
+  resetPracticeProgress(courseId, lessonId) {
+    const compositeKey = `${courseId}/${lessonId}`;
+    const lsKey = LESSON_KEY(courseId, lessonId);
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const updated: LessonProgress = {
+        ...current,
+        practiceCompletedIds: [],
+        updatedAt: now(),
+      };
       saveJson(lsKey, updated);
       return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
     });

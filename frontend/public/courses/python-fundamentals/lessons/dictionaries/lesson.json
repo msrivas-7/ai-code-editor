@@ -40,5 +40,55 @@
   "practicePrompts": [
     "Count how many times each word appears in a sentence using a dictionary.",
     "Can you merge two dictionaries together?"
+  ],
+  "practiceExercises": [
+    {
+      "id": "word-count",
+      "title": "Word frequency",
+      "prompt": "Given `text = \"to be or not to be\"`, build a dictionary counting how often each word appears, then print `to: 2`. Use split() to separate words.",
+      "goal": "Count occurrences with a dictionary and .get().",
+      "starterCode": "text = \"to be or not to be\"\ncounts = {}\n# Fill counts, then print \"to: 2\"\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "to: 2" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" }
+      ],
+      "hints": [
+        "Loop over words: `for word in text.split():`.",
+        "Use .get() with a default: `counts[word] = counts.get(word, 0) + 1`.",
+        "Then print(f\"to: {counts['to']}\")."
+      ]
+    },
+    {
+      "id": "safe-lookup",
+      "title": "Safe lookup with default",
+      "prompt": "Given `prices = {\"apple\": 1.0, \"banana\": 0.5}`, use .get() to look up `\"cherry\"` with a default of `0.0` and print `Cherry price: 0.0`.",
+      "goal": "Use .get() to avoid KeyError on missing keys.",
+      "starterCode": "prices = {\"apple\": 1.0, \"banana\": 0.5}\n# Print \"Cherry price: 0.0\" using .get() with a default\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Cherry price: 0.0" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" }
+      ],
+      "hints": [
+        "`prices.get(\"cherry\", 0.0)` returns 0.0 if the key doesn't exist.",
+        "Store in a variable, or use it directly in an f-string.",
+        "print(f\"Cherry price: {prices.get('cherry', 0.0)}\")"
+      ]
+    },
+    {
+      "id": "merge-dicts",
+      "title": "Merge two dicts",
+      "prompt": "Given `a = {\"x\": 1, \"y\": 2}` and `b = {\"y\": 20, \"z\": 30}`, build a merged dict where values from `b` win for shared keys. Print the value of `y` only — expected output: `20`.",
+      "goal": "Combine two dictionaries by iterating.",
+      "starterCode": "a = {\"x\": 1, \"y\": 2}\nb = {\"y\": 20, \"z\": 30}\nmerged = {}\n# Fill merged — b's values should win — then print merged[\"y\"]\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "20" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "for " }
+      ],
+      "hints": [
+        "Copy `a` first: loop `for k, v in a.items(): merged[k] = v`.",
+        "Then overwrite with `b`: loop `for k, v in b.items(): merged[k] = v`.",
+        "Finally: `print(merged[\"y\"])`."
+      ]
+    }
   ]
 }

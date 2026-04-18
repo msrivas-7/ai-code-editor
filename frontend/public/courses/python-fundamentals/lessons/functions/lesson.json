@@ -37,5 +37,57 @@
   "practicePrompts": [
     "Write a function that takes a list of numbers and returns the largest one.",
     "Can you write a function with a default parameter?"
+  ],
+  "practiceExercises": [
+    {
+      "id": "square-function",
+      "title": "Square function",
+      "prompt": "Write a function `square(n)` that returns n * n. Then call it with 5 and print the result. Output should be `25`.",
+      "goal": "Define a function with one parameter and a return value.",
+      "starterCode": "# Define square(n), call square(5), print the result\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "25" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def square" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "return " }
+      ],
+      "hints": [
+        "def square(n):",
+        "    return n * n",
+        "Then: print(square(5))"
+      ]
+    },
+    {
+      "id": "greet-default",
+      "title": "Greeting with default",
+      "prompt": "Write `greet(name, greeting=\"Hello\")` that returns `<greeting>, <name>!`. Call it twice:\n1) `greet(\"Sam\")` → should give `Hello, Sam!`\n2) `greet(\"Sam\", \"Hi\")` → should give `Hi, Sam!`\nPrint both results, one per line.",
+      "goal": "Use a default parameter value.",
+      "starterCode": "# Define greet(name, greeting=\"Hello\") and call it twice\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Hello, Sam!\nHi, Sam!" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def greet" }
+      ],
+      "hints": [
+        "Default values go in the function definition: `def greet(name, greeting=\"Hello\"):`.",
+        "Return an f-string: `return f\"{greeting}, {name}!\"`.",
+        "Call it both with and without the second argument."
+      ]
+    },
+    {
+      "id": "max-of-three",
+      "title": "Max of three numbers",
+      "prompt": "Write a function `max_of_three(a, b, c)` that returns the largest of the three numbers WITHOUT using Python's built-in `max()`. Call it with `max_of_three(4, 9, 7)` and print the result. Output should be `9`.",
+      "goal": "Compare three values using if/elif and return the largest.",
+      "starterCode": "# Define max_of_three(a, b, c) and call it\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "9" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def max_of_three" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "return " }
+      ],
+      "hints": [
+        "Compare a to b first to find the larger of the first two.",
+        "Then compare that to c to find the overall largest.",
+        "You can chain comparisons with `and`: `if a >= b and a >= c: return a`."
+      ]
+    }
   ]
 }

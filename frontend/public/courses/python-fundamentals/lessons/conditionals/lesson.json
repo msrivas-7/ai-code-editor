@@ -45,5 +45,54 @@
   "practicePrompts": [
     "Write a program that classifies a number as positive, negative, or zero.",
     "Can you check if a year is a leap year? (Divisible by 4, but not 100, unless also 400.)"
+  ],
+  "practiceExercises": [
+    {
+      "id": "sign-of-number",
+      "title": "Positive, negative, or zero",
+      "prompt": "Set `n = -5`. Print exactly one of: `positive`, `negative`, or `zero` depending on `n`. With `n = -5`, the output must be `negative`.",
+      "goal": "Use if/elif/else to classify a number's sign.",
+      "starterCode": "n = -5\n# Print positive / negative / zero\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "negative" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "elif " }
+      ],
+      "hints": [
+        "Start with `if n > 0:` for positive.",
+        "Use `elif n < 0:` for negative.",
+        "Use `else:` for zero."
+      ]
+    },
+    {
+      "id": "leap-year",
+      "title": "Leap year check",
+      "prompt": "Set `year = 2024`. A leap year is divisible by 4, except it's NOT a leap year if it's divisible by 100 — unless it's also divisible by 400. Print `leap` or `not leap`. For 2024 the output should be `leap`.",
+      "goal": "Combine conditions with `and`, `or`, and `not`.",
+      "starterCode": "year = 2024\n# Print \"leap\" or \"not leap\"\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "leap" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "%" }
+      ],
+      "hints": [
+        "Use `year % 4 == 0` to check divisibility by 4.",
+        "Combine: `(year % 4 == 0 and year % 100 != 0) or year % 400 == 0`."
+      ]
+    },
+    {
+      "id": "grade-letter",
+      "title": "Grade letter",
+      "prompt": "Set `score = 82`. Print the letter grade: 90+ = `A`, 80-89 = `B`, 70-79 = `C`, 60-69 = `D`, below 60 = `F`. For 82, output should be `B`.",
+      "goal": "Chain elif statements for a multi-range decision.",
+      "starterCode": "score = 82\n# Print the letter grade\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "B" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "elif " }
+      ],
+      "hints": [
+        "Start with the highest cutoff: `if score >= 90:`.",
+        "Use `elif score >= 80:` next — no need to re-check `< 90`, elif handles it.",
+        "End with `else:` for F."
+      ]
+    }
   ]
 }

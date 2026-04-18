@@ -40,6 +40,7 @@
 - **Repository abstraction** — `LearningRepository` interface with `LocalLearningRepository` (localStorage) and `RemoteLearningRepository` (stub) for future backend persistence.
 - **Coach rail** — `CoachRail` component with a priority-ordered rule engine. Observes elapsed time, edit/run/check state, and failed attempt count to surface one contextual nudge at a time. Purely deterministic — no AI or API calls.
 - **Onboarding overlays** — `WelcomeOverlay`, `EditorCoach`, and `WorkspaceCoach` use `box-shadow` cutouts for spotlight effects. Each persisted via separate localStorage flags; auto-skip steps whose target ref is null.
+- **Practice mode** — each `lesson.json` may carry a `practiceExercises[]` array (id, title, prompt, goal, starterCode, completionRules, hints). Lesson completion never requires practice. Entering practice snapshots the learner's lesson code into a ref, swaps the instructions panel to `PracticeInstructionsView`, and applies the exercise's starter; exit restores the snapshot. Practice runs skip `saveCode`/`saveOutput` so lesson state stays untouched. Completion is tracked via `practiceCompletedIds` on `LessonProgress`, with dedup-safe append (`completePracticeExercise`) and an independent reset (`resetPracticeProgress`). The course overview surfaces per-lesson practice chips and an aggregate progress bar.
 
 ## API Surface
 

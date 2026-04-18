@@ -5,10 +5,11 @@ interface LessonListProps {
   lessons: LessonMeta[];
   progressMap: Record<string, ProgressStatus>;
   completedIds: string[];
+  practiceProgressMap?: Record<string, { done: number; total: number }>;
   onSelect: (lessonId: string) => void;
 }
 
-export function LessonList({ lessons, progressMap, completedIds, onSelect }: LessonListProps) {
+export function LessonList({ lessons, progressMap, completedIds, practiceProgressMap, onSelect }: LessonListProps) {
   return (
     <ol className="flex flex-col gap-1">
       {lessons.map((lesson, idx) => {
@@ -59,6 +60,25 @@ export function LessonList({ lessons, progressMap, completedIds, onSelect }: Les
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                {(() => {
+                  const pp = practiceProgressMap?.[lesson.id];
+                  if (!pp || pp.total === 0) return null;
+                  const allDone = pp.done === pp.total;
+                  return (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                        allDone
+                          ? "bg-green-500/15 text-green-400"
+                          : pp.done > 0
+                            ? "bg-violet/15 text-violet"
+                            : "bg-elevated text-faint"
+                      }`}
+                      title={allDone ? "All practice complete" : `Practice ${pp.done}/${pp.total}`}
+                    >
+                      {allDone ? "✓ practice" : `practice ${pp.done}/${pp.total}`}
+                    </span>
+                  );
+                })()}
                 <span className="text-[10px] text-faint">{lesson.estimatedMinutes}m</span>
                 <LessonProgressBadge status={status} />
               </div>

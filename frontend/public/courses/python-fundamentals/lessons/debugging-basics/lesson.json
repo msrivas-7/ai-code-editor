@@ -33,5 +33,52 @@
   "practicePrompts": [
     "Intentionally cause a TypeError and then fix it based on the error message.",
     "Add print() statements to trace a bug in a loop that produces wrong output."
+  ],
+  "practiceExercises": [
+    {
+      "id": "fix-type-error",
+      "title": "Fix the TypeError",
+      "prompt": "The starter code has a TypeError — it tries to concatenate a string with an int. Fix it so the program prints exactly `You are 25 years old`.",
+      "goal": "Read the traceback, identify the type mismatch, and fix it.",
+      "starterCode": "age = 25\nprint(\"You are \" + age + \" years old\")\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "You are 25 years old" }
+      ],
+      "hints": [
+        "Strings and ints can't be concatenated with `+`.",
+        "Convert age to a string: `str(age)`.",
+        "Or use an f-string: `f\"You are {age} years old\"`."
+      ]
+    },
+    {
+      "id": "fix-index-error",
+      "title": "Fix the IndexError",
+      "prompt": "The starter loops past the end of the list, causing an IndexError. Fix it so the program prints every item, one per line.\nExpected output:\napple\nbanana\ncherry",
+      "goal": "Spot an off-by-one loop bound and fix it.",
+      "starterCode": "fruits = [\"apple\", \"banana\", \"cherry\"]\nfor i in range(len(fruits) + 1):\n    print(fruits[i])\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "apple\nbanana\ncherry" }
+      ],
+      "hints": [
+        "range(len(fruits) + 1) goes one too far.",
+        "range(len(fruits)) gives valid indices 0, 1, 2.",
+        "Or even simpler: `for fruit in fruits:` skips indices entirely."
+      ]
+    },
+    {
+      "id": "fix-logic-bug",
+      "title": "Fix the logic bug",
+      "prompt": "This function is supposed to return the SUM of a list, but it's returning the wrong value. Use print() to trace the bug, then fix it. Expected output: `Sum is 15`.",
+      "goal": "Use print-debugging to find a loop accumulator bug.",
+      "starterCode": "def total(nums):\n    s = 0\n    for n in nums:\n        s = n\n    return s\n\nprint(f\"Sum is {total([1, 2, 3, 4, 5])}\")\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Sum is 15" }
+      ],
+      "hints": [
+        "Add `print(s)` inside the loop to see how s changes.",
+        "`s = n` overwrites the total every time — you want `s += n`.",
+        "`+=` means \"add to the existing value\"."
+      ]
+    }
   ]
 }

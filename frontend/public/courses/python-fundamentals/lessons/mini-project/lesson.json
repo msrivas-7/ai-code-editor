@@ -44,5 +44,54 @@
   "practicePrompts": [
     "Add a feature to find the student with the highest average grade.",
     "Can you save the grade book to a file and load it back?"
+  ],
+  "practiceExercises": [
+    {
+      "id": "top-student",
+      "title": "Find the top student",
+      "prompt": "Given the grade book below, write a function `top_student(book)` that returns the name of the student with the highest average. Print their name. Expected output: `Bob`.",
+      "goal": "Loop over a dict-of-lists, compute averages, track the max.",
+      "starterCode": "book = {\n    \"Alice\": [80, 85, 90],\n    \"Bob\": [95, 92, 98],\n    \"Cara\": [70, 75, 80],\n}\n\ndef top_student(book):\n    # Return the name with the highest average\n    pass\n\nprint(top_student(book))\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Bob" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def top_student" }
+      ],
+      "hints": [
+        "Loop over book.items(): you get (name, grades) pairs.",
+        "Track best_name and best_avg as you go.",
+        "avg = sum(grades) / len(grades)."
+      ]
+    },
+    {
+      "id": "class-average",
+      "title": "Class average",
+      "prompt": "Given the same grade book, write a function `class_average(book)` that returns the average of ALL grades across all students, rounded to 1 decimal place. Print it. Expected output: `84.3`.",
+      "goal": "Flatten nested data and compute a single aggregate.",
+      "starterCode": "book = {\n    \"Alice\": [80, 85, 90],\n    \"Bob\": [95, 92, 98],\n    \"Cara\": [70, 75, 80],\n}\n\ndef class_average(book):\n    # Return the class-wide average, rounded to 1 decimal\n    pass\n\nprint(class_average(book))\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "84.3" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def class_average" }
+      ],
+      "hints": [
+        "Collect all grades into one list, or accumulate total + count directly.",
+        "total / count gives the average.",
+        "round(value, 1) rounds to one decimal place."
+      ]
+    },
+    {
+      "id": "grade-report",
+      "title": "Formatted grade report",
+      "prompt": "Print a one-line report for Alice in this exact format: `Alice: avg=85.0, min=80, max=90`.",
+      "goal": "Combine dict lookup, list built-ins, and f-string formatting.",
+      "starterCode": "book = {\n    \"Alice\": [80, 85, 90],\n    \"Bob\": [95, 92, 98],\n    \"Cara\": [70, 75, 80],\n}\n\n# Print: Alice: avg=85.0, min=80, max=90\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Alice: avg=85.0, min=80, max=90" }
+      ],
+      "hints": [
+        "grades = book[\"Alice\"]",
+        "Use sum()/len() for avg, min() and max() for the extremes.",
+        "F-string: f\"Alice: avg={avg}, min={min(grades)}, max={max(grades)}\"."
+      ]
+    }
   ]
 }

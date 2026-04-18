@@ -27,5 +27,49 @@
   "practicePrompts": [
     "Can you print your name on one line and your favorite color on the next?",
     "Try printing a sentence that includes both single and double quotes."
+  ],
+  "practiceExercises": [
+    {
+      "id": "two-lines",
+      "title": "Two lines",
+      "prompt": "Use two print() statements so the output has exactly two lines: the first line says `Hello` and the second line says `World`.",
+      "goal": "Print `Hello` and `World` on separate lines.",
+      "starterCode": "# Print Hello on line 1 and World on line 2\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "Hello\nWorld" }
+      ],
+      "hints": [
+        "Every print() call ends with a newline automatically.",
+        "You need two separate print() statements — one for each line."
+      ]
+    },
+    {
+      "id": "quotes-inside",
+      "title": "Quotes inside a sentence",
+      "prompt": "Print this exact line: She said \"Python is fun!\". The double quotes must appear in the output.",
+      "goal": "Print a sentence that contains double-quote characters.",
+      "starterCode": "# Print: She said \"Python is fun!\"\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "She said \"Python is fun!\"" }
+      ],
+      "hints": [
+        "Wrap the outer string in single quotes so the double quotes are treated as normal characters.",
+        "Or use a backslash (\\\") to escape the double quotes inside a double-quoted string."
+      ]
+    },
+    {
+      "id": "ascii-art",
+      "title": "Mini ASCII art",
+      "prompt": "Print a small 3-line picture. The output must be exactly:\n*\n**\n***",
+      "goal": "Produce a 3-line triangle of stars using print().",
+      "starterCode": "# Print a triangle of stars\n",
+      "completionRules": [
+        { "type": "expected_stdout", "expected": "*\n**\n***" }
+      ],
+      "hints": [
+        "One print() per line of output.",
+        "Strings can have any characters inside the quotes — including `*`."
+      ]
+    }
   ]
 }

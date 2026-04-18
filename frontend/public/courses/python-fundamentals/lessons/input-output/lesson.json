@@ -37,5 +37,54 @@
   "practicePrompts": [
     "Ask the user for their birth year and print how old they are.",
     "Can you format a price to always show exactly 2 decimal places?"
+  ],
+  "practiceExercises": [
+    {
+      "id": "double-it",
+      "title": "Double the number",
+      "prompt": "Read a number from input(), convert it to an int, and print `Double is X` where X is the number times two. Use the stdin tab to provide `7` for testing.",
+      "goal": "Use input() + int() + an f-string to double the input.",
+      "starterCode": "# Read a number, double it, print the result\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.py", "pattern": "input(" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "int(" }
+      ],
+      "hints": [
+        "n = int(input(\"Enter a number: \"))",
+        "Use an f-string: print(f\"Double is {n * 2}\")."
+      ]
+    },
+    {
+      "id": "rectangle-area",
+      "title": "Rectangle area",
+      "prompt": "Read a width and height (two separate input() calls), convert both to float, and print `Area: <area>`. Pre-fill stdin with two lines like `3` and `4` (you should see `Area: 12.0`).",
+      "goal": "Read two numbers and print their product with a label.",
+      "starterCode": "# Read width, height, print area as a float\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.py", "pattern": "input(" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "float(" }
+      ],
+      "hints": [
+        "width = float(input(\"Width: \"))",
+        "height = float(input(\"Height: \"))",
+        "print(f\"Area: {width * height}\")"
+      ]
+    },
+    {
+      "id": "greeter",
+      "title": "Personal greeter",
+      "prompt": "Read a name and an age (two inputs), convert the age to int, and print `Hello <name>! You'll turn <age+1> next year.` Provide stdin lines like `Alex` and `17`.",
+      "goal": "Combine two inputs and a calculation into one f-string.",
+      "starterCode": "# Read name and age, greet them, show next year's age\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.py", "pattern": "input(" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "int(" }
+      ],
+      "hints": [
+        "Two input() calls — one for each piece.",
+        "int() only on the age, not the name.",
+        "F-strings can do math inside braces: f\"{age + 1}\"."
+      ]
+    }
   ]
 }
