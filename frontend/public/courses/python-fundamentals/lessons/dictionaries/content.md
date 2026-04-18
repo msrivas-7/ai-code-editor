@@ -12,10 +12,11 @@ A dictionary maps **keys** to **values** — like a real dictionary maps words t
 
 ## Instructions
 
-1. The starter code gives you a list of words from stdin.
-2. Build a **word frequency counter**: a dictionary where each key is a word and each value is how many times that word appears.
-3. Print each word and its count, sorted alphabetically.
-4. Print the most frequent word.
+You'll write two small functions that the grader will test with several inputs.
+
+1. Write `count_words(words)` — takes a list of words and returns a dict mapping each word to how many times it appears.
+2. Write `most_frequent(counts)` — takes a counts dict and returns the word with the highest count. If two words tie, return the one that comes first alphabetically.
+3. The starter has a driver that reads words from stdin and prints the sorted counts plus the most frequent word. Leave it as-is — it only runs when you click Run.
 
 Example for input `apple banana apple cherry banana apple`:
 ```

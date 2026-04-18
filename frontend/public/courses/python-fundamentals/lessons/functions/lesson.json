@@ -28,6 +28,67 @@
       "type": "required_file_contains",
       "file": "main.py",
       "pattern": "return "
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "celsius_to_fahrenheit freezing point",
+          "call": "celsius_to_fahrenheit(0)",
+          "expected": "32.0"
+        },
+        {
+          "name": "celsius_to_fahrenheit boiling point",
+          "call": "celsius_to_fahrenheit(100)",
+          "expected": "212.0"
+        },
+        {
+          "name": "celsius_to_fahrenheit room temp",
+          "call": "celsius_to_fahrenheit(25)",
+          "expected": "77.0"
+        },
+        {
+          "name": "classify_temp below freezing",
+          "call": "classify_temp(20)",
+          "expected": "'freezing'"
+        },
+        {
+          "name": "classify_temp cold range",
+          "call": "classify_temp(50)",
+          "expected": "'cold'"
+        },
+        {
+          "name": "classify_temp comfortable range",
+          "call": "classify_temp(72)",
+          "expected": "'comfortable'"
+        },
+        {
+          "name": "classify_temp hot range",
+          "call": "classify_temp(95)",
+          "expected": "'hot'"
+        },
+        {
+          "name": "celsius_to_fahrenheit negative",
+          "call": "celsius_to_fahrenheit(-40)",
+          "expected": "-40.0",
+          "hidden": true,
+          "category": "negative-temperatures"
+        },
+        {
+          "name": "classify_temp boundary cold→comfortable",
+          "call": "classify_temp(60)",
+          "expected": "'comfortable'",
+          "hidden": true,
+          "category": "range-boundaries"
+        },
+        {
+          "name": "classify_temp boundary comfortable→hot",
+          "call": "classify_temp(80)",
+          "expected": "'hot'",
+          "hidden": true,
+          "category": "range-boundaries"
+        }
+      ]
     }
   ],
   "prerequisiteLessonIds": [

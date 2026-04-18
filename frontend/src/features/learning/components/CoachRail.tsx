@@ -10,6 +10,18 @@ interface CoachRailProps {
   failedCheckCount: number;
   lessonComplete: boolean;
   tutorConfigured: boolean;
+  // Wave 2 (function_tests lessons only). Undefined → no function_tests on
+  // this lesson, so the split counters don't apply and legacy rules still
+  // fire off failedCheckCount.
+  hasFunctionTests?: boolean;
+  // Cumulative count of Check attempts where ≥1 VISIBLE test failed.
+  failedVisibleTests?: number;
+  // Cumulative count of Check attempts where visible all passed but ≥1
+  // HIDDEN test failed.
+  failedHiddenTests?: number;
+  // Current count of visible tests passing in the latest test report. Used
+  // by mixed-pass-fail to detect "making progress but stuck on one".
+  passedVisibleTests?: number;
 }
 
 interface Nudge {
@@ -66,6 +78,10 @@ export function pickNudge(
   dismissed: Set<string>,
   runPhrase: string = "Cmd+Enter",
 ): Nudge | null {
+  const failedVisible = p.failedVisibleTests ?? 0;
+  const failedHidden = p.failedHiddenTests ?? 0;
+  const passedVisible = p.passedVisibleTests ?? 0;
+
   const rules: Array<Nudge & { condition: boolean }> = [
     {
       id: "completed-idle",
@@ -73,9 +89,21 @@ export function pickNudge(
       icon: "🎯",
       message: "Nice work! You can practice more, or move on to the next lesson.",
     },
+    // Fires BEFORE many-fails: learner is making progress (at least one
+    // visible passes) but has repeatedly missed ≥2 visible tests. Points
+    // them at the specific failure instead of escalating to hints/tutor.
+    {
+      id: "mixed-pass-fail",
+      condition: !!p.hasFunctionTests && failedVisible >= 2 && passedVisible >= 1 && !p.checkPassed,
+      icon: "🎯",
+      message: "Most tests pass but one keeps failing. Focus on the one failing test and read its input carefully.",
+    },
     {
       id: "many-fails",
-      condition: p.failedCheckCount >= 3 && !p.checkPassed,
+      // Fires on any of: total check fails ≥3, visible-test fails ≥3, or
+      // hidden-test fails ≥3. For legacy lessons (no function_tests) only
+      // failedCheckCount is set, so behavior is unchanged.
+      condition: (p.failedCheckCount >= 3 || failedVisible >= 3 || failedHidden >= 3) && !p.checkPassed,
       icon: "💪",
       message: p.tutorConfigured
         ? "This one's tricky — try 'Show hints' in the instructions, or ask the tutor for help."
@@ -91,7 +119,9 @@ export function pickNudge(
       id: "ran-ok-check",
       condition: p.hasRun && !p.hasError && !p.hasChecked && !p.lessonComplete,
       icon: "✅",
-      message: "Your code ran! Click Check Solution to see if it passes.",
+      message: p.hasFunctionTests
+        ? "Your code ran! Click Check My Work — or switch to the Examples tab to try the test cases first."
+        : "Your code ran! Click Check My Work to see if it passes.",
     },
     {
       id: "ran-error",

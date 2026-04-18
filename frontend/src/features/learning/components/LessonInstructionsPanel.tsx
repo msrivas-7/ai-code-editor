@@ -13,6 +13,10 @@ export interface CoachState {
   failedCheckCount: number;
   lessonComplete: boolean;
   tutorConfigured: boolean;
+  hasFunctionTests?: boolean;
+  failedVisibleTests?: number;
+  failedHiddenTests?: number;
+  passedVisibleTests?: number;
 }
 
 interface LessonInstructionsPanelProps {

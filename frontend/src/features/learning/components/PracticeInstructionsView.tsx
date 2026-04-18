@@ -1,6 +1,39 @@
 import { useState } from "react";
 import type { PracticeExercise, ValidationResult } from "../types";
 
+function PracticeTestsMiniList({ exercise }: { exercise: PracticeExercise }) {
+  const rule = exercise.completionRules.find((r) => r.type === "function_tests");
+  const visible = rule?.tests?.filter((t) => !t.hidden) ?? [];
+  if (visible.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby={`practice-tests-${exercise.id}`}
+      className="mb-3 rounded-lg border border-border bg-elevated/40 px-3 py-2"
+    >
+      <h3
+        id={`practice-tests-${exercise.id}`}
+        className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted"
+      >
+        Your code should pass
+      </h3>
+      <ul className="space-y-1">
+        {visible.map((t, i) => (
+          <li key={i} className="flex items-baseline gap-2 text-[11px] leading-relaxed">
+            <code className="shrink-0 rounded bg-bg px-1.5 py-0.5 font-mono text-[11px] text-accent">
+              {t.call}
+            </code>
+            <span className="text-muted">→</span>
+            <code className="rounded bg-bg px-1.5 py-0.5 font-mono text-[11px] text-ink/80">
+              {t.expected}
+            </code>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 interface PracticeInstructionsViewProps {
   exercises: PracticeExercise[];
   currentIndex: number;
@@ -119,6 +152,8 @@ export function PracticeInstructionsView({
         </div>
 
         <p className="mb-3 text-xs leading-relaxed text-ink/80">{current.prompt}</p>
+
+        <PracticeTestsMiniList exercise={current} />
 
         {isComplete && (
           <div className="mb-3 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">

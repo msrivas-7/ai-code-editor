@@ -120,6 +120,11 @@ export default function LessonPage() {
   const [hasRun, setHasRun] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
   const [failedCheckCount, setFailedCheckCount] = useState(0);
+  // Wave 2 CoachRail signals — split the generic failedCheckCount into
+  // visible vs. hidden buckets so the rail can distinguish "passing the
+  // visible examples but blowing up on hidden edges" from "nothing works".
+  const [failedVisibleTests, setFailedVisibleTests] = useState(0);
+  const [failedHiddenTests, setFailedHiddenTests] = useState(0);
   const [practiceMode, setPracticeMode] = useState(false);
   const [practiceIndex, setPracticeIndex] = useState(0);
   const [practiceValidation, setPracticeValidation] = useState<ValidationResult | null>(null);
@@ -170,6 +175,8 @@ export default function LessonPage() {
     setHasRun(false);
     setHasChecked(false);
     setFailedCheckCount(0);
+    setFailedVisibleTests(0);
+    setFailedHiddenTests(0);
     setPracticeMode(false);
     setPracticeIndex(0);
     setPracticeValidation(null);
@@ -394,6 +401,16 @@ export default function LessonPage() {
     setHasChecked(true);
     if (!v.passed) {
       setFailedCheckCount((c) => c + 1);
+      // Split counters: visible-fail means ≥1 visible test failed THIS
+      // check; hidden-fail means visible all passed but ≥1 hidden failed.
+      // Only applies when function_tests ran — otherwise only
+      // failedCheckCount moves (legacy behavior).
+      if (latestReport && functionTests.length > 0) {
+        const visibleFails = latestReport.results.filter((r) => !r.hidden && !r.passed).length;
+        const hiddenFails = latestReport.results.filter((r) => r.hidden && !r.passed).length;
+        if (visibleFails > 0) setFailedVisibleTests((c) => c + 1);
+        else if (hiddenFails > 0) setFailedHiddenTests((c) => c + 1);
+      }
       const fail = pickFirstFailure(latestReport);
       if (fail) {
         setSameFailStreak((streak) => (fail.name === lastFailedName ? streak + 1 : 1));
@@ -561,6 +578,10 @@ export default function LessonPage() {
   const hasStderr = !!(lastResult?.stderr?.trim());
   const tutorConfigured = useAIStore((s) => s.keyStatus === "valid" && !!s.selectedModel);
 
+  const passedVisibleTests = testReport
+    ? testReport.results.filter((r) => !r.hidden && r.passed).length
+    : 0;
+
   const coachState = {
     hasEdited,
     hasRun,
@@ -570,6 +591,10 @@ export default function LessonPage() {
     failedCheckCount,
     lessonComplete: lp?.status === "completed" || !!validation?.passed,
     tutorConfigured,
+    hasFunctionTests: functionTests.length > 0,
+    failedVisibleTests,
+    failedHiddenTests,
+    passedVisibleTests,
   };
 
   const handleExplainError = useCallback(() => {
@@ -620,6 +645,8 @@ export default function LessonPage() {
     setHasRun(false);
     setHasChecked(false);
     setFailedCheckCount(0);
+    setFailedVisibleTests(0);
+    setFailedHiddenTests(0);
     startLesson(identity.learnerId, courseId, lessonId);
   }, [lesson, courseId, lessonId, identity.learnerId, resetLessonProgress, startLesson]);
 

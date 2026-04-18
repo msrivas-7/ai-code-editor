@@ -35,6 +35,57 @@
     {
       "type": "expected_stdout",
       "expected": "1. [ ] Buy groceries\n2. [x] Finish report\n3. [ ] Call dentist\nDone: 1/3"
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "add_task appends with id 1",
+          "setup": "_tasks = []\nadd_task(_tasks, 'buy milk')",
+          "call": "_tasks",
+          "expected": "[{'id': 1, 'text': 'buy milk', 'done': False}]"
+        },
+        {
+          "name": "add_task assigns sequential ids",
+          "setup": "_tasks = []\nadd_task(_tasks, 'one')\nadd_task(_tasks, 'two')\nadd_task(_tasks, 'three')",
+          "call": "[t['id'] for t in _tasks]",
+          "expected": "[1, 2, 3]"
+        },
+        {
+          "name": "add_task defaults done to False",
+          "setup": "_tasks = []\nadd_task(_tasks, 'hello')",
+          "call": "_tasks[0]['done']",
+          "expected": "False"
+        },
+        {
+          "name": "done_task marks the correct task done",
+          "setup": "_tasks = []\nadd_task(_tasks, 'a')\nadd_task(_tasks, 'b')\ndone_task(_tasks, 2)",
+          "call": "[(t['id'], t['done']) for t in _tasks]",
+          "expected": "[(1, False), (2, True)]"
+        },
+        {
+          "name": "done_task leaves other tasks alone",
+          "setup": "_tasks = []\nadd_task(_tasks, 'a')\nadd_task(_tasks, 'b')\nadd_task(_tasks, 'c')\ndone_task(_tasks, 2)",
+          "call": "[t['done'] for t in _tasks]",
+          "expected": "[False, True, False]"
+        },
+        {
+          "name": "add_task continues ids after done_task",
+          "setup": "_tasks = []\nadd_task(_tasks, 'first')\ndone_task(_tasks, 1)\nadd_task(_tasks, 'second')",
+          "call": "_tasks[1]['id']",
+          "expected": "2",
+          "hidden": true,
+          "category": "id-counter-stability"
+        },
+        {
+          "name": "done_task on already-done stays done",
+          "setup": "_tasks = []\nadd_task(_tasks, 'a')\ndone_task(_tasks, 1)\ndone_task(_tasks, 1)",
+          "call": "_tasks[0]['done']",
+          "expected": "True",
+          "hidden": true,
+          "category": "idempotent-done"
+        }
+      ]
     }
   ],
   "prerequisiteLessonIds": [

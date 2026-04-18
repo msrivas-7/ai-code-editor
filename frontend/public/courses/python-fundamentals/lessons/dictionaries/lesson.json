@@ -25,12 +25,56 @@
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": ".get("
+      "pattern": "def count_words"
     },
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": "for "
+      "pattern": "def most_frequent"
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "count_words counts repeats",
+          "call": "count_words(['apple', 'banana', 'apple'])",
+          "expected": "{'apple': 2, 'banana': 1}"
+        },
+        {
+          "name": "count_words single word",
+          "call": "count_words(['hi'])",
+          "expected": "{'hi': 1}"
+        },
+        {
+          "name": "count_words all unique",
+          "call": "count_words(['a', 'b', 'c'])",
+          "expected": "{'a': 1, 'b': 1, 'c': 1}"
+        },
+        {
+          "name": "most_frequent picks the top count",
+          "call": "most_frequent({'apple': 3, 'banana': 1, 'cherry': 2})",
+          "expected": "'apple'"
+        },
+        {
+          "name": "most_frequent breaks ties alphabetically",
+          "call": "most_frequent({'banana': 2, 'apple': 2, 'cherry': 2})",
+          "expected": "'apple'"
+        },
+        {
+          "name": "count_words empty list",
+          "call": "count_words([])",
+          "expected": "{}",
+          "hidden": true,
+          "category": "empty-input"
+        },
+        {
+          "name": "most_frequent with single entry",
+          "call": "most_frequent({'only': 7})",
+          "expected": "'only'",
+          "hidden": true,
+          "category": "minimal-input"
+        }
+      ]
     }
   ],
   "prerequisiteLessonIds": [

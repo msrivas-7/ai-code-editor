@@ -24,7 +24,7 @@
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": "def "
+      "pattern": "def letter_grade"
     },
     {
       "type": "required_file_contains",
@@ -32,9 +32,55 @@
       "pattern": "for "
     },
     {
-      "type": "required_file_contains",
-      "file": "main.py",
-      "pattern": ".get("
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "letter_grade A range",
+          "call": "letter_grade(95)",
+          "expected": "'A'"
+        },
+        {
+          "name": "letter_grade B range",
+          "call": "letter_grade(85)",
+          "expected": "'B'"
+        },
+        {
+          "name": "letter_grade C range",
+          "call": "letter_grade(75)",
+          "expected": "'C'"
+        },
+        {
+          "name": "letter_grade D range",
+          "call": "letter_grade(65)",
+          "expected": "'D'"
+        },
+        {
+          "name": "letter_grade F range",
+          "call": "letter_grade(42)",
+          "expected": "'F'"
+        },
+        {
+          "name": "letter_grade boundary A at 90",
+          "call": "letter_grade(90)",
+          "expected": "'A'",
+          "hidden": true,
+          "category": "range-boundaries"
+        },
+        {
+          "name": "letter_grade boundary F at 59",
+          "call": "letter_grade(59)",
+          "expected": "'F'",
+          "hidden": true,
+          "category": "range-boundaries"
+        },
+        {
+          "name": "letter_grade perfect score",
+          "call": "letter_grade(100)",
+          "expected": "'A'",
+          "hidden": true,
+          "category": "edge-values"
+        }
+      ]
     }
   ],
   "prerequisiteLessonIds": [

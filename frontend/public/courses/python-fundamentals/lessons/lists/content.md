@@ -12,13 +12,11 @@ A list is an ordered collection of items. You can add, remove, sort, and iterate
 
 ## Instructions
 
-1. The starter code gives you a list of numbers read from stdin (comma-separated).
-2. Write code that:
-   - Prints the original list
-   - Appends the number `0` to the end
-   - Removes any negative numbers
-   - Prints the cleaned list
-   - Prints the sum and average of the cleaned list
+You'll write two small functions that the grader will test with several inputs.
+
+1. Write `clean(numbers)` — returns a NEW list with `0` appended to the end and any negative numbers removed. Don't modify the input list.
+2. Write `average(numbers)` — returns the mean of the list (sum divided by length).
+3. The starter has a driver block that reads a comma-separated list from stdin and calls your functions. Leave it as-is — it only runs when you click Run.
 
 Example for input `3, -1, 7, 2, -4, 10`:
 ```

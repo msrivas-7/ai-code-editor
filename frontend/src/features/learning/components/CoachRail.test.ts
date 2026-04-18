@@ -44,7 +44,13 @@ describe("pickNudge", () => {
   it("returns 'check solution' when run ok but not checked", () => {
     const n = pickNudge({ ...base, hasEdited: true, hasRun: true }, 60, 5, none);
     expect(n?.id).toBe("ran-ok-check");
-    expect(n?.message).toMatch(/Check Solution/);
+    expect(n?.message).toMatch(/Check My Work/);
+  });
+
+  it("ran-ok-check mentions Examples tab when lesson has function_tests", () => {
+    const n = pickNudge({ ...base, hasEdited: true, hasRun: true, hasFunctionTests: true }, 60, 5, none);
+    expect(n?.id).toBe("ran-ok-check");
+    expect(n?.message).toMatch(/Examples tab/);
   });
 
   it("returns error nudge when run has error and idle > 30s", () => {
@@ -72,6 +78,99 @@ describe("pickNudge", () => {
     const n = pickNudge({ ...base, hasEdited: true, hasRun: true, hasChecked: true, failedCheckCount: 3 }, 60, 5, none);
     expect(n?.id).toBe("many-fails");
     expect(n?.message).toMatch(/tricky/i);
+  });
+
+  it("many-fails fires on 3+ visible test fails (function_tests lesson)", () => {
+    const n = pickNudge(
+      { ...base, hasEdited: true, hasRun: true, hasChecked: true, hasFunctionTests: true, failedVisibleTests: 3 },
+      60,
+      5,
+      none,
+    );
+    expect(n?.id).toBe("many-fails");
+  });
+
+  it("many-fails fires on 3+ hidden test fails (function_tests lesson)", () => {
+    const n = pickNudge(
+      { ...base, hasEdited: true, hasRun: true, hasChecked: true, hasFunctionTests: true, failedHiddenTests: 3 },
+      60,
+      5,
+      none,
+    );
+    expect(n?.id).toBe("many-fails");
+  });
+
+  it("mixed-pass-fail fires when 2+ visible fails AND 1+ visible passes", () => {
+    const n = pickNudge(
+      {
+        ...base,
+        hasEdited: true,
+        hasRun: true,
+        hasChecked: true,
+        hasFunctionTests: true,
+        failedVisibleTests: 2,
+        passedVisibleTests: 3,
+      },
+      60,
+      5,
+      none,
+    );
+    expect(n?.id).toBe("mixed-pass-fail");
+    expect(n?.message).toMatch(/one failing test/i);
+  });
+
+  it("mixed-pass-fail does NOT fire when no visible tests pass", () => {
+    const n = pickNudge(
+      {
+        ...base,
+        hasEdited: true,
+        hasRun: true,
+        hasChecked: true,
+        hasFunctionTests: true,
+        failedVisibleTests: 2,
+        passedVisibleTests: 0,
+      },
+      60,
+      5,
+      none,
+    );
+    expect(n?.id).not.toBe("mixed-pass-fail");
+  });
+
+  it("mixed-pass-fail does NOT fire without function_tests on the lesson", () => {
+    const n = pickNudge(
+      {
+        ...base,
+        hasEdited: true,
+        hasRun: true,
+        hasChecked: true,
+        failedVisibleTests: 2,
+        passedVisibleTests: 3,
+      },
+      60,
+      5,
+      none,
+    );
+    expect(n?.id).not.toBe("mixed-pass-fail");
+  });
+
+  it("mixed-pass-fail takes priority over many-fails", () => {
+    const n = pickNudge(
+      {
+        ...base,
+        hasEdited: true,
+        hasRun: true,
+        hasChecked: true,
+        hasFunctionTests: true,
+        failedCheckCount: 3,
+        failedVisibleTests: 2,
+        passedVisibleTests: 1,
+      },
+      60,
+      5,
+      none,
+    );
+    expect(n?.id).toBe("mixed-pass-fail");
   });
 
   it("returns completion nudge when lesson complete", () => {

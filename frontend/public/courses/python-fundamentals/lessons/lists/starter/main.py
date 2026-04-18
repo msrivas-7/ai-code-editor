@@ -1,17 +1,28 @@
 # Lists — Clean and Summarize
 
-raw = input("Enter comma-separated numbers: ")
-parts = raw.split(",")
-numbers = []
-for x in parts:
-    numbers.append(int(x.strip()))
+# TODO: Write clean(numbers) that returns a NEW list:
+#   - with 0 appended to the end
+#   - with any negative numbers removed
+# Don't modify the input list.
+def clean(numbers):
+    pass
 
-print(f"Original: {numbers}")
 
-# TODO: Append 0 to the list
+# TODO: Write average(numbers) that returns the mean (sum divided by length).
+# Assume the list has at least one number.
+def average(numbers):
+    pass
 
-# TODO: Remove negative numbers (build a new list, don't modify while iterating)
 
-# TODO: Print the cleaned list
+# The block below only runs when you click Run — the grader tests your
+# functions directly, so it skips this part.
+if __name__ == "__main__":
+    raw = input("Enter comma-separated numbers: ")
+    parts = raw.split(",")
+    numbers = [int(x.strip()) for x in parts]
 
-# TODO: Print the sum and average of the cleaned list
+    print(f"Original: {numbers}")
+    cleaned = clean(numbers)
+    print(f"Cleaned: {cleaned}")
+    print(f"Sum: {sum(cleaned)}")
+    print(f"Average: {average(cleaned)}")

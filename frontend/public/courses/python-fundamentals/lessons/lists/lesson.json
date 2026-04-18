@@ -25,12 +25,57 @@
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": "append(0"
+      "pattern": "def clean"
     },
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": "sum("
+      "pattern": "def average"
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "clean appends 0",
+          "call": "clean([1, 2, 3])",
+          "expected": "[1, 2, 3, 0]"
+        },
+        {
+          "name": "clean removes negatives",
+          "call": "clean([3, -1, 7, -4, 10])",
+          "expected": "[3, 7, 10, 0]"
+        },
+        {
+          "name": "clean handles empty input",
+          "call": "clean([])",
+          "expected": "[0]"
+        },
+        {
+          "name": "average of whole numbers",
+          "call": "average([1, 2, 3, 4, 5])",
+          "expected": "3.0"
+        },
+        {
+          "name": "average with one number",
+          "call": "average([42])",
+          "expected": "42.0"
+        },
+        {
+          "name": "clean does not mutate its input",
+          "setup": "_nums = [1, -2, 3]\n_ = clean(_nums)",
+          "call": "_nums",
+          "expected": "[1, -2, 3]",
+          "hidden": true,
+          "category": "no-mutation"
+        },
+        {
+          "name": "average handles decimals cleanly",
+          "call": "average([1, 2])",
+          "expected": "1.5",
+          "hidden": true,
+          "category": "decimal-results"
+        }
+      ]
     }
   ],
   "prerequisiteLessonIds": [
