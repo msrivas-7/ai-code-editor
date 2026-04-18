@@ -1,0 +1,90 @@
+# Architecture
+
+```
+                           +--------------------------------------------+
+                           |           Docker Desktop (host)            |
+                           |                                            |
++------------------+  HTTP/JSON  +------------------+  docker.sock  +------------------+
+|     Frontend     | ----------> |     Backend      | ------------> |  Runner (1:1)    |
+|                  |             |                  |   (sibling)   |                  |
+|  React + Vite    |             |  Express + TS    |               |  Python, Node,   |
+|  React Router    | <---------- |  dockerode       | <------------ |  gcc, JDK, Go,   |
+|  Monaco + Zustand|   SSE/JSON  |  prompt builders |   stdout/err  |  Rust, Ruby      |
+|  Tailwind CSS    |             |  OpenAI proxy    |               |  --network none  |
++------------------+             +------------------+               +------------------+
+      :5173                            :4000                    bind: ./temp/sessions/{id}
+```
+
+## Frontend
+
+- **React Router** — `/` (start page), `/editor`, `/learn`, `/learn/course/:id`, `/learn/course/:id/lesson/:id`. Lazy-loaded pages with Suspense.
+- **6 Zustand stores** — `projectStore` (files/editor, per-context switching), `aiStore` (tutor/history, per-context switching), `sessionStore` (backend session), `runStore` (execution, per-context switching), `progressStore` (lesson progress in localStorage), `learnerStore` (anonymous identity).
+- **Shared tutor rendering** — `TutorResponseViews.tsx` provides section cards, badges, walkthrough steps, interactive check questions, citations, action chips, and error views. Used by both `AssistantPanel` (editor) and `GuidedTutorPanel` (lessons).
+- **Course content** — static JSON + Markdown in `frontend/public/courses/`. Loaded at runtime via fetch. No build step for content authoring.
+
+## Backend
+
+- **Sibling-container pattern** — the backend spawns isolated runner containers via the host Docker daemon. Cross-platform host-path discovery via Docker API self-inspection.
+- **Modular prompt pipeline** — `prompts/` directory with separate modules for core rules, stuck detection, persona, situation building, context rendering, schema, and summarization. Two prompt builders assemble from these modules:
+  - `editorPromptBuilder` — free-form editor tutor
+  - `guidedPromptBuilder` — adds lesson context block with objectives, concept scope, and "never solve" constraints
+- **Structured JSON responses** — OpenAI Responses API with strict `json_schema`. Intent classification (`debug`/`concept`/`howto`/`walkthrough`/`checkin`) drives which sections get filled.
+- **Provider abstraction** — prompt building and API calls sit behind a `Provider` interface. When `lessonContext` is present in the request, the guided prompt builder is used automatically.
+
+## Guided Learning System
+
+- **File-based courses** — `frontend/public/courses/{courseId}/lessons/{lessonId}/` containing `lesson.json` (metadata, objectives, completion rules), `content.md` (instructions), and `starter/` (initial files).
+- **Client-side validation** — `expected_stdout` (output comparison) and `required_file_contains` (code content checks). Runs against the latest `RunResult` without a backend round-trip.
+- **localStorage persistence** — versioned keys (`learner:v1:progress:{courseId}`, `learner:v1:lesson:{courseId}:{lessonId}`). Course/lesson status, timestamps, attempt/run/hint counts, code snapshots, and last output.
+- **Atomic state mutations** — all progress counters use Zustand's `set()` callback for race-condition-free read-modify-write, with automatic localStorage fallback for hydration.
+- **Repository abstraction** — `LearningRepository` interface with `LocalLearningRepository` (localStorage) and `RemoteLearningRepository` (stub) for future backend persistence.
+- **Coach rail** — `CoachRail` component with a priority-ordered rule engine. Observes elapsed time, edit/run/check state, and failed attempt count to surface one contextual nudge at a time. Purely deterministic — no AI or API calls.
+- **Onboarding overlays** — `WelcomeOverlay`, `EditorCoach`, and `WorkspaceCoach` use `box-shadow` cutouts for spotlight effects. Each persisted via separate localStorage flags; auto-skip steps whose target ref is null.
+
+## API Surface
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/session` | Create session + runner container |
+| `POST` | `/api/session/ping` | Heartbeat |
+| `POST` | `/api/session/rebind` | Reuse same ID after expiry |
+| `POST` | `/api/session/end` | Destroy session + container |
+| `POST` | `/api/project/snapshot` | Write project into workspace |
+| `POST` | `/api/execute` | Compile (if needed) and run |
+| `POST` | `/api/ai/validate-key` | Check an OpenAI key |
+| `GET`  | `/api/ai/models` | List chat-capable models |
+| `POST` | `/api/ai/ask/stream` | Tutor turn (SSE stream, supports `lessonContext`) |
+| `POST` | `/api/ai/ask` | Tutor turn (non-streaming) |
+| `POST` | `/api/ai/summarize` | Compress older history |
+
+## Project Layout
+
+```
+codetutor-ai/
+├── backend/                 Express + TypeScript
+│   └── src/services/ai/
+│       ├── prompts/         Modular prompt components (8 modules)
+│       ├── editorPromptBuilder.ts
+│       └── guidedPromptBuilder.ts
+├── frontend/                React + Vite + Tailwind
+│   ├── public/courses/      Course content (JSON + Markdown + starter files)
+│   └── src/
+│       ├── components/      Shared UI (Monaco, tutor views, settings, splitters)
+│       ├── features/learning/
+│       │   ├── pages/       Dashboard, CourseOverview, LessonPage
+│       │   ├── components/  GuidedTutorPanel, LessonInstructions, CoachRail, WorkspaceCoach, etc.
+│       │   ├── stores/      progressStore, learnerStore (localStorage-backed)
+│       │   ├── repositories/ LearningRepository interface + implementations
+│       │   └── utils/       Lesson validator
+│       ├── pages/           StartPage, EditorPage
+│       └── state/           Zustand stores (project, ai, session, run)
+├── runner-image/            Polyglot Dockerfile (9 language toolchains)
+├── samples/                 Starter projects per language
+├── docker-compose.yml
+├── start.sh / stop.sh       macOS/Linux launcher
+└── start.ps1 / stop.ps1     Windows launcher
+```
+
+## Security Note
+
+The Docker socket mount gives the backend root-equivalent access to the local daemon — fine for local use, **not** suitable for public deployment without further sandboxing.
