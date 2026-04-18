@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoachBubble } from "../features/learning/components/CoachBubble";
+import { useShortcutLabels } from "../util/platform";
 
 const LS_KEY = "onboarding:v1:editor-done";
 
@@ -18,44 +19,46 @@ interface CoachStep {
   position: "top" | "bottom" | "left" | "right";
 }
 
-const STEPS: CoachStep[] = [
-  {
-    targetKey: "langPicker",
-    title: "Pick a Language",
-    body: "Choose from 9 languages. Switching loads a starter project so you can jump right in.",
-    position: "bottom",
-  },
-  {
-    targetKey: "fileTree",
-    title: "File Tree",
-    body: "Your project files live here. Click a file to open it in the editor. Some starters have multiple files.",
-    position: "right",
-  },
-  {
-    targetKey: "editor",
-    title: "Code Editor",
-    body: "Write your code here — it's the same engine that powers VS Code. Syntax highlighting, autocomplete, and more.",
-    position: "left",
-  },
-  {
-    targetKey: "runButton",
-    title: "Run Your Code",
-    body: "Click this to run your code in a sandboxed Docker container. You can also press Cmd+Enter (or Ctrl+Enter).",
-    position: "bottom",
-  },
-  {
-    targetKey: "outputPanel",
-    title: "Output Panel",
-    body: "Your code's output, errors, and execution time show up here. There's also a Stdin tab for providing input.",
-    position: "top",
-  },
-  {
-    targetKey: "tutorPanel",
-    title: "AI Tutor",
-    body: "Ask questions about your code and get structured hints. Highlight code and press Cmd+K to ask about a selection. Requires an OpenAI API key in Settings.",
-    position: "left",
-  },
-];
+function buildSteps(runPhrase: string, askPhrase: string): CoachStep[] {
+  return [
+    {
+      targetKey: "langPicker",
+      title: "Pick a Language",
+      body: "Choose from 9 languages. Switching loads a starter project so you can jump right in.",
+      position: "bottom",
+    },
+    {
+      targetKey: "fileTree",
+      title: "File Tree",
+      body: "Your project files live here. Click a file to open it in the editor. Some starters have multiple files.",
+      position: "right",
+    },
+    {
+      targetKey: "editor",
+      title: "Code Editor",
+      body: "Write your code here — it's the same engine that powers VS Code. Syntax highlighting, autocomplete, and more.",
+      position: "left",
+    },
+    {
+      targetKey: "runButton",
+      title: "Run Your Code",
+      body: `Click this to run your code in a sandboxed Docker container. You can also press ${runPhrase}.`,
+      position: "bottom",
+    },
+    {
+      targetKey: "outputPanel",
+      title: "Output Panel",
+      body: "Your code's output, errors, and execution time show up here. There's also a Stdin tab for providing input.",
+      position: "top",
+    },
+    {
+      targetKey: "tutorPanel",
+      title: "AI Tutor",
+      body: `Ask questions about your code and get structured hints. Highlight code and press ${askPhrase} to ask about a selection. Requires an OpenAI API key in Settings.`,
+      position: "left",
+    },
+  ];
+}
 
 export interface EditorCoachRefs {
   langPicker: HTMLElement | null;
@@ -74,6 +77,8 @@ interface EditorCoachProps {
 export function EditorCoach({ refs, onComplete }: EditorCoachProps) {
   const [step, setStep] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const keys = useShortcutLabels();
+  const STEPS = useMemo(() => buildSteps(keys.runPhrase, keys.askPhrase), [keys]);
 
   const currentStep = STEPS[step];
   const targetEl = currentStep ? refs[currentStep.targetKey] : null;
@@ -88,7 +93,7 @@ export function EditorCoach({ refs, onComplete }: EditorCoachProps) {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [targetEl, step, onComplete]);
+  }, [targetEl, step, onComplete, STEPS.length]);
 
   const advance = useCallback(() => {
     if (step >= STEPS.length - 1) {
@@ -97,7 +102,7 @@ export function EditorCoach({ refs, onComplete }: EditorCoachProps) {
     } else {
       setStep((s) => s + 1);
     }
-  }, [step, onComplete]);
+  }, [step, onComplete, STEPS.length]);
 
   const dismiss = useCallback(() => {
     markDone();

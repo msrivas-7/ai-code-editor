@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoachBubble } from "./CoachBubble";
+import { useShortcutLabels } from "../../../util/platform";
 
 const LS_KEY = "onboarding:v1:workspace-done";
 
@@ -10,44 +11,46 @@ interface CoachStep {
   position: "top" | "bottom" | "left" | "right";
 }
 
-const STEPS: CoachStep[] = [
-  {
-    targetKey: "instructions",
-    title: "Lesson Instructions",
-    body: "This panel has your lesson instructions. Read them to learn what you need to do.",
-    position: "right",
-  },
-  {
-    targetKey: "editor",
-    title: "Code Editor",
-    body: "This is where you write your code. Try changing the text inside the quotes to get started.",
-    position: "left",
-  },
-  {
-    targetKey: "runButton",
-    title: "Run Your Code",
-    body: "Press this button to run your code and see the output. You can also press Cmd+Enter (or Ctrl+Enter).",
-    position: "top",
-  },
-  {
-    targetKey: "outputPanel",
-    title: "Output Panel",
-    body: "Your code's output shows up here — what it prints, any errors, and how long it took.",
-    position: "top",
-  },
-  {
-    targetKey: "checkButton",
-    title: "Check Solution",
-    body: "When you think your answer is right, click this to verify. It checks your output against what the lesson expects.",
-    position: "top",
-  },
-  {
-    targetKey: "tutorPanel",
-    title: "AI Tutor",
-    body: "If you get stuck, your AI tutor can help — it'll guide you without giving away the answer. You can also skip it entirely.",
-    position: "left",
-  },
-];
+function buildSteps(runPhrase: string): CoachStep[] {
+  return [
+    {
+      targetKey: "instructions",
+      title: "Lesson Instructions",
+      body: "This panel has your lesson instructions. Read them to learn what you need to do.",
+      position: "right",
+    },
+    {
+      targetKey: "editor",
+      title: "Code Editor",
+      body: "This is where you write your code. Try changing the text inside the quotes to get started.",
+      position: "left",
+    },
+    {
+      targetKey: "runButton",
+      title: "Run Your Code",
+      body: `Press this button to run your code and see the output. You can also press ${runPhrase}.`,
+      position: "top",
+    },
+    {
+      targetKey: "outputPanel",
+      title: "Output Panel",
+      body: "Your code's output shows up here — what it prints, any errors, and how long it took.",
+      position: "top",
+    },
+    {
+      targetKey: "checkButton",
+      title: "Check Solution",
+      body: "When you think your answer is right, click this to verify. It checks your output against what the lesson expects.",
+      position: "top",
+    },
+    {
+      targetKey: "tutorPanel",
+      title: "AI Tutor",
+      body: "If you get stuck, your AI tutor can help — it'll guide you without giving away the answer. You can also skip it entirely.",
+      position: "left",
+    },
+  ];
+}
 
 export interface WorkspaceCoachRefs {
   instructions: HTMLElement | null;
@@ -74,6 +77,8 @@ function markDone(): void {
 export function WorkspaceCoach({ refs, onComplete }: WorkspaceCoachProps) {
   const [step, setStep] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const keys = useShortcutLabels();
+  const STEPS = useMemo(() => buildSteps(keys.runPhrase), [keys]);
 
   const currentStep = STEPS[step];
   const targetEl = currentStep ? refs[currentStep.targetKey] : null;
@@ -88,7 +93,7 @@ export function WorkspaceCoach({ refs, onComplete }: WorkspaceCoachProps) {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [targetEl, step, onComplete]);
+  }, [targetEl, step, onComplete, STEPS.length]);
 
   const advance = useCallback(() => {
     if (step >= STEPS.length - 1) {
@@ -97,7 +102,7 @@ export function WorkspaceCoach({ refs, onComplete }: WorkspaceCoachProps) {
     } else {
       setStep((s) => s + 1);
     }
-  }, [step, onComplete]);
+  }, [step, onComplete, STEPS.length]);
 
   const dismiss = useCallback(() => {
     markDone();

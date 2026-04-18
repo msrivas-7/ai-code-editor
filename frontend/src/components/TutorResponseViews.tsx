@@ -462,12 +462,25 @@ export function ThinkingSkeleton() {
   );
 }
 
-export function AskErrorView({ message }: { message: string }) {
-  const { title, hint } = classifyAskError(message);
+export function AskErrorView({
+  message,
+  onRetry,
+  retryDisabled,
+}: {
+  message: string;
+  onRetry?: () => void;
+  retryDisabled?: boolean;
+}) {
+  const { kind, title, hint } = classifyAskError(message);
+  // Auth errors need a new key, not a retry — don't offer one.
+  const canRetry = onRetry && kind !== "auth";
   return (
-    <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs">
+    <div
+      role="alert"
+      className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs"
+    >
       <div className="mb-1 flex items-center gap-1.5">
-        <span className="text-danger">!</span>
+        <span aria-hidden="true" className="text-danger">!</span>
         <span className="rounded bg-danger/20 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-danger">
           {title}
         </span>
@@ -476,6 +489,20 @@ export function AskErrorView({ message }: { message: string }) {
       <div className="whitespace-pre-wrap break-words font-mono text-[11px] text-muted">
         {message}
       </div>
+      {canRetry && (
+        <button
+          onClick={onRetry}
+          disabled={retryDisabled}
+          className="mt-2 inline-flex items-center gap-1 rounded-md border border-danger/40 bg-danger/15 px-2 py-1 text-[11px] font-semibold text-danger transition hover:bg-danger/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger/50 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Retry the last question"
+        >
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          Try again
+        </button>
+      )}
     </div>
   );
 }

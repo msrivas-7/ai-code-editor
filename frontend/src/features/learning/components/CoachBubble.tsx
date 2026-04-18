@@ -51,9 +51,17 @@ export function CoachBubble({ title, body, position, rect, onNext, stepLabel }: 
 }
 
 function clampV(v: number): number {
-  return Math.max(MARGIN, Math.min(v, window.innerHeight - 200));
+  // Assume bubble is ~200px tall but cap reserve to half of viewport so that
+  // short landscape phone viewports (e.g. 360px) still allow positioning.
+  const reserve = Math.min(200, Math.floor(window.innerHeight / 2));
+  const maxTop = Math.max(MARGIN, window.innerHeight - reserve);
+  return Math.max(MARGIN, Math.min(v, maxTop));
 }
 
 function clampH(v: number): number {
-  return Math.max(MARGIN + 160, Math.min(v, window.innerWidth - 160 - MARGIN));
+  // Bubble is ~320px wide; on narrow screens fall back to small horizontal margin.
+  const halfWidth = Math.min(160, Math.floor(window.innerWidth / 2) - MARGIN);
+  const minLeft = MARGIN + Math.max(0, halfWidth);
+  const maxLeft = Math.max(minLeft, window.innerWidth - halfWidth - MARGIN);
+  return Math.max(minLeft, Math.min(v, maxLeft));
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useShortcutLabels } from "../../../util/platform";
 
 interface CoachRailProps {
   hasEdited: boolean;
@@ -24,6 +25,7 @@ export function CoachRail(props: CoachRailProps) {
   const [tick, setTick] = useState(0);
   const mountTime = useRef(Date.now());
   const lastActionTime = useRef(Date.now());
+  const keys = useShortcutLabels();
 
   useEffect(() => {
     lastActionTime.current = Date.now();
@@ -38,17 +40,18 @@ export function CoachRail(props: CoachRailProps) {
   const idle = Math.floor((Date.now() - lastActionTime.current) / 1000);
   void tick;
 
-  const nudge = pickNudge(props, elapsed, idle, dismissed);
+  const nudge = pickNudge(props, elapsed, idle, dismissed, keys.runPhrase);
   if (!nudge) return null;
 
   return (
     <div className="mb-3 flex items-start gap-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-2 text-xs leading-relaxed text-ink/80">
-      <span className="shrink-0 text-sm">{nudge.icon}</span>
+      <span className="shrink-0 text-sm" aria-hidden="true">{nudge.icon}</span>
       <span className="flex-1">{nudge.message}</span>
       <button
         onClick={() => setDismissed((s) => new Set(s).add(nudge.id))}
         className="shrink-0 rounded px-1 text-[11px] leading-none text-muted transition hover:text-ink"
-        title="Dismiss"
+        title="Dismiss this tip"
+        aria-label="Dismiss coach tip"
       >
         ×
       </button>
@@ -61,6 +64,7 @@ export function pickNudge(
   elapsed: number,
   idle: number,
   dismissed: Set<string>,
+  runPhrase: string = "Cmd+Enter",
 ): Nudge | null {
   const rules: Array<Nudge & { condition: boolean }> = [
     {
@@ -101,7 +105,7 @@ export function pickNudge(
       id: "edited-no-run",
       condition: p.hasEdited && !p.hasRun && idle > 45,
       icon: "▶️",
-      message: "Press the Run button (or Cmd+Enter) to see what your code does.",
+      message: `Press the Run button (or ${runPhrase}) to see what your code does.`,
     },
     {
       id: "no-edits-long",

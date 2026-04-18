@@ -125,4 +125,73 @@ describe("validateLesson", () => {
     expect(result.nextHints).toBeDefined();
     expect(result.nextHints!.length).toBeGreaterThan(0);
   });
+
+  describe("required_file_contains word-boundary matching", () => {
+    it("does NOT match 'int(' inside 'print('", () => {
+      const rules: CompletionRule[] = [
+        { type: "required_file_contains", file: "main.py", pattern: "int(" },
+      ];
+      const printOnly: ProjectFile[] = [
+        { path: "main.py", content: 'print("hi")\n' },
+      ];
+      const result = validateLesson(okRun, printOnly, rules);
+      expect(result.passed).toBe(false);
+    });
+
+    it("DOES match 'int(' when standalone", () => {
+      const rules: CompletionRule[] = [
+        { type: "required_file_contains", file: "main.py", pattern: "int(" },
+      ];
+      const withInt: ProjectFile[] = [
+        { path: "main.py", content: 'x = int(input("n: "))\n' },
+      ];
+      const result = validateLesson(okRun, withInt, rules);
+      expect(result.passed).toBe(true);
+    });
+
+    it("does NOT match 'append(' inside another identifier (hypothetical)", () => {
+      const rules: CompletionRule[] = [
+        { type: "required_file_contains", file: "main.py", pattern: "append(" },
+      ];
+      // A contrived case where "append" would be a substring of a longer identifier
+      const embedded: ProjectFile[] = [
+        { path: "main.py", content: "xappend(5)\n" },
+      ];
+      const result = validateLesson(okRun, embedded, rules);
+      expect(result.passed).toBe(false);
+    });
+
+    it("matches '.get(' as plain substring (non-word-starting pattern)", () => {
+      const rules: CompletionRule[] = [
+        { type: "required_file_contains", file: "main.py", pattern: ".get(" },
+      ];
+      const withGet: ProjectFile[] = [
+        { path: "main.py", content: "d.get(key, 0)\n" },
+      ];
+      const result = validateLesson(okRun, withGet, rules);
+      expect(result.passed).toBe(true);
+    });
+
+    it("matches identifier patterns after punctuation (method calls like '.append(')", () => {
+      const rules: CompletionRule[] = [
+        { type: "required_file_contains", file: "main.py", pattern: "append(" },
+      ];
+      const methodCall: ProjectFile[] = [
+        { path: "main.py", content: "numbers.append(0)\n" },
+      ];
+      const result = validateLesson(okRun, methodCall, rules);
+      expect(result.passed).toBe(true);
+    });
+
+    it("matches 'for ' even when trailing space is significant", () => {
+      const rules: CompletionRule[] = [
+        { type: "required_file_contains", file: "main.py", pattern: "for " },
+      ];
+      const withFor: ProjectFile[] = [
+        { path: "main.py", content: "for x in items:\n    print(x)\n" },
+      ];
+      const result = validateLesson(okRun, withFor, rules);
+      expect(result.passed).toBe(true);
+    });
+  });
 });

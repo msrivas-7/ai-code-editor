@@ -73,6 +73,7 @@ export default function CourseOverviewPage() {
         <button
           onClick={() => nav("/learn")}
           className="rounded px-2 py-1 text-xs text-muted transition hover:bg-elevated hover:text-ink"
+          aria-label="Back to courses"
         >
           ← Courses
         </button>
@@ -95,39 +96,65 @@ export default function CourseOverviewPage() {
               {course.description}
             </p>
 
-            <div className="mb-3 flex items-center gap-3">
-              <div className="h-2 flex-1 rounded-full bg-elevated">
+            <div className="mb-6 rounded-lg border border-border bg-panel/60 px-4 py-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  Progress
+                </span>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="font-medium text-ink">
+                    {completedIds.length}/{lessons.length} lessons
+                  </span>
+                  {practiceGrandTotal > 0 && (
+                    <>
+                      <span className="text-faint">·</span>
+                      <span className="font-medium text-violet/90">
+                        {practiceDoneTotal}/{practiceGrandTotal} practice
+                      </span>
+                    </>
+                  )}
+                  {cp && cp.status !== "not_started" && (
+                    <button
+                      onClick={() => setConfirmReset(true)}
+                      className="ml-1 rounded-md border border-danger/20 px-2 py-0.5 text-[10px] font-medium text-danger/80 transition hover:bg-danger/10 hover:text-danger"
+                      title="Reset all progress for this course (destructive)"
+                      aria-label="Reset all course progress"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-elevated"
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Course progress: ${completedIds.length} of ${lessons.length} lessons completed`}
+              >
                 <div
                   className="h-full rounded-full bg-violet transition-all"
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="text-xs font-medium text-muted">
-                {completedIds.length}/{lessons.length} lessons
-              </span>
-              {cp && cp.status !== "not_started" && (
-                <button
-                  onClick={() => setConfirmReset(true)}
-                  className="rounded-md px-2 py-1 text-[10px] text-muted transition hover:bg-red-500/10 hover:text-red-400"
-                  title="Reset all progress for this course"
+              {practiceGrandTotal > 0 && (
+                <div
+                  className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-elevated/60"
+                  role="progressbar"
+                  aria-valuenow={practicePct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`Practice progress: ${practiceDoneTotal} of ${practiceGrandTotal} exercises done`}
                 >
-                  Reset Course
-                </button>
-              )}
-            </div>
-            {practiceGrandTotal > 0 && (
-              <div className="mb-6 flex items-center gap-3">
-                <div className="h-1.5 flex-1 rounded-full bg-elevated">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-violet to-accent transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-violet/70 to-accent/70 transition-all"
                     style={{ width: `${practicePct}%` }}
+                    title={`${practiceDoneTotal}/${practiceGrandTotal} practice exercises`}
                   />
                 </div>
-                <span className="text-[10px] font-medium text-violet">
-                  {practiceDoneTotal}/{practiceGrandTotal} practice
-                </span>
-              </div>
-            )}
+              )}
+            </div>
 
             {completedIds.length === 0 && (!cp || cp.status === "not_started") && lessons.length > 0 && (
               <div className="mb-5 flex items-center gap-3 rounded-lg border border-accent/20 bg-accent/5 px-4 py-3">
@@ -146,6 +173,9 @@ export default function CourseOverviewPage() {
               onSelect={(lessonId) =>
                 nav(`/learn/course/${courseId}/lesson/${lessonId}`)
               }
+              onSelectPractice={(lessonId) =>
+                nav(`/learn/course/${courseId}/lesson/${lessonId}?mode=practice`)
+              }
             />
           </div>
         ) : (
@@ -156,7 +186,7 @@ export default function CourseOverviewPage() {
       </div>
       {confirmReset && course && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-xl border border-red-500/30 bg-panel p-5 shadow-xl">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-danger/30 bg-panel p-5 shadow-xl">
             <h2 className="text-sm font-bold text-ink">Reset Course Progress?</h2>
             <p className="mt-2 text-xs leading-relaxed text-muted">
               This will clear all progress for every lesson in <span className="font-semibold text-ink">{course.title}</span> — attempts, runs, hints, saved code, and completion status. You'll start the entire course from scratch.
@@ -173,7 +203,7 @@ export default function CourseOverviewPage() {
                   resetCourseProgress(identity.learnerId, courseId, course.lessonOrder);
                   setConfirmReset(false);
                 }}
-                className="flex-1 rounded-lg bg-red-500/15 px-4 py-2 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25"
+                className="flex-1 rounded-lg bg-danger/20 px-4 py-2 text-xs font-semibold text-danger ring-1 ring-danger/40 transition hover:bg-danger/30"
               >
                 Reset Course
               </button>

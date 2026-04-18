@@ -42,7 +42,11 @@ export function StatusBar() {
   const selectedModel = useAIStore((s) => s.selectedModel);
 
   return (
-    <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-border bg-panel px-3 text-[11px] text-muted">
+    <footer
+      role="contentinfo"
+      aria-label="Session status"
+      className="flex min-h-7 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-x-auto border-t border-border bg-panel px-3 py-1 text-[11px] text-muted sm:gap-x-4 sm:flex-nowrap sm:py-0"
+    >
       <div className="flex items-center gap-1.5">
         <span className={`inline-block h-2 w-2 rounded-full ${PHASE_DOT[phase]}`} />
         <span className="text-ink">{PHASE_LABEL[phase]}</span>

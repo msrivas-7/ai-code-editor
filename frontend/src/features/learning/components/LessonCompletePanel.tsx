@@ -1,8 +1,11 @@
 import type { LessonMeta } from "../types";
+import { formatTimeSpent, type MasteryLevel } from "../utils/mastery";
 
 interface LessonCompletePanelProps {
   lesson: LessonMeta;
   completedPracticeIds?: string[];
+  mastery?: MasteryLevel | null;
+  timeSpentMs?: number;
   onNext?: () => void;
   onDismiss: () => void;
   onStartPractice?: () => void;
@@ -11,6 +14,8 @@ interface LessonCompletePanelProps {
 export function LessonCompletePanel({
   lesson,
   completedPracticeIds = [],
+  mastery = null,
+  timeSpentMs,
   onNext,
   onDismiss,
   onStartPractice,
@@ -20,21 +25,37 @@ export function LessonCompletePanel({
   const practiceDone = practiceExercises.filter((ex) =>
     completedPracticeIds.includes(ex.id)
   ).length;
+  const showShakyNudge =
+    mastery === "shaky" && practiceCount > 0 && practiceDone < practiceCount;
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-md rounded-xl border border-green-500/30 bg-panel p-6 shadow-xl">
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="lesson-complete-title"
+      aria-describedby="lesson-complete-desc"
+      className="fixed inset-0 z-20 flex items-center justify-center bg-bg/80 backdrop-blur-sm"
+    >
+      <div className="mx-4 w-full max-w-md rounded-xl border border-success/30 bg-panel p-6 shadow-xl">
         <div className="mb-4 text-center">
-          <span className="text-4xl">🎉</span>
-          <h2 className="mt-2 text-lg font-bold text-green-400">Lesson Complete!</h2>
-          <p className="mt-1 text-sm text-muted">
+          <span aria-hidden="true" className="text-4xl">🎉</span>
+          <h2 id="lesson-complete-title" className="mt-2 text-lg font-bold text-success">Lesson Complete!</h2>
+          <p id="lesson-complete-desc" className="mt-1 text-sm text-muted">
             Lesson {lesson.order}: {lesson.title}
           </p>
+          {timeSpentMs !== undefined && timeSpentMs > 0 && (
+            <p className="mt-1.5 text-[11px] text-faint">
+              Time spent: <span className="font-medium text-muted">{formatTimeSpent(timeSpentMs)}</span>
+              {lesson.estimatedMinutes > 0 && (
+                <span className="opacity-70"> (est. {lesson.estimatedMinutes}m)</span>
+              )}
+            </p>
+          )}
         </div>
 
         {lesson.recap && (
-          <div className="mb-4 rounded-lg bg-green-500/5 px-4 py-3">
-            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-green-400/70">
+          <div className="mb-4 rounded-lg bg-success/5 px-4 py-3">
+            <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-success/70">
               What you learned
             </h3>
             <p className="text-xs leading-relaxed text-ink/80">{lesson.recap}</p>
@@ -55,7 +76,18 @@ export function LessonCompletePanel({
         )}
 
         {practiceCount > 0 && (
-          <div className="mb-5 rounded-lg border border-violet/20 bg-violet/5 px-4 py-3">
+          <div
+            className={`mb-5 rounded-lg border bg-violet/5 px-4 py-3 ${
+              showShakyNudge
+                ? "border-l-4 border-l-warn border-y-warn/25 border-r-warn/25"
+                : "border-violet/20"
+            }`}
+          >
+            {showShakyNudge && (
+              <p className="mb-2 text-[11px] font-medium leading-relaxed text-warn/90">
+                This one took a few tries — the practice below will help lock it in.
+              </p>
+            )}
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-violet/80">
                 Practice challenges (optional)
@@ -70,9 +102,10 @@ export function LessonCompletePanel({
                 return (
                   <li key={ex.id} className="flex items-start gap-2 text-xs text-ink/80">
                     <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                      aria-hidden="true"
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold md:h-4 md:w-4 md:text-[9px] ${
                         done
-                          ? "bg-green-500/20 text-green-400"
+                          ? "bg-success/20 text-success"
                           : "bg-violet/15 text-violet"
                       }`}
                     >
@@ -85,10 +118,11 @@ export function LessonCompletePanel({
                 );
               })}
             </ul>
-            {onStartPractice && practiceDone < practiceCount && (
+            {onStartPractice && practiceDone < practiceCount && !showShakyNudge && (
               <button
                 onClick={onStartPractice}
                 className="w-full rounded-lg bg-violet/20 px-3 py-1.5 text-xs font-semibold text-violet transition hover:bg-violet/30"
+                aria-label={practiceDone === 0 ? "Start practice challenges" : "Continue practice challenges"}
               >
                 {practiceDone === 0 ? "Start Practice" : "Continue Practice"}
               </button>
@@ -112,20 +146,54 @@ export function LessonCompletePanel({
           </div>
         )}
 
+        {/* CTA priority swap: when mastery is shaky and practice is incomplete,
+            Start Practice becomes primary and Next Lesson is secondary. */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={onDismiss}
-            className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
-          >
-            Keep practicing
-          </button>
-          {onNext && (
-            <button
-              onClick={onNext}
-              className="flex-1 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-bg transition hover:bg-accent/90"
-            >
-              Next Lesson →
-            </button>
+          {showShakyNudge && onStartPractice ? (
+            <>
+              <button
+                onClick={onDismiss}
+                className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+                aria-label="Close celebration and stay on this lesson"
+              >
+                Close
+              </button>
+              {onNext && (
+                <button
+                  onClick={onNext}
+                  className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+                  aria-label="Skip to next lesson"
+                >
+                  Next Lesson →
+                </button>
+              )}
+              <button
+                onClick={onStartPractice}
+                className="flex-1 rounded-lg bg-gradient-to-r from-violet to-accent px-4 py-2 text-xs font-bold text-bg shadow-glow transition hover:opacity-90"
+                aria-label={practiceDone === 0 ? "Start practice challenges" : "Continue practice challenges"}
+              >
+                {practiceDone === 0 ? "Start Practice →" : "Continue Practice →"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onDismiss}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+                aria-label="Close celebration and stay on this lesson"
+              >
+                Keep practicing
+              </button>
+              {onNext && (
+                <button
+                  onClick={onNext}
+                  className="flex-1 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-bg transition hover:bg-accent/90"
+                  aria-label="Go to next lesson"
+                >
+                  Next Lesson →
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

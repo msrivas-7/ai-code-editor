@@ -4,22 +4,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Semantic design tokens. Components should reference these instead of
-        // raw slate-*/sky-* so we can retheme in one place.
-        bg: "#0b1020",
-        panel: "#0f172a",
-        elevated: "#131b2e",
-        border: "#1f2a44",
-        borderSoft: "#1a243b",
-        ink: "#e6ecf5",
-        muted: "#94a3b8",
-        faint: "#64748b",
-        accent: "#38bdf8",
-        accentMuted: "#0ea5e9",
-        success: "#34d399",
-        warn: "#fbbf24",
-        danger: "#f87171",
-        violet: "#c084fc",
+        // Semantic design tokens backed by CSS variables defined in index.css.
+        // The variables switch between dark (default) and light themes via the
+        // [data-theme="light"] selector applied by util/theme.ts.
+        bg: "rgb(var(--color-bg) / <alpha-value>)",
+        panel: "rgb(var(--color-panel) / <alpha-value>)",
+        elevated: "rgb(var(--color-elevated) / <alpha-value>)",
+        border: "rgb(var(--color-border) / <alpha-value>)",
+        borderSoft: "rgb(var(--color-border-soft) / <alpha-value>)",
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        muted: "rgb(var(--color-muted) / <alpha-value>)",
+        faint: "rgb(var(--color-faint) / <alpha-value>)",
+        accent: "rgb(var(--color-accent) / <alpha-value>)",
+        accentMuted: "rgb(var(--color-accent-muted) / <alpha-value>)",
+        success: "rgb(var(--color-success) / <alpha-value>)",
+        warn: "rgb(var(--color-warn) / <alpha-value>)",
+        danger: "rgb(var(--color-danger) / <alpha-value>)",
+        violet: "rgb(var(--color-violet) / <alpha-value>)",
       },
       fontFamily: {
         sans: [
@@ -52,10 +53,15 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.35" },
         },
+        fadeInUp: {
+          "0%": { opacity: "0", transform: "translateY(4px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         shimmer: "shimmer 2.2s linear infinite",
         pulseDot: "pulseDot 1.6s ease-in-out infinite",
+        fadeInUp: "fadeInUp 180ms ease-out",
       },
     },
   },

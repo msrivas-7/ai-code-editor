@@ -3,7 +3,7 @@ import type { ProgressStatus } from "../types";
 const config: Record<ProgressStatus, { label: string; cls: string }> = {
   not_started: { label: "Not started", cls: "bg-elevated text-muted" },
   in_progress: { label: "In progress", cls: "bg-accent/15 text-accent" },
-  completed: { label: "Completed", cls: "bg-green-500/15 text-green-400" },
+  completed: { label: "Completed", cls: "bg-success/15 text-success" },
 };
 
 export function LessonProgressBadge({ status }: { status: ProgressStatus }) {

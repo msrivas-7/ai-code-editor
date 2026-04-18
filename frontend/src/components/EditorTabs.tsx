@@ -46,17 +46,18 @@ export function EditorTabs() {
             <span className={`font-mono text-[10px] font-semibold ${icon.color}`}>
               {icon.label}
             </span>
-            <span className="max-w-[180px] truncate font-mono">{name}</span>
+            <span className="max-w-[180px] truncate font-mono" aria-label={path}>{name}</span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 closeTab(path);
               }}
-              title="Close"
+              title={`Close ${name}`}
+              aria-label={`Close ${name}`}
               className={`ml-1 rounded px-1 text-[10px] leading-none transition ${
                 isActive
                   ? "text-muted hover:bg-danger/20 hover:text-danger"
-                  : "text-faint opacity-0 hover:bg-danger/20 hover:text-danger group-hover:opacity-100"
+                  : "text-faint hover:bg-danger/20 hover:text-danger"
               }`}
             >
               ✕
@@ -69,8 +70,9 @@ export function EditorTabs() {
         <button
           onClick={() => setPendingAsk(walkPrompt)}
           disabled={asking}
-          title={`Ask the tutor to walk through ${activeFile} step by step`}
-          className="mx-2 shrink-0 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent/10"
+          title={asking ? "Tutor is replying — try again in a moment." : `Walk through ${activeFile} step by step`}
+          aria-label={asking ? `Walk me through ${activeFile} (tutor busy)` : `Walk me through ${activeFile}`}
+          className="mx-2 shrink-0 rounded-md border border-accent/40 bg-accent/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent transition hover:bg-accent/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent/10"
         >
           Walk me through this →
         </button>

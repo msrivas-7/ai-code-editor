@@ -53,7 +53,7 @@ export function PracticeInstructionsView({
           <button
             onClick={() => setConfirmReset(true)}
             title="Reset practice progress for this lesson"
-            className="rounded p-1 text-muted transition hover:bg-red-500/10 hover:text-red-400"
+            className="rounded p-1 text-muted transition hover:bg-danger/10 hover:text-danger"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="1 4 1 10 7 10" />
@@ -91,14 +91,16 @@ export function PracticeInstructionsView({
                 <button
                   key={ex.id}
                   onClick={() => onSelectExercise(i)}
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition ${
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                     active
                       ? "bg-violet text-bg ring-2 ring-violet/40"
                       : done
-                        ? "bg-green-500/20 text-green-400"
+                        ? "bg-success/20 text-success"
                         : "bg-elevated text-muted hover:bg-elevated/70"
                   }`}
                   title={ex.title}
+                  aria-label={`Exercise ${i + 1}: ${ex.title}${done ? " (completed)" : ""}`}
+                  aria-current={active ? "true" : undefined}
                 >
                   {done ? "✓" : i + 1}
                 </button>
@@ -119,7 +121,7 @@ export function PracticeInstructionsView({
         <p className="mb-3 text-xs leading-relaxed text-ink/80">{current.prompt}</p>
 
         {isComplete && (
-          <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-500/10 px-3 py-2 text-xs text-green-400">
+          <div className="mb-3 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
             <span>✓</span>
             <span>You've completed this challenge.</span>
           </div>
@@ -132,7 +134,8 @@ export function PracticeInstructionsView({
               className="flex items-center gap-1 text-xs font-medium text-accent transition hover:text-accent/80"
             >
               <svg
-                className={`h-3 w-3 transition ${showHints ? "rotate-90" : ""}`}
+                className={`h-3 w-3 transition-transform duration-200 ${showHints ? "rotate-90" : ""}`}
+                aria-hidden="true"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -159,12 +162,12 @@ export function PracticeInstructionsView({
         {validation && (
           <div className="mt-3 space-y-1.5">
             {validation.passed ? (
-              <div className="rounded-lg bg-green-500/10 px-3 py-2 text-xs text-green-400">
+              <div className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
                 <div className="font-semibold">Nice work!</div>
                 <div className="mt-0.5 opacity-80">{validation.feedback[0]}</div>
               </div>
             ) : (
-              <div className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              <div role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
                 <div className="font-semibold">Not quite yet.</div>
                 <div className="mt-0.5 opacity-80">{validation.feedback[0]}</div>
                 {validation.nextHints?.[0] && (
@@ -189,7 +192,7 @@ export function PracticeInstructionsView({
         {isComplete && !hasNext && (
           <button
             onClick={onExitPractice}
-            className="mt-3 w-full rounded-lg bg-green-500/20 px-3 py-2 text-xs font-semibold text-green-400 transition hover:bg-green-500/30"
+            className="mt-3 w-full rounded-lg bg-success/20 px-3 py-2 text-xs font-semibold text-success transition hover:bg-success/30"
           >
             All practice done — back to lesson
           </button>
@@ -198,7 +201,7 @@ export function PracticeInstructionsView({
 
       {confirmReset && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-xs rounded-xl border border-red-500/30 bg-panel p-4 shadow-xl">
+          <div className="mx-4 w-full max-w-xs rounded-xl border border-danger/30 bg-panel p-4 shadow-xl">
             <h3 className="text-xs font-bold text-ink">Reset practice progress?</h3>
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
               This clears your practice completions for this lesson. Your lesson progress stays intact.
@@ -215,7 +218,7 @@ export function PracticeInstructionsView({
                   onResetPractice();
                   setConfirmReset(false);
                 }}
-                className="flex-1 rounded-md bg-red-500/15 px-3 py-1.5 text-[11px] font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25"
+                className="flex-1 rounded-md bg-danger/20 px-3 py-1.5 text-[11px] font-semibold text-danger ring-1 ring-danger/40 transition hover:bg-danger/30"
               >
                 Reset
               </button>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../state/projectStore";
 import { LANGUAGE_ENTRYPOINT } from "../types";
 import { fileIcon } from "../util/fileIcon";
@@ -12,6 +12,18 @@ export function FileTree({ onCollapse }: { onCollapse?: () => void }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    confirmButtonRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPendingDelete(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pendingDelete]);
 
   const entrypoint = LANGUAGE_ENTRYPOINT[language];
 
@@ -99,11 +111,18 @@ export function FileTree({ onCollapse }: { onCollapse?: () => void }) {
                   autoFocus
                   value={renameValue}
                   onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={() => commitRename(p)}
+                  onBlur={() => {
+                    setRenaming(null);
+                    setErr(null);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") commitRename(p);
-                    if (e.key === "Escape") setRenaming(null);
+                    if (e.key === "Escape") {
+                      setRenaming(null);
+                      setErr(null);
+                    }
                   }}
+                  title="Enter to save, Esc or click away to cancel"
                   className="w-full rounded bg-elevated px-2 py-1 font-mono text-xs text-ink outline-none ring-1 ring-accent"
                 />
               </li>
@@ -144,10 +163,16 @@ export function FileTree({ onCollapse }: { onCollapse?: () => void }) {
                 )}
                 <button
                   onClick={() => {
-                    if (confirm(`Delete ${p}?`)) deleteFile(p);
+                    if (order.length <= 1) {
+                      setErr("Keep at least one file — it's the entrypoint.");
+                      return;
+                    }
+                    setErr(null);
+                    setPendingDelete(p);
                   }}
-                  title="Delete"
-                  className="ml-0.5 hidden shrink-0 rounded px-1 py-0.5 text-muted transition hover:bg-danger/20 hover:text-danger group-hover:inline-block"
+                  title={`Delete ${p}`}
+                  aria-label={`Delete ${p}`}
+                  className="ml-0.5 inline-block shrink-0 rounded px-1.5 py-1 text-muted transition hover:bg-danger/20 hover:text-danger focus:outline-none focus-visible:ring-2 focus-visible:ring-danger md:hidden md:px-1 md:py-0.5 md:group-hover:inline-block md:group-focus-within:inline-block"
                 >
                   ✕
                 </button>
@@ -177,7 +202,51 @@ export function FileTree({ onCollapse }: { onCollapse?: () => void }) {
         )}
       </ul>
 
-      {err && <div className="mt-2 text-[11px] text-danger">{err}</div>}
+      {err && (
+        <div role="alert" className="mt-2 text-[11px] text-danger">
+          {err}
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="delete-file-title"
+          aria-describedby="delete-file-desc"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-bg/80 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPendingDelete(null);
+          }}
+        >
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-danger/30 bg-panel p-5 shadow-xl">
+            <h2 id="delete-file-title" className="text-sm font-bold text-ink">
+              Delete file?
+            </h2>
+            <p id="delete-file-desc" className="mt-2 text-xs leading-relaxed text-muted">
+              Permanently delete <span className="font-mono font-semibold text-ink">{pendingDelete}</span>? This can't be undone.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={() => setPendingDelete(null)}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Cancel
+              </button>
+              <button
+                ref={confirmButtonRef}
+                onClick={() => {
+                  deleteFile(pendingDelete);
+                  setPendingDelete(null);
+                }}
+                className="flex-1 rounded-lg bg-danger/20 px-4 py-2 text-xs font-semibold text-danger ring-1 ring-danger/40 transition hover:bg-danger/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

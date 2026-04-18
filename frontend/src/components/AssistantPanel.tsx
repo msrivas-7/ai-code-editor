@@ -14,8 +14,10 @@ import {
   AskErrorView,
   hasTutorContent,
 } from "./TutorResponseViews";
+import { TutorSetupWarning } from "./TutorSetupWarning";
+import { useShortcutLabels } from "../util/platform";
 
-export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
+export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: () => void; onOpenSettings?: () => void }) {
   const {
     apiKey,
     keyStatus,
@@ -58,11 +60,7 @@ export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const [isMac, setIsMac] = useState(true);
-
-  useEffect(() => {
-    setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform));
-  }, []);
+  const keys = useShortcutLabels();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -257,12 +255,7 @@ export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {!configured && (
-          <div className="rounded-md border border-warn/30 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
-            <div className="mb-1 font-semibold">Setup required</div>
-            Open <span className="font-semibold">Settings</span> (gear icon in the header) to configure your OpenAI API key and model.
-          </div>
-        )}
+        {!configured && <TutorSetupWarning onOpenSettings={onOpenSettings} />}
         {history.length === 0 && !asking && configured && (
           <div className="rounded-md border border-border bg-elevated/60 p-3 text-xs leading-relaxed text-muted">
             <div className="mb-1.5 font-semibold text-ink">Ask about your code.</div>
@@ -272,7 +265,7 @@ export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
             </div>
             <div className="mt-1.5 text-[11px] text-faint">
               Tip: highlight code in the editor to attach it to your question, or press{" "}
-              <span className="kbd">{isMac ? "⌘K" : "Ctrl+K"}</span> to jump here.
+              <kbd className="kbd">{keys.focusAsk}</kbd> to jump here.
             </div>
           </div>
         )}
@@ -285,7 +278,7 @@ export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
             i === history.length - 1 &&
             !asking;
           return (
-            <div key={i} className="flex flex-col gap-2">
+            <div key={i} className="flex flex-col gap-2 motion-safe:animate-fadeInUp">
               {m.role === "user" ? (
                 <div className="self-end max-w-[90%] rounded-md bg-accent/15 px-3 py-1.5 text-xs text-ink ring-1 ring-accent/30">
                   {m.content}
@@ -321,7 +314,19 @@ export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
             ? <TutorResponseView sections={pending.sections} disabled />
             : <ThinkingSkeleton />
         )}
-        {askError && <AskErrorView message={askError} />}
+        {askError && (
+          <AskErrorView
+            message={askError}
+            onRetry={() => {
+              const lastUser = [...history].reverse().find((m) => m.role === "user");
+              if (lastUser) {
+                setAskError(null);
+                setPendingAsk(lastUser.content);
+              }
+            }}
+            retryDisabled={asking || !configured}
+          />
+        )}
       </div>
 
       <div className="border-t border-border bg-panel p-2">
@@ -366,14 +371,18 @@ export function AssistantPanel({ onCollapse }: { onCollapse?: () => void }) {
           className="w-full resize-none rounded-md border border-border bg-elevated px-2.5 py-2 text-xs text-ink transition placeholder:text-faint focus:border-accent/60"
         />
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-faint">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
-            <span className="kbd">↵</span>
+          <div
+            role="group"
+            aria-label="Keyboard shortcuts"
+            className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5"
+          >
+            <kbd className="kbd">↵</kbd>
             <span>send</span>
-            <span className="text-border">·</span>
-            <span className="kbd">{isMac ? "⇧↵" : "Shift+↵"}</span>
+            <span aria-hidden="true" className="text-border">·</span>
+            <kbd className="kbd">{keys.newline}</kbd>
             <span>newline</span>
-            <span className="text-border">·</span>
-            <span className="kbd">{isMac ? "⌘K" : "Ctrl+K"}</span>
+            <span aria-hidden="true" className="text-border">·</span>
+            <kbd className="kbd">{keys.focusAsk}</kbd>
             <span>focus</span>
           </div>
           {asking ? (

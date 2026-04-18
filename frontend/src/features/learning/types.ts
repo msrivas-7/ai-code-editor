@@ -85,6 +85,7 @@ export interface LessonProgress {
   lastCode: Record<string, string> | null;
   lastOutput: string | null;
   practiceCompletedIds?: string[];
+  timeSpentMs?: number;
 }
 
 // ── Validation ─────────────────────────────────────────────────────

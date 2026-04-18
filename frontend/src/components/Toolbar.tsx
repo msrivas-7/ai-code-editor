@@ -1,9 +1,10 @@
-import { useEffect, useState, type Ref } from "react";
+import { type Ref } from "react";
 import { useProjectStore, starterStdin } from "../state/projectStore";
 import { useSessionStore } from "../state/sessionStore";
 import { useRunStore } from "../state/runStore";
 import { api } from "../api/client";
 import { LANGUAGES, LANGUAGE_LABEL, type Language } from "../types";
+import { useShortcutLabels } from "../util/platform";
 
 interface ToolbarProps {
   langPickerRef?: Ref<HTMLLabelElement>;
@@ -15,14 +16,9 @@ export function Toolbar({ langPickerRef, runButtonRef }: ToolbarProps = {}) {
   const sessionId = useSessionStore((s) => s.sessionId);
   const phase = useSessionStore((s) => s.phase);
   const { running, setRunning, setResult, setError, stdin, setStdin } = useRunStore();
-  const [isMac, setIsMac] = useState(true);
-
-  useEffect(() => {
-    setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform));
-  }, []);
+  const keys = useShortcutLabels();
 
   const canRun = Boolean(sessionId) && phase === "active" && !running;
-  const shortcut = isMac ? "⌘↵" : "Ctrl+↵";
 
   const handleRun = async () => {
     if (!sessionId) return;
@@ -82,7 +78,7 @@ export function Toolbar({ langPickerRef, runButtonRef }: ToolbarProps = {}) {
             ? "bg-success/15 text-success ring-1 ring-success/40 hover:bg-success/25 hover:shadow-glow"
             : "cursor-not-allowed bg-elevated text-muted ring-1 ring-border"
         }`}
-        title={canRun ? `Run project (${shortcut})` : "Waiting for session…"}
+        title={canRun ? `Run project (${keys.run})` : "Waiting for session…"}
       >
         <span className="text-[11px]">
           {running ? (
@@ -94,7 +90,7 @@ export function Toolbar({ langPickerRef, runButtonRef }: ToolbarProps = {}) {
             "▶ Run"
           )}
         </span>
-        {canRun && !running && <span className="kbd">{shortcut}</span>}
+        {canRun && !running && <kbd className="kbd">{keys.run}</kbd>}
       </button>
     </div>
   );

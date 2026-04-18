@@ -4,11 +4,12 @@ import type { editor as MonacoEditor } from "monaco-editor";
 import { useProjectStore, type RevealTarget } from "../state/projectStore";
 import { useAIStore } from "../state/aiStore";
 import { monacoLangFor } from "../types";
+import { useEffectiveTheme } from "../util/theme";
 
-// Custom dark theme tuned to the app palette so the editor feels like part of
-// the product instead of a drop-in. Colors lean on the same semantic tokens
-// (bg/panel/elevated/border/ink/muted/accent/violet/success).
-function defineTheme(monaco: Monaco) {
+// Custom themes tuned to the app palette so the editor feels like part of the
+// product. Dark maps to bg/panel/elevated tokens; light uses the inverse
+// greyscale with accent-tinted selection so both moods share the same identity.
+function defineThemes(monaco: Monaco) {
   monaco.editor.defineTheme("ai-dark", {
     base: "vs-dark",
     inherit: true,
@@ -49,6 +50,46 @@ function defineTheme(monaco: Monaco) {
       "scrollbarSlider.activeBackground": "#38bdf866",
     },
   });
+  monaco.editor.defineTheme("ai-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "", foreground: "0f172a" },
+      { token: "comment", foreground: "94a3b8", fontStyle: "italic" },
+      { token: "keyword", foreground: "7c3aed" },
+      { token: "string", foreground: "059669" },
+      { token: "number", foreground: "b45309" },
+      { token: "type", foreground: "0284c7" },
+      { token: "delimiter", foreground: "64748b" },
+      { token: "identifier", foreground: "0f172a" },
+      { token: "function", foreground: "0284c7" },
+      { token: "variable", foreground: "0f172a" },
+      { token: "namespace", foreground: "7c3aed" },
+    ],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.foreground": "#0f172a",
+      "editor.lineHighlightBackground": "#f1f5f9",
+      "editor.selectionBackground": "#0ea5e933",
+      "editor.inactiveSelectionBackground": "#0ea5e91a",
+      "editorLineNumber.foreground": "#94a3b8",
+      "editorLineNumber.activeForeground": "#334155",
+      "editorCursor.foreground": "#0284c7",
+      "editorIndentGuide.background": "#e2e8f0",
+      "editorIndentGuide.activeBackground": "#94a3b8",
+      "editorBracketMatch.background": "#0ea5e922",
+      "editorBracketMatch.border": "#0ea5e966",
+      "editorWidget.background": "#f8fafc",
+      "editorWidget.border": "#e2e8f0",
+      "editorSuggestWidget.background": "#ffffff",
+      "editorSuggestWidget.border": "#e2e8f0",
+      "editorSuggestWidget.selectedBackground": "#0ea5e922",
+      "editorGutter.background": "#ffffff",
+      "scrollbarSlider.background": "#94a3b888",
+      "scrollbarSlider.hoverBackground": "#64748baa",
+      "scrollbarSlider.activeBackground": "#0284c766",
+    },
+  });
 }
 
 export function MonacoPane() {
@@ -56,6 +97,7 @@ export function MonacoPane() {
   const setActiveSelection = useAIStore((s) => s.setActiveSelection);
   const bumpFocusComposer = useAIStore((s) => s.bumpFocusComposer);
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const theme = useEffectiveTheme();
 
   const applyReveal = (t: RevealTarget) => {
     const ed = editorRef.current;
@@ -132,8 +174,8 @@ export function MonacoPane() {
       value={files[activeFile] ?? ""}
       onChange={(v) => setContent(activeFile, v ?? "")}
       onMount={handleMount}
-      theme="ai-dark"
-      beforeMount={defineTheme}
+      theme={theme === "light" ? "ai-light" : "ai-dark"}
+      beforeMount={defineThemes}
       options={{
         fontSize: 13,
         fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",

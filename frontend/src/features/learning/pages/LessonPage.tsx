@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import confetti from "canvas-confetti";
 import type { Lesson } from "../types";
 import { loadFullLesson, loadCourse } from "../content/courseLoader";
@@ -22,7 +22,9 @@ import { api } from "../../../api/client";
 import { validateLesson } from "../utils/validator";
 import { LessonCompletePanel } from "../components/LessonCompletePanel";
 import { WorkspaceCoach, isOnboardingDone } from "../components/WorkspaceCoach";
+import { computeMastery, formatTimeSpent } from "../utils/mastery";
 import type { ValidationResult } from "../types";
+import { useShortcutLabels } from "../../../util/platform";
 
 const LS_OUT_H = "ui:lesson:outputH";
 const LS_INSTR_W = "ui:lesson:instrW";
@@ -38,6 +40,15 @@ const BOUNDS_INSTR = [240, 520] as const;
 const BOUNDS_TUTOR = [260, 600] as const;
 
 function clamp(v: number, [min, max]: readonly [number, number]) {
+  return Math.max(min, Math.min(max, v));
+}
+
+// Side panels (instructions, tutor) are also clamped against a fraction of
+// viewport width so narrow screens don't allow dragging them wide enough to
+// squeeze the editor to nothing.
+function clampSide(v: number, [min, hardMax]: readonly [number, number]) {
+  const vw = typeof window !== "undefined" ? window.innerWidth : Infinity;
+  const max = Math.min(hardMax, Math.floor(vw * 0.45));
   return Math.max(min, Math.min(max, v));
 }
 
@@ -60,6 +71,7 @@ export default function LessonPage() {
     lessonId: string;
   }>();
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { identity } = useLearnerStore();
   const startLesson = useProgressStore((s) => s.startLesson);
   const completeLesson = useProgressStore((s) => s.completeLesson);
@@ -69,6 +81,7 @@ export default function LessonPage() {
   const resetLessonProgress = useProgressStore((s) => s.resetLessonProgress);
   const completePracticeExercise = useProgressStore((s) => s.completePracticeExercise);
   const resetPracticeProgress = useProgressStore((s) => s.resetPracticeProgress);
+  const incrementLessonTime = useProgressStore((s) => s.incrementLessonTime);
   const lessonProgressMap = useProgressStore((s) => s.lessonProgress);
 
   const switchChatContext = useAIStore((s) => s.switchChatContext);
@@ -122,6 +135,7 @@ export default function LessonPage() {
   const initialized = useRef(false);
   const resumedTimer = useRef<ReturnType<typeof setTimeout>>();
   const [showCoach, setShowCoach] = useState(false);
+  const keys = useShortcutLabels();
   const instrRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLElement>(null);
   const runBtnRef = useRef<HTMLButtonElement>(null);
@@ -142,6 +156,7 @@ export default function LessonPage() {
   useEffect(() => {
     if (!courseId || !lessonId) return;
     initialized.current = false;
+    autoEnteredPractice.current = false;
     setLoading(true);
     setValidation(null);
     setShowComplete(false);
@@ -329,6 +344,24 @@ export default function LessonPage() {
     applyPracticeStarter(0);
   }, [lesson, applyPracticeStarter]);
 
+  // Auto-enter practice mode when navigated with ?mode=practice. Fires once
+  // per lesson load, only if the lesson is actually completed + has exercises.
+  // Clears the query param so exiting practice doesn't get re-triggered.
+  const autoEnteredPractice = useRef(false);
+  useEffect(() => {
+    if (loading || !lesson || !courseId || !lessonId) return;
+    if (autoEnteredPractice.current) return;
+    if (searchParams.get("mode") !== "practice") return;
+    const currentLp = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
+    if (currentLp?.status !== "completed" || !lesson.practiceExercises?.length) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    autoEnteredPractice.current = true;
+    handleEnterPractice();
+    setSearchParams({}, { replace: true });
+  }, [loading, lesson, courseId, lessonId, searchParams, setSearchParams, handleEnterPractice]);
+
   const handleExitPractice = useCallback(() => {
     setPracticeMode(false);
     setPracticeValidation(null);
@@ -397,6 +430,43 @@ export default function LessonPage() {
     return () => clearTimeout(timer);
   }, [projectFiles, courseId, lessonId, saveCode, practiceMode]);
 
+  // Time-spent tracking — tick only while the document is visible and the
+  // lesson isn't yet complete. Uses a lastTick ref so we credit real elapsed
+  // ms; caps deltas at 60s so a long hidden/suspended span can't inflate time.
+  useEffect(() => {
+    if (!courseId || !lessonId || practiceMode) return;
+    let lastTick = Date.now();
+    const TICK_MS = 30_000;
+    const MAX_DELTA = 60_000;
+
+    const credit = () => {
+      const now = Date.now();
+      const delta = Math.min(now - lastTick, MAX_DELTA);
+      lastTick = now;
+      const current = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
+      if (current?.status === "completed") return;
+      if (delta > 0 && document.visibilityState === "visible") {
+        incrementLessonTime(courseId, lessonId, delta);
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        lastTick = Date.now();
+      } else {
+        credit();
+      }
+    };
+
+    const interval = setInterval(credit, TICK_MS);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      credit();
+    };
+  }, [courseId, lessonId, practiceMode, incrementLessonTime]);
+
   if (!courseId || !lessonId) return null;
 
   const lp = lessonProgressMap[`${courseId}/${lessonId}`];
@@ -462,47 +532,90 @@ export default function LessonPage() {
         <button
           onClick={() => nav(`/learn/course/${courseId}`)}
           className="rounded px-2 py-1 text-xs text-muted transition hover:bg-elevated hover:text-ink"
+          aria-label="Back to course"
         >
           ← Back
         </button>
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-accent to-violet text-[11px] font-bold text-bg shadow-glow">
           AI
         </div>
-        <h1 className="truncate text-sm font-semibold tracking-tight">
+        <h1
+          className="truncate text-sm font-semibold tracking-tight"
+          title={lesson ? `Lesson ${lesson.order}: ${lesson.title}` : undefined}
+        >
           Lesson {lesson?.order}: {lesson?.title ?? "Loading..."}
         </h1>
+        <nav className="ml-2 flex shrink-0 items-center overflow-hidden rounded-md border border-border text-[11px]" aria-label="Mode switcher">
+          <button
+            onClick={() => nav("/editor")}
+            className="bg-transparent px-2.5 py-1 text-muted transition hover:bg-elevated hover:text-ink"
+            title="Switch to free-form editor"
+            aria-label="Switch to editor mode"
+          >
+            Editor
+          </button>
+          <span className="border-l border-border bg-violet/15 px-2.5 py-1 font-semibold text-violet">Learning</span>
+        </nav>
 
-        <div className="ml-auto flex items-center gap-3">
-          {!practiceMode && lesson?.practiceExercises?.length && lp?.status === "completed" && (
-            <button
-              onClick={handleEnterPractice}
-              className="rounded-full bg-violet/15 px-2.5 py-0.5 text-[10px] font-semibold text-violet transition hover:bg-violet/25"
-              title="Practice this lesson's concepts"
-            >
-              Practice ({(lp?.practiceCompletedIds ?? []).filter((id) => lesson.practiceExercises!.some((e) => e.id === id)).length}/{lesson.practiceExercises.length})
-            </button>
-          )}
-          {lp && (
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-              lp.status === "completed"
-                ? "bg-green-500/15 text-green-400"
-                : lp.status === "in_progress"
-                  ? "bg-accent/15 text-accent"
-                  : "bg-elevated text-muted"
-            }`}>
-              {lp.status === "completed" ? "Completed" : lp.status === "in_progress" ? "In progress" : "Not started"}
+        <div className="ml-auto flex items-center gap-2">
+          {sessionPhase === "starting" && (
+            <span className="flex items-center gap-1 text-[10px] text-muted">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted" />
+              Starting session…
             </span>
           )}
-          {sessionPhase === "starting" && (
-            <span className="text-[10px] text-muted">Starting session...</span>
-          )}
           {sessionPhase === "reconnecting" && (
-            <span className="text-[10px] text-yellow-400">Reconnecting...</span>
+            <span className="text-[10px] text-yellow-300">Reconnecting…</span>
+          )}
+          {lp && (() => {
+            const practiceTotal = lesson?.practiceExercises?.length ?? 0;
+            const practiceDone = practiceTotal > 0
+              ? (lp.practiceCompletedIds ?? []).filter((id) => lesson!.practiceExercises!.some((e) => e.id === id)).length
+              : 0;
+            const practiceAllDone = practiceTotal > 0 && practiceDone === practiceTotal;
+            return (
+              <div className="flex items-center overflow-hidden rounded-full">
+                <span className={`px-2.5 py-0.5 text-[10px] font-medium ${
+                  lp.status === "completed"
+                    ? "bg-success/20 text-success"
+                    : lp.status === "in_progress"
+                      ? "bg-accent/20 text-accent"
+                      : "bg-elevated text-muted"
+                }`}>
+                  {lp.status === "completed" ? "✓ Completed" : lp.status === "in_progress" ? "In progress" : "Not started"}
+                </span>
+                {!practiceMode && practiceTotal > 0 && lp.status === "completed" && (
+                  <button
+                    onClick={handleEnterPractice}
+                    className={`border-l border-bg/40 px-2.5 py-0.5 text-[10px] font-semibold transition ${
+                      practiceAllDone
+                        ? "bg-success/20 text-success hover:bg-success/30"
+                        : "bg-violet/20 text-violet hover:bg-violet/30"
+                    }`}
+                    title={practiceAllDone ? "Replay practice" : "Practice this lesson's concepts"}
+                    aria-label={practiceAllDone ? "Replay practice, all exercises complete" : `Practice ${practiceDone} of ${practiceTotal}`}
+                  >
+                    {practiceAllDone ? `✓ Practice ${practiceDone}/${practiceTotal}` : `Practice ${practiceDone}/${practiceTotal}`}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+          {!practiceMode && showNext && (
+            <button
+              onClick={() => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`)}
+              className="rounded-md border border-violet/30 bg-violet/10 px-2.5 py-1 text-[11px] font-semibold text-violet transition hover:bg-violet/20"
+              title="Go to the next lesson"
+              aria-label="Go to next lesson"
+            >
+              Next →
+            </button>
           )}
           <button
             onClick={() => setShowSettings(true)}
             className="rounded p-1.5 text-muted transition hover:bg-elevated hover:text-ink"
             title="Settings"
+            aria-label="Open settings"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 5a3 3 0 100 6 3 3 0 000-6zm0 4.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
@@ -559,7 +672,7 @@ export default function LessonPage() {
               </div>
               <Splitter
                 orientation="vertical"
-                onDrag={(dx) => setInstrW((w) => clamp(w + dx, BOUNDS_INSTR))}
+                onDrag={(dx) => setInstrW((w) => clampSide(w + dx, BOUNDS_INSTR))}
                 onDoubleClick={() => setInstrW(DEFAULT_INSTR)}
               />
             </>
@@ -568,12 +681,12 @@ export default function LessonPage() {
           {/* Editor + Output */}
           <section ref={editorRef as React.RefObject<HTMLElement>} className="flex min-w-0 flex-1 flex-col">
             {resumed && (
-              <div className="flex items-center gap-2 border-b border-accent/20 bg-accent/5 px-3 py-1.5 text-[11px] text-accent animate-pulse">
+              <div className="flex items-center gap-2 border-b border-accent/20 bg-accent/5 px-3 py-1.5 text-[11px] text-accent">
                 <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="1 4 1 10 7 10" />
                   <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                 </svg>
-                Resuming where you left off
+                Your code was restored — resuming where you left off
               </div>
             )}
             <EditorTabs />
@@ -589,118 +702,144 @@ export default function LessonPage() {
               <OutputPanel />
             </div>
 
-            {/* Run toolbar */}
-            <div className="flex items-center gap-2 border-t border-border bg-panel/80 px-4 py-1.5">
-              <button
-                ref={runBtnRef}
-                onClick={handleRun}
-                disabled={!canRun}
-                className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
-                  canRun
-                    ? "bg-accent text-bg hover:bg-accent/90"
-                    : "bg-accent/20 text-accent opacity-50"
-                }`}
-              >
-                {running ? (
-                  <>
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                    Run
-                  </>
-                )}
-              </button>
-              <button
-                ref={checkBtnRef}
-                onClick={handleCheck}
-                disabled={running}
-                className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
-                  !running
-                    ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                    : "bg-green-500/10 text-green-400 opacity-50"
-                }`}
-              >
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                Check Solution
-              </button>
-              <button
-                onClick={handleReset}
-                disabled={running}
-                className="rounded-lg px-3 py-1.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
-                title="Reset code to starter"
-              >
-                Reset Code
-              </button>
-              <button
-                onClick={() => setConfirmResetLesson(true)}
-                disabled={running}
-                className="rounded-lg px-3 py-1.5 text-[11px] text-muted transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
-                title="Reset all lesson progress (attempts, runs, hints, code)"
-              >
-                Reset Lesson
-              </button>
-              {hasStderr && !running && (
+            {/* Run toolbar — 3 rows: primary actions, validation feedback, secondary/meta */}
+            <div className="border-t border-border bg-panel/80">
+              {/* Row 1 — Primary actions */}
+              <div className="flex items-center gap-2 px-4 pt-1.5">
                 <button
-                  onClick={handleExplainError}
-                  className="flex items-center gap-1 rounded-lg bg-red-500/10 px-3 py-1.5 text-[11px] font-medium text-red-400 ring-1 ring-red-500/20 transition hover:bg-red-500/20"
-                  title="Ask the tutor to explain this error"
+                  ref={runBtnRef}
+                  onClick={handleRun}
+                  disabled={!canRun}
+                  className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                    canRun
+                      ? "bg-accent text-bg hover:bg-accent/90"
+                      : "bg-elevated text-muted cursor-not-allowed"
+                  }`}
+                  title={canRun ? `Run your code (${keys.run})` : sessionPhase !== "active" ? "Waiting for session to start…" : running ? "Already running…" : "Run code"}
+                  aria-label={canRun ? `Run code (${keys.runPhrase})` : sessionPhase !== "active" ? "Run code — waiting for session" : "Run code"}
+                >
+                  {running ? (
+                    <>
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                      </svg>
+                      Run
+                    </>
+                  )}
+                </button>
+                <button
+                  ref={checkBtnRef}
+                  onClick={handleCheck}
+                  disabled={running}
+                  className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet ${
+                    !running
+                      ? "bg-violet/20 text-violet hover:bg-violet/30"
+                      : "bg-elevated text-muted cursor-not-allowed"
+                  }`}
+                  title="Verify your solution against the lesson's checks"
+                  aria-label="Check solution against lesson requirements"
                 >
                   <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
-                  Explain Error
+                  Check Solution
                 </button>
-              )}
-              <span className="text-[10px] text-faint">Cmd+Enter</span>
-              <div className="flex-1" />
+                {/* Reserve a fixed slot for Explain Error to avoid layout shift when stderr toggles */}
+                <div className="min-w-[128px]">
+                  {hasStderr && !running && (
+                    <button
+                      onClick={handleExplainError}
+                      className="flex items-center gap-1 rounded-lg bg-danger/15 px-3 py-1.5 text-[11px] font-medium text-danger ring-1 ring-danger/40 transition hover:bg-danger/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+                      title="Ask the tutor to explain this error"
+                      aria-label="Explain error with AI tutor"
+                    >
+                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      Explain Error
+                    </button>
+                  )}
+                </div>
+                {!canRun && sessionPhase !== "active" && (
+                  <span className="text-[10px] italic text-faint">Waiting for session…</span>
+                )}
+                <div className="flex-1" />
+                {practiceMode && (
+                  <div className="flex items-center overflow-hidden rounded-full ring-1 ring-violet/30">
+                    <span className="bg-violet/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet">
+                      Practice Mode
+                    </span>
+                    <button
+                      onClick={handleExitPractice}
+                      className="border-l-2 border-violet/40 bg-violet/25 px-2.5 py-1 text-[10px] font-semibold text-violet transition hover:bg-violet/40 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-violet"
+                      title="Exit practice and return to the lesson"
+                      aria-label="Exit practice mode and return to lesson"
+                    >
+                      <span aria-hidden="true">✕ </span>Exit
+                    </button>
+                  </div>
+                )}
+                {!practiceMode && showNext && (
+                  <button
+                    onClick={() => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`)}
+                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet to-accent px-4 py-1.5 text-xs font-semibold text-bg shadow-glow transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet"
+                    aria-label="Go to next lesson"
+                  >
+                    Next Lesson →
+                  </button>
+                )}
+              </div>
+              {/* Row 2 — Validation feedback (own row so it never collides with primary actions). Caps height so long hints can't push the toolbar off-screen. */}
               {!practiceMode && validation && !validation.passed && (
-                <div className="flex flex-col gap-0.5 rounded-lg bg-red-500/10 px-3 py-1 text-xs font-medium text-red-400">
+                <div
+                  role="alert"
+                  className="mx-4 mt-1.5 flex max-h-24 flex-col gap-0.5 overflow-y-auto rounded-lg bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger"
+                >
                   <span>{validation.feedback[0] ?? "Not quite."}</span>
                   {validation.nextHints?.[0] && (
-                    <span className="text-[10px] font-normal opacity-70">{validation.nextHints[0]}</span>
+                    <span className="text-[11px] font-normal opacity-80">{validation.nextHints[0]}</span>
                   )}
                 </div>
               )}
-              {!practiceMode && validation?.passed && (
-                <div className="flex items-center gap-2 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-medium text-green-400">
-                  <span className="text-base">🎉</span>
-                  <div className="flex flex-col">
-                    <span>Lesson complete!</span>
-                    {lesson?.conceptTags && lesson.conceptTags.length > 0 && (
-                      <span className="text-[10px] font-normal text-green-400/70">
-                        You practiced: {lesson.conceptTags.join(", ")}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {practiceMode && (
-                <span className="rounded-full bg-violet/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet">
-                  Practice Mode
-                </span>
-              )}
-              {!practiceMode && showNext && (
+              {/* Row 3 — Secondary actions + stats */}
+              <div className="flex items-center gap-2 px-4 pb-1.5 pt-1">
                 <button
-                  onClick={() => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`)}
-                  className="flex items-center gap-1.5 rounded-lg bg-violet/20 px-4 py-1.5 text-xs font-semibold text-violet transition hover:bg-violet/30"
+                  onClick={handleReset}
+                  disabled={running}
+                  className="rounded-md px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
+                  title="Reset code to starter"
                 >
-                  Next Lesson →
+                  Reset Code
                 </button>
-              )}
-              {lp && (
+                <button
+                  onClick={() => setConfirmResetLesson(true)}
+                  disabled={running}
+                  className="rounded-md px-2 py-0.5 text-[11px] font-medium text-danger/70 transition hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                  title="Reset all lesson progress (attempts, runs, hints, code) — destructive"
+                >
+                  Reset Lesson
+                </button>
                 <span className="text-[10px] text-faint">
-                  Runs: {lp.runCount} | Hints: {lp.hintCount} | Attempts: {lp.attemptCount}
+                  <kbd className="rounded border border-border bg-elevated px-1 py-[1px] font-mono text-[9px] text-muted">{keys.run}</kbd> to run
                 </span>
-              )}
+                <div className="flex-1" />
+                {lp && (
+                  <span
+                    className="text-[10px] text-faint"
+                    title="Time is estimated from active tabs. Long idle periods and hidden tabs are excluded."
+                  >
+                    {lp.runCount} runs · {lp.hintCount} hints · {lp.attemptCount} attempts · {formatTimeSpent(lp.timeSpentMs)}
+                  </span>
+                )}
+              </div>
             </div>
           </section>
 
@@ -723,7 +862,7 @@ export default function LessonPage() {
             <>
               <Splitter
                 orientation="vertical"
-                onDrag={(dx) => setTutorW((w) => clamp(w - dx, BOUNDS_TUTOR))}
+                onDrag={(dx) => setTutorW((w) => clampSide(w - dx, BOUNDS_TUTOR))}
                 onDoubleClick={() => setTutorW(DEFAULT_TUTOR)}
               />
               <aside
@@ -756,6 +895,8 @@ export default function LessonPage() {
         <LessonCompletePanel
           lesson={lesson}
           completedPracticeIds={lp?.practiceCompletedIds ?? []}
+          mastery={computeMastery(lp, lesson)?.level ?? null}
+          timeSpentMs={lp?.timeSpentMs}
           onDismiss={() => setShowComplete(false)}
           onNext={nextLessonId ? () => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`) : undefined}
           onStartPractice={lesson.practiceExercises?.length ? () => { setShowComplete(false); handleEnterPractice(); } : undefined}
@@ -777,7 +918,7 @@ export default function LessonPage() {
       )}
       {confirmResetLesson && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-sm rounded-xl border border-red-500/30 bg-panel p-5 shadow-xl">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-danger/30 bg-panel p-5 shadow-xl">
             <h2 className="text-sm font-bold text-ink">Reset Lesson Progress?</h2>
             <p className="mt-2 text-xs leading-relaxed text-muted">
               This will clear all progress for this lesson — attempts, runs, hints, saved code, and completion status. You'll start fresh as if you've never opened this lesson.
@@ -791,7 +932,7 @@ export default function LessonPage() {
               </button>
               <button
                 onClick={handleResetLessonProgress}
-                className="flex-1 rounded-lg bg-red-500/15 px-4 py-2 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25"
+                className="flex-1 rounded-lg bg-danger/20 px-4 py-2 text-xs font-semibold text-danger ring-1 ring-danger/40 transition hover:bg-danger/30"
               >
                 Reset Lesson
               </button>

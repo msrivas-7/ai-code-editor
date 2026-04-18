@@ -78,6 +78,18 @@ No account needed. Runs entirely on your machine.
 
 </td>
 </tr>
+<tr>
+<td>
+
+**Light & dark themes** — follows your system by default, or pick one in Settings. Editor and app chrome switch together
+
+</td>
+<td>
+
+**Accessible by default** — WCAG AA color contrast, keyboard-navigable splitters, full ARIA labeling on every interactive surface
+
+</td>
+</tr>
 </table>
 
 ---

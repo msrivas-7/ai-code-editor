@@ -39,3 +39,22 @@ All optional — defaults work for local use. See [.env.example](../.env.example
 docker compose up --build    # start (Ctrl-C to stop)
 docker compose down           # teardown
 ```
+
+## Design Tokens
+
+All colors in the frontend use semantic Tailwind tokens, never raw palette names:
+
+| Semantic | Use for |
+| --- | --- |
+| `bg` / `panel` / `elevated` | Surface layers (page, panel, raised card) |
+| `ink` / `muted` / `faint` | Primary / secondary / tertiary text |
+| `border` / `borderSoft` | Dividers and outlines |
+| `accent` / `accentMuted` | Primary interactive elements (focus rings, CTAs) |
+| `success` | Completion, validation pass, "OK" states |
+| `warn` | Compile errors, "worth your attention" nudges |
+| `danger` | Runtime errors, destructive actions |
+| `violet` | Guided learning, practice mode, tutor walkthroughs |
+
+These resolve to CSS variables in [`src/index.css`](../frontend/src/index.css) and switch automatically between dark and light themes. **Do not** use `text-green-400`, `bg-red-500/15`, or any raw `{color}-{shade}` class — always use the semantic token so light-theme and re-theming stay correct.
+
+Contrast floor: all text on `panel` / `bg` meets WCAG AA (4.5:1). If you introduce a new foreground/background combination, check it with a contrast tool before shipping.

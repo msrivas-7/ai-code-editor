@@ -92,6 +92,7 @@ interface ProgressState {
     code: Record<string, string>
   ) => void;
   saveOutput: (courseId: string, lessonId: string, output: string) => void;
+  incrementLessonTime: (courseId: string, lessonId: string, deltaMs: number) => void;
   completePracticeExercise: (
     courseId: string,
     lessonId: string,
@@ -337,6 +338,24 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
       const current = resolveLesson(s.lessonProgress, courseId, lessonId);
       if (!current) return s;
       const updated = { ...current, lastOutput: output, updatedAt: now() };
+      saveJson(lsKey, updated);
+      return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
+    });
+  },
+
+  incrementLessonTime(courseId, lessonId, deltaMs) {
+    if (!Number.isFinite(deltaMs) || deltaMs <= 0) return;
+    const compositeKey = `${courseId}/${lessonId}`;
+    const lsKey = LESSON_KEY(courseId, lessonId);
+    set((s) => {
+      const current = resolveLesson(s.lessonProgress, courseId, lessonId);
+      if (!current) return s;
+      const prev = current.timeSpentMs ?? 0;
+      const updated: LessonProgress = {
+        ...current,
+        timeSpentMs: prev + deltaMs,
+        updatedAt: now(),
+      };
       saveJson(lsKey, updated);
       return { lessonProgress: { ...s.lessonProgress, [compositeKey]: updated } };
     });

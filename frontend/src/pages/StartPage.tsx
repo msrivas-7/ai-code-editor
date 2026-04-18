@@ -34,7 +34,7 @@ export default function StartPage() {
           <button
             ref={editorRef}
             onClick={() => nav("/editor")}
-            className="group flex flex-col items-start gap-3 rounded-xl border border-border bg-panel p-6 text-left transition hover:border-accent/50 hover:shadow-glow"
+            className="group flex flex-col items-start gap-3 rounded-xl border border-border bg-panel p-6 text-left shadow-sm transition hover:border-accent/50 hover:shadow-glow focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent transition group-hover:bg-accent/20">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -57,7 +57,7 @@ export default function StartPage() {
           <button
             ref={guidedRef}
             onClick={() => nav("/learn")}
-            className="group flex flex-col items-start gap-3 rounded-xl border border-border bg-panel p-6 text-left transition hover:border-violet/50 hover:shadow-glow"
+            className="group flex flex-col items-start gap-3 rounded-xl border border-border bg-panel p-6 text-left shadow-sm transition hover:border-violet/50 hover:shadow-glow focus:outline-none focus-visible:ring-2 focus-visible:ring-violet"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet/10 text-violet transition group-hover:bg-violet/20">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

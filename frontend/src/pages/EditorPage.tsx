@@ -51,6 +51,15 @@ function clamp(v: number, [min, max]: readonly [number, number]): number {
   return Math.max(min, Math.min(max, v));
 }
 
+// Side panels are clamped against a fraction of viewport width so that on
+// narrow displays (tablets, small laptops) the user can't drag a side panel
+// wide enough to starve the editor. On wide displays the hardMax still wins.
+function clampSide(v: number, [min, hardMax]: readonly [number, number]): number {
+  const vw = typeof window !== "undefined" ? window.innerWidth : Infinity;
+  const max = Math.min(hardMax, Math.floor(vw * 0.45));
+  return Math.max(min, Math.min(max, v));
+}
+
 export default function EditorPage() {
   const nav = useNavigate();
   const switchChatContext = useAIStore((s) => s.switchChatContext);
@@ -103,7 +112,8 @@ export default function EditorPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => nav("/")}
-            className="rounded px-2 py-1 text-xs text-muted transition hover:bg-elevated hover:text-ink"
+            className="rounded px-2 py-1 text-xs font-medium text-ink/80 transition hover:bg-elevated hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label="Back to home"
           >
             ← Home
           </button>
@@ -113,6 +123,21 @@ export default function EditorPage() {
           <h1 className="text-sm font-semibold tracking-tight text-ink">
             CodeTutor AI
           </h1>
+          <nav className="ml-2 flex items-center overflow-hidden rounded-md border border-border text-[11px]" aria-label="Mode switcher">
+            <span
+              aria-current="page"
+              className="bg-accent/15 px-2.5 py-1 font-semibold text-accent"
+            >
+              Editor
+            </span>
+            <button
+              onClick={() => nav("/learn")}
+              className="border-l border-border bg-transparent px-2.5 py-1 text-muted transition hover:bg-elevated hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+              title="Switch to guided learning mode"
+            >
+              Learning
+            </button>
+          </nav>
         </div>
         <div className="flex items-center gap-4">
           <Toolbar langPickerRef={langPickerRef} runButtonRef={runButtonRef} />
@@ -121,6 +146,7 @@ export default function EditorPage() {
             onClick={() => setShowSettings(true)}
             className="rounded p-1.5 text-muted transition hover:bg-elevated hover:text-ink"
             title="Settings"
+            aria-label="Open settings"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 5a3 3 0 100 6 3 3 0 000-6zm0 4.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
@@ -157,7 +183,7 @@ export default function EditorPage() {
 
             <Splitter
               orientation="vertical"
-              onDrag={(dx) => setLeftW((w) => clamp(w + dx, BOUNDS.left))}
+              onDrag={(dx) => setLeftW((w) => clampSide(w + dx, BOUNDS.left))}
               onDoubleClick={() => setLeftW(DEFAULTS.left)}
             />
           </>
@@ -196,7 +222,7 @@ export default function EditorPage() {
           <>
             <Splitter
               orientation="vertical"
-              onDrag={(dx) => setRightW((w) => clamp(w - dx, BOUNDS.right))}
+              onDrag={(dx) => setRightW((w) => clampSide(w - dx, BOUNDS.right))}
               onDoubleClick={() => setRightW(DEFAULTS.right)}
             />
             <aside
@@ -204,7 +230,7 @@ export default function EditorPage() {
               style={{ width: rightW }}
               className="min-h-0 shrink-0 overflow-hidden bg-panel"
             >
-              <AssistantPanel onCollapse={() => setTutorCollapsed(true)} />
+              <AssistantPanel onCollapse={() => setTutorCollapsed(true)} onOpenSettings={() => setShowSettings(true)} />
             </aside>
           </>
         )}

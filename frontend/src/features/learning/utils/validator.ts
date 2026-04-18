@@ -1,6 +1,18 @@
 import type { CompletionRule, ValidationResult } from "../types";
 import type { RunResult, ProjectFile } from "../../../types";
 
+// Word-boundary-aware substring check. For patterns that start with an
+// identifier character (letter/digit/underscore), requires a word boundary
+// on the left — otherwise "int(" would falsely match inside "print(". For
+// patterns starting with a non-word char (".get(", "else:"), falls back to
+// plain substring matching.
+function containsPattern(content: string, pattern: string): boolean {
+  if (!pattern) return true;
+  if (!/^\w/.test(pattern)) return content.includes(pattern);
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}`).test(content);
+}
+
 export function validateLesson(
   result: RunResult | null,
   files: ProjectFile[],
@@ -52,7 +64,7 @@ export function validateLesson(
           break;
         }
         const pattern = rule.pattern ?? "";
-        if (file.content.includes(pattern)) {
+        if (containsPattern(file.content, pattern)) {
           feedback.push(`File "${targetPath}" contains the required code.`);
         } else {
           feedback.push(`File "${targetPath}" is missing required code pattern.`);

@@ -613,4 +613,118 @@ describe("progressStore", () => {
       expect(reloaded.practiceCompletedIds).toEqual(["ex-1", "ex-2"]);
     });
   });
+
+  describe("incrementLessonTime", () => {
+    it("accumulates positive deltas", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 1_000);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 2_500);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 500);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.timeSpentMs).toBe(4_000);
+    });
+
+    it("initializes from zero when timeSpentMs is undefined", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+
+      const lpBefore = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lpBefore.timeSpentMs).toBeUndefined();
+
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 5_000);
+      const lpAfter = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lpAfter.timeSpentMs).toBe(5_000);
+    });
+
+    it("rejects non-finite, zero, or negative deltas", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 1_000);
+
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 0);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, -500);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, NaN);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, Infinity);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.timeSpentMs).toBe(1_000);
+    });
+
+    it("does nothing when lesson has no progress", () => {
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 1_000);
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp).toBeUndefined();
+    });
+
+    it("persists timeSpentMs to localStorage", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 3_000);
+
+      const raw = storage.get(LESSON_KEY);
+      expect(raw).toBeDefined();
+      const parsed = JSON.parse(raw!);
+      expect(parsed.timeSpentMs).toBe(3_000);
+    });
+
+    it("preserves other fields (runCount, hintCount, lastCode, status)", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementRun(COURSE, LESSON);
+      useProgressStore.getState().incrementHint(COURSE, LESSON);
+      useProgressStore.getState().saveCode(COURSE, LESSON, { "main.py": "x = 1" });
+      useProgressStore.getState().completeLesson(LEARNER, COURSE, LESSON, 10);
+
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 2_000);
+
+      const lp = useProgressStore.getState().lessonProgress[`${COURSE}/${LESSON}`];
+      expect(lp.runCount).toBe(1);
+      expect(lp.hintCount).toBe(1);
+      expect(lp.lastCode).toEqual({ "main.py": "x = 1" });
+      expect(lp.status).toBe("completed");
+      expect(lp.timeSpentMs).toBe(2_000);
+    });
+
+    it("survives reload from localStorage", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 12_345);
+
+      useProgressStore.setState({ courseProgress: {}, lessonProgress: {} });
+
+      const reloaded = useProgressStore
+        .getState()
+        .loadLessonProgress(LEARNER, COURSE, LESSON);
+      expect(reloaded.timeSpentMs).toBe(12_345);
+    });
+
+    it("is wiped by resetLessonProgress", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 10_000);
+
+      useProgressStore.getState().resetLessonProgress(LEARNER, COURSE, LESSON);
+
+      const reloaded = useProgressStore
+        .getState()
+        .loadLessonProgress(LEARNER, COURSE, LESSON);
+      expect(reloaded.timeSpentMs).toBeUndefined();
+    });
+
+    it("is wiped by resetCourseProgress", () => {
+      useProgressStore.getState().loadCourseProgress(LEARNER, COURSE);
+      useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+      useProgressStore.getState().incrementLessonTime(COURSE, LESSON, 7_500);
+
+      useProgressStore.getState().resetCourseProgress(LEARNER, COURSE, [LESSON]);
+
+      const reloaded = useProgressStore
+        .getState()
+        .loadLessonProgress(LEARNER, COURSE, LESSON);
+      expect(reloaded.timeSpentMs).toBeUndefined();
+    });
+  });
 });

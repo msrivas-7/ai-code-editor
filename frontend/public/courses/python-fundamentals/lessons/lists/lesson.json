@@ -25,12 +25,12 @@
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": "append("
+      "pattern": "append(0"
     },
     {
       "type": "required_file_contains",
       "file": "main.py",
-      "pattern": "for "
+      "pattern": "sum("
     }
   ],
   "prerequisiteLessonIds": [

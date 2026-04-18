@@ -13,6 +13,8 @@ import {
   AskErrorView,
   hasTutorContent,
 } from "../../../components/TutorResponseViews";
+import { TutorSetupWarning } from "../../../components/TutorSetupWarning";
+import { useShortcutLabels } from "../../../util/platform";
 import { useProgressStore } from "../stores/progressStore";
 import type { LessonMeta } from "../types";
 
@@ -21,11 +23,13 @@ interface GuidedTutorPanelProps {
   totalLessons: number;
   progressSummary: string;
   onCollapse?: () => void;
+  onOpenSettings?: () => void;
   resetNonce?: number;
 }
 
-export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, onCollapse, resetNonce }: GuidedTutorPanelProps) {
+export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, onCollapse, onOpenSettings, resetNonce }: GuidedTutorPanelProps) {
   const incrementHint = useProgressStore((s) => s.incrementHint);
+  const keys = useShortcutLabels();
   const {
     apiKey,
     keyStatus,
@@ -234,12 +238,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
       </header>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {!configured && (
-          <div className="rounded-md border border-warn/30 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
-            <div className="mb-1 font-semibold">Setup required</div>
-            Open <span className="font-semibold">Settings</span> (gear icon in the header) to configure your OpenAI API key and model.
-          </div>
-        )}
+        {!configured && <TutorSetupWarning onOpenSettings={onOpenSettings} />}
 
         {history.length === 0 && !asking && configured && (
           <div className="rounded-md border border-border bg-elevated/60 p-3 text-xs leading-relaxed text-muted">
@@ -276,7 +275,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
             i === history.length - 1 &&
             !asking;
           return (
-            <div key={i} className="flex flex-col gap-2">
+            <div key={i} className="flex flex-col gap-2 motion-safe:animate-fadeInUp">
               {m.role === "user" ? (
                 <div className="self-end max-w-[90%] rounded-md bg-accent/15 px-3 py-1.5 text-xs text-ink ring-1 ring-accent/30">
                   {m.content}
@@ -296,7 +295,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
                 <div className="flex flex-col gap-1.5 pt-0.5">
                   {isLatestAssistant && (
                     <div className="flex flex-wrap items-center gap-1">
-                      {hintLevel < 3 && (
+                      {hintLevel < 3 ? (
                         <button
                           onClick={() => {
                             const prompts = [
@@ -310,10 +309,24 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
                             incrementHint(lessonMeta.courseId, lessonMeta.id);
                           }}
                           disabled={asking}
-                          className="rounded-full border border-warn/40 bg-warn/10 px-2 py-[2px] text-[10px] font-medium text-warn transition hover:bg-warn/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={`Request a hint, level ${hintLevel + 1} of 3`}
+                          title={`Hint ${hintLevel + 1} of 3 — gentler first, stronger on each tap`}
+                          className="flex items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 py-[2px] text-[10px] font-medium text-warn transition hover:bg-warn/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-warn disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {hintLevel === 0 ? "💡 Hint" : hintLevel === 1 ? "💡 Stronger hint" : "💡 Show approach"}
+                          <span aria-hidden="true">💡</span>
+                          <span>{hintLevel === 0 ? "Hint" : hintLevel === 1 ? "Stronger hint" : "Show approach"}</span>
+                          <span className="rounded-full bg-warn/25 px-1 text-[9px] font-bold tabular-nums">
+                            {hintLevel + 1}/3
+                          </span>
                         </button>
+                      ) : (
+                        <span
+                          className="flex items-center gap-1 rounded-full border border-border bg-elevated/60 px-2 py-[2px] text-[10px] font-medium text-faint"
+                          title="You've used all three hint levels. Keep exploring — or ask a specific follow-up question."
+                        >
+                          <span aria-hidden="true">💡</span>
+                          <span>All hints used</span>
+                        </span>
                       )}
                       <ActionChips onAsk={setPendingAsk} disabled={asking} />
                     </div>
@@ -334,7 +347,19 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
             ? <TutorResponseView sections={pending.sections} disabled />
             : <ThinkingSkeleton />
         )}
-        {askError && <AskErrorView message={askError} />}
+        {askError && (
+          <AskErrorView
+            message={askError}
+            onRetry={() => {
+              const lastUser = [...history].reverse().find((m) => m.role === "user");
+              if (lastUser) {
+                setAskError(null);
+                setPendingAsk(lastUser.content);
+              }
+            }}
+            retryDisabled={asking || !configured}
+          />
+        )}
       </div>
 
       <div className="border-t border-border bg-panel p-2">
@@ -377,14 +402,19 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
           placeholder={activeSelection ? "Ask about the selection…" : configured ? "Ask about this lesson..." : "Configure API key first"}
           disabled={!configured}
           rows={2}
-          className="w-full resize-none rounded-md border border-border bg-elevated px-2.5 py-2 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 disabled:opacity-50"
+          aria-label="Ask the tutor"
+          className="w-full resize-none rounded-md border border-border bg-elevated px-2.5 py-2 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 disabled:cursor-not-allowed disabled:bg-elevated/40 disabled:opacity-50"
         />
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-faint">
-          <div className="flex items-center gap-x-1">
-            <span className="kbd">↵</span>
+          <div
+            role="group"
+            aria-label="Keyboard shortcuts"
+            className="flex items-center gap-x-1"
+          >
+            <kbd className="kbd">↵</kbd>
             <span>send</span>
-            <span className="text-border">·</span>
-            <span className="kbd">⇧↵</span>
+            <span aria-hidden="true" className="text-border">·</span>
+            <kbd className="kbd">{keys.newline}</kbd>
             <span>newline</span>
           </div>
           {asking ? (

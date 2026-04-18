@@ -19,8 +19,10 @@
 
 - **React Router** — `/` (start page), `/editor`, `/learn`, `/learn/course/:id`, `/learn/course/:id/lesson/:id`. Lazy-loaded pages with Suspense.
 - **6 Zustand stores** — `projectStore` (files/editor, per-context switching), `aiStore` (tutor/history, per-context switching), `sessionStore` (backend session), `runStore` (execution, per-context switching), `progressStore` (lesson progress in localStorage), `learnerStore` (anonymous identity).
-- **Shared tutor rendering** — `TutorResponseViews.tsx` provides section cards, badges, walkthrough steps, interactive check questions, citations, action chips, and error views. Used by both `AssistantPanel` (editor) and `GuidedTutorPanel` (lessons).
+- **Shared tutor rendering** — `TutorResponseViews.tsx` provides section cards, badges, walkthrough steps, interactive check questions, citations, action chips, and error views (with one-click retry). Used by both `AssistantPanel` (editor) and `GuidedTutorPanel` (lessons).
 - **Course content** — static JSON + Markdown in `frontend/public/courses/`. Loaded at runtime via fetch. No build step for content authoring.
+- **Theme system** — `util/theme.ts` holds `ThemePref` (`system` | `light` | `dark`) in localStorage and applies `data-theme` + `color-scheme` to `<html>`. Semantic Tailwind tokens (`bg`, `panel`, `muted`, `accent`, `success`, `danger`, `violet`, …) resolve to CSS variables defined in `index.css`, so the whole app — including the Monaco editor theme — swaps in lockstep. Components never reference raw palette colors (`green-500`, `red-400`) — always semantic tokens.
+- **Splitter bounds** — side-panel widths are clamped to `min(hardMax, viewport × 0.45)` so the editor can't be squeezed to nothing on narrow displays. Vertical (output) splitters use a plain min/max clamp.
 
 ## Backend
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRunStore } from "../state/runStore";
 import { useProjectStore } from "../state/projectStore";
 import { linkifyRefs } from "../util/linkifyRefs";
+import { useShortcutLabels } from "../util/platform";
 import type { ErrorType } from "../types";
 
 const TYPE_LABEL: Record<ErrorType, string> = {
@@ -27,6 +28,7 @@ export function OutputPanel() {
   const { order, revealAt } = useProjectStore();
   const [tab, setTab] = useState<Tab>("combined");
   const [copied, setCopied] = useState(false);
+  const keys = useShortcutLabels();
 
   const hasResult = Boolean(result);
 
@@ -59,15 +61,24 @@ export function OutputPanel() {
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
           Output
         </span>
-        <div className="flex gap-0.5 rounded-md bg-elevated p-0.5 text-[11px]">
+        <div
+          role="tablist"
+          aria-label="Output view"
+          className="flex gap-0.5 rounded-md bg-elevated p-0.5 text-[11px]"
+        >
           {(["combined", "stdout", "stderr", "stdin"] as Tab[]).map((t) => (
             <button
               key={t}
+              role="tab"
+              id={`output-tab-${t}`}
+              aria-selected={tab === t}
+              aria-controls="output-panel-body"
+              tabIndex={tab === t ? 0 : -1}
               onClick={() => setTab(t)}
-              className={`rounded px-2 py-0.5 transition ${
+              className={`rounded px-2 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 tab === t
-                  ? "bg-bg text-ink shadow-soft"
-                  : "text-muted hover:text-ink"
+                  ? "bg-bg text-ink shadow-soft ring-1 ring-accent/40"
+                  : "text-muted hover:bg-bg/40 hover:text-ink"
               }`}
               title={
                 t === "stdin"
@@ -89,7 +100,7 @@ export function OutputPanel() {
             <button
               onClick={() => setTab("stdin")}
               title="View the stdin buffer being piped to the program"
-              className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent ring-1 ring-accent/30 transition hover:bg-accent/20"
+              className="rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent ring-1 ring-accent/40 transition hover:bg-accent/30"
             >
               ▸ piping {stdin.length}c to stdin
             </button>
@@ -102,8 +113,10 @@ export function OutputPanel() {
           )}
           {error && !hasResult && (
             <span
+              role="alert"
               className="rounded bg-danger/15 px-1.5 py-0.5 text-[10px] font-semibold text-danger ring-1 ring-danger/30"
               title={error}
+              aria-label={`Request failed: ${error}`}
             >
               Request failed
             </span>
@@ -131,14 +144,21 @@ export function OutputPanel() {
       </div>
       {tab === "stdin" ? (
         <textarea
+          id="output-panel-body"
+          role="tabpanel"
+          aria-labelledby={`output-tab-${tab}`}
           value={stdin}
           onChange={(e) => setStdin(e.target.value)}
           spellCheck={false}
           placeholder={"Type input here — it will be piped to stdin on the next Run.\nOne line per prompt for programs that read with input()/scanf/fgets."}
-          className="min-h-0 flex-1 resize-none bg-bg p-3 font-mono text-xs leading-relaxed text-ink outline-none placeholder:text-faint"
+          className="min-h-0 flex-1 resize-none bg-bg p-3 font-mono text-[13px] leading-relaxed text-ink outline-none placeholder:text-faint sm:text-xs"
         />
       ) : (
-        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap bg-bg p-3 font-mono text-xs leading-relaxed text-ink">
+        <pre
+          id="output-panel-body"
+          role="tabpanel"
+          aria-labelledby={`output-tab-${tab}`}
+          className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap bg-bg p-3 font-mono text-[13px] leading-relaxed text-ink sm:text-xs">
           {error ? (
             <span className="text-danger">{error}</span>
           ) : hasResult ? (
@@ -166,7 +186,7 @@ export function OutputPanel() {
             <span className="text-muted">Running…</span>
           ) : (
             <span className="text-faint">
-              Press <span className="kbd">⌘↵</span> or click{" "}
+              Press <kbd className="kbd">{keys.run}</kbd> or click{" "}
               <span className="text-ink">▶ Run</span> to execute the current project.
             </span>
           )}

@@ -5,6 +5,7 @@ import { loadCourse, loadAllLessonMetas } from "../content/courseLoader";
 import { useProgressStore, loadAllLessonProgress } from "../stores/progressStore";
 import { useLearnerStore } from "../stores/learnerStore";
 import { CourseCard } from "../components/CourseCard";
+import { pickShakyLessons, formatTimeSpent } from "../utils/mastery";
 
 const COURSES = ["python-fundamentals"];
 
@@ -66,11 +67,13 @@ export default function LearningDashboardPage() {
       .slice(0, 3);
   }, [allLessonProgress]);
 
-  const needsReview = useMemo(() => {
-    return allLessonProgress.filter(
-      (lp) => lp.runCount >= 5 || lp.attemptCount >= 3
-    );
-  }, [allLessonProgress]);
+  const shakyLessons = useMemo(() => {
+    const metasById: Record<string, LessonMeta> = {};
+    for (const { lessons } of courses) {
+      for (const m of lessons) metasById[m.id] = m;
+    }
+    return pickShakyLessons(allLessonProgress, metasById, 3);
+  }, [allLessonProgress, courses]);
 
   const completedCount = activeProgress?.completedLessonIds.length ?? 0;
   const totalCount = activeCourse?.lessons.length ?? 0;
@@ -116,8 +119,40 @@ export default function LearningDashboardPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-6 py-8">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <span className="skeleton h-4 w-32 rounded" />
+            <div
+              role="status"
+              aria-label="Loading courses and progress"
+              aria-live="polite"
+              className="flex flex-col gap-6"
+            >
+              <span className="sr-only">Loading…</span>
+              {/* Progress-summary placeholder */}
+              <div className="rounded-xl border border-border bg-panel p-5">
+                <div className="mb-3 flex items-center justify-between gap-4">
+                  <span className="skeleton h-4 w-40 rounded" />
+                  <span className="skeleton h-3 w-16 rounded" />
+                </div>
+                <span className="skeleton block h-2 w-full rounded-full" />
+                <div className="mt-4 flex gap-2">
+                  <span className="skeleton h-8 w-28 rounded-lg" />
+                  <span className="skeleton h-8 w-24 rounded-lg" />
+                </div>
+              </div>
+              {/* Course card placeholders */}
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-border bg-panel p-5"
+                  aria-hidden="true"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-4">
+                    <span className="skeleton h-4 w-48 rounded" />
+                    <span className="skeleton h-3 w-12 rounded" />
+                  </div>
+                  <span className="skeleton block h-3 w-5/6 rounded" />
+                  <span className="skeleton mt-2 block h-3 w-3/4 rounded" />
+                </div>
+              ))}
             </div>
           ) : (
             <>
@@ -210,12 +245,15 @@ export default function LearningDashboardPage() {
                           <p className="truncate text-xs font-semibold">{lessonTitle(lp.lessonId)}</p>
                           <p className="text-[10px] text-muted">
                             {lp.runCount} runs · {lp.attemptCount} attempts
+                            {lp.timeSpentMs && lp.timeSpentMs > 0 && (
+                              <> · {formatTimeSpent(lp.timeSpentMs)}</>
+                            )}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
                             lp.status === "completed"
-                              ? "bg-green-500/15 text-green-400"
+                              ? "bg-success/15 text-success"
                               : "bg-accent/15 text-accent"
                           }`}>
                             {lp.status === "completed" ? "Done" : "In progress"}
@@ -228,25 +266,60 @@ export default function LearningDashboardPage() {
                 </div>
               )}
 
-              {/* Needs review */}
-              {needsReview.length > 0 && (
+              {/* Might need review — mastery-driven */}
+              {shakyLessons.length > 0 && (
                 <div className="mb-8">
                   <h2 className="mb-3 text-sm font-bold text-muted">Might Need Review</h2>
-                  <div className="rounded-lg border border-warn/20 bg-warn/5 p-3">
-                    <p className="mb-2 text-[11px] text-warn/80">
-                      These lessons took extra effort — revisiting them can strengthen your understanding.
+                  <div className="rounded-xl border border-warn/20 bg-warn/5 p-4">
+                    <p className="mb-3 text-[11px] leading-relaxed text-warn/80">
+                      These lessons took extra effort — revisiting them will strengthen what you learned.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {needsReview.map((lp) => (
-                        <button
-                          key={lp.lessonId}
-                          onClick={() => nav(`/learn/course/${lp.courseId}/lesson/${lp.lessonId}`)}
-                          className="flex items-center gap-1.5 rounded-md border border-warn/30 bg-bg/60 px-2.5 py-1 text-[11px] font-medium text-warn transition hover:bg-warn/10"
-                        >
-                          <span className="text-[10px] opacity-60">L{lessonOrder(lp.lessonId)}</span>
-                          {lessonTitle(lp.lessonId)}
-                        </button>
-                      ))}
+                    <div className="space-y-2">
+                      {shakyLessons.map((s) => {
+                        const priority = s.score >= 3 ? "high" : "medium";
+                        return (
+                          <div
+                            key={s.lessonId}
+                            className="flex items-center gap-3 rounded-lg border border-warn/20 bg-bg/40 px-3 py-2.5"
+                          >
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-warn/15 text-[11px] font-bold text-warn">
+                              {s.meta.order}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="truncate text-xs font-semibold text-ink">{s.meta.title}</p>
+                                <span
+                                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                                    priority === "high"
+                                      ? "bg-danger/20 text-danger"
+                                      : "bg-warn/20 text-warn"
+                                  }`}
+                                  title={priority === "high" ? "Multiple signals suggest review now" : "Some signals suggest a quick review"}
+                                >
+                                  {priority === "high" ? "Priority" : "Suggested"}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {s.reasons.map((r, i) => (
+                                  <span
+                                    key={i}
+                                    className="rounded-full border border-warn/20 bg-warn/10 px-2 py-0.5 text-[10px] font-medium text-warn/90"
+                                  >
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => nav(`/learn/course/${s.courseId}/lesson/${s.lessonId}`)}
+                              className="shrink-0 rounded-md bg-warn/15 px-3 py-1.5 text-[11px] font-semibold text-warn transition hover:bg-warn/25"
+                              aria-label={`Review lesson ${s.meta.order}: ${s.meta.title}`}
+                            >
+                              Review →
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

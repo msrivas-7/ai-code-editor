@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CoachBubble } from "../features/learning/components/CoachBubble";
 
 const LS_KEY = "onboarding:v1:welcome-done";
@@ -69,7 +69,11 @@ export function WelcomeOverlay({ refs, onDismiss }: WelcomeOverlayProps) {
     return () => window.removeEventListener("resize", update);
   }, [targetEl, step, onDismiss]);
 
+  const lastAdvanceAt = useRef(0);
   const advance = useCallback(() => {
+    const now = Date.now();
+    if (now - lastAdvanceAt.current < 200) return;
+    lastAdvanceAt.current = now;
     if (step >= STEPS.length - 1) {
       markWelcomeDone();
       onDismiss();
@@ -104,7 +108,9 @@ export function WelcomeOverlay({ refs, onDismiss }: WelcomeOverlayProps) {
       <div style={spotStyle} />
       <button
         onClick={dismiss}
-        className="fixed right-4 top-4 z-[53] rounded-md bg-panel/90 px-3 py-1 text-[11px] text-muted ring-1 ring-border transition hover:text-ink"
+        title="Skip onboarding"
+        aria-label="Skip onboarding"
+        className="fixed right-2 top-2 z-[53] rounded-md bg-panel/95 px-3 py-1.5 text-[11px] font-medium text-ink shadow-sm ring-1 ring-border transition hover:bg-panel hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:right-4 sm:top-4"
       >
         Skip
       </button>
