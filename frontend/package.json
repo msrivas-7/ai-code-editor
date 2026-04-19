@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:content": "tsx scripts/content-lint.ts",
+    "verify:solutions": "tsx scripts/verify-solutions.ts",
+    "new:lesson": "tsx scripts/new-lesson.ts",
+    "new:practice": "tsx scripts/new-practice.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
@@ -27,8 +31,10 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.5.3",
     "vite": "^5.3.4",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "^4.3.6"
   }
 }

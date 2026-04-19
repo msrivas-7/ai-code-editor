@@ -119,7 +119,9 @@ export interface AIAskParams {
     lessonId: string;
     lessonTitle: string;
     lessonObjectives: string[];
-    conceptTags: string[];
+    teachesConceptTags: string[];
+    usesConceptTags: string[];
+    priorConcepts: string[];
     completionRules: { type: string; expected?: string; file?: string; pattern?: string }[];
     studentProgressSummary: string;
     lessonOrder?: number;

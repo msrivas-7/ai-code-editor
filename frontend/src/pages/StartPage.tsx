@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { WelcomeOverlay, isWelcomeDone } from "../components/WelcomeOverlay";
+import { SettingsButton } from "../components/SettingsButton";
 
 export default function StartPage() {
   const nav = useNavigate();
@@ -17,7 +18,10 @@ export default function StartPage() {
   const guidedRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="flex h-full flex-col bg-bg text-ink">
+    <div className="relative flex h-full flex-col bg-bg text-ink">
+      <div className="absolute right-4 top-3 z-10">
+        <SettingsButton />
+      </div>
       <div className="flex flex-1 flex-col items-center justify-center px-6">
         <div ref={headerRef} className="mb-10 flex flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet text-lg font-bold text-bg shadow-glow">

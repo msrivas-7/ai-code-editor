@@ -245,18 +245,24 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
           {modelsStatus === "error" && (
             <span className="text-[11px] text-danger">failed: {modelsError}</span>
           )}
-          {modelsStatus === "loaded" && (
-            <select
-              value={selectedModel ?? ""}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition hover:border-accent/60"
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+          {modelsStatus === "loaded" && models.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedModel ?? ""}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                aria-label="Model"
+                className="w-full appearance-none rounded-md border border-border bg-elevated px-2.5 py-1.5 pr-7 text-xs text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted">
+                ▾
+              </span>
+            </div>
           )}
           {modelsStatus === "loaded" && models.length === 0 && (
             <span className="text-[11px] text-muted">

@@ -5,6 +5,7 @@ import { loadCourse, loadAllLessonMetas } from "../content/courseLoader";
 import { useProgressStore } from "../stores/progressStore";
 import { useLearnerStore } from "../stores/learnerStore";
 import { LessonList } from "../components/LessonList";
+import { SettingsButton } from "../../../components/SettingsButton";
 import type { ProgressStatus } from "../types";
 
 export default function CourseOverviewPage() {
@@ -83,6 +84,9 @@ export default function CourseOverviewPage() {
         <h1 className="text-sm font-semibold tracking-tight">
           {course?.title ?? "Course"}
         </h1>
+        <div className="ml-auto">
+          <SettingsButton />
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto">

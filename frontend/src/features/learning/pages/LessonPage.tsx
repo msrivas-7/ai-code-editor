@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import confetti from "canvas-confetti";
 import type { Lesson } from "../types";
-import { loadFullLesson, loadCourse } from "../content/courseLoader";
+import { loadFullLesson, loadCourse, loadAllLessonMetas } from "../content/courseLoader";
+import { conceptsAvailableBefore } from "../content/conceptGraph";
 import { useProgressStore, loadSavedCode } from "../stores/progressStore";
 import { useLearnerStore } from "../stores/learnerStore";
 import { LessonInstructionsPanel } from "../components/LessonInstructionsPanel";
@@ -109,13 +110,14 @@ export default function LessonPage() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [totalLessons, setTotalLessons] = useState(10);
   const [lessonOrder, setLessonOrder] = useState<string[]>([]);
+  const [priorConcepts, setPriorConcepts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [showComplete, setShowComplete] = useState(false);
   const [resumed, setResumed] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [resetNonce, setResetNonce] = useState(0);
   const [confirmResetLesson, setConfirmResetLesson] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [hasEdited, setHasEdited] = useState(false);
   const [hasRun, setHasRun] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
@@ -187,11 +189,14 @@ export default function LessonPage() {
     Promise.all([
       loadFullLesson(courseId, lessonId),
       loadCourse(courseId),
+      loadAllLessonMetas(courseId),
     ])
-      .then(([l, course]) => {
+      .then(([l, course, metas]) => {
         setLesson(l);
         setTotalLessons(course.lessonOrder.length);
         setLessonOrder(course.lessonOrder);
+        const metaMap = new Map(metas.map((m) => [m.id, m]));
+        setPriorConcepts(conceptsAvailableBefore(course, metaMap, lessonId));
         startLesson(identity.learnerId, courseId, lessonId);
       })
       .catch(() => setLesson(null))
@@ -1011,12 +1016,14 @@ export default function LessonPage() {
                 <GuidedTutorPanel
                   lessonMeta={lesson}
                   totalLessons={totalLessons}
+                  priorConcepts={priorConcepts}
                   progressSummary={
                     lp
                       ? `attempt ${lp.attemptCount}, ${lp.runCount} runs, ${lp.hintCount} hints used`
                       : "first attempt"
                   }
                   onCollapse={() => setTutorCollapsed(true)}
+                  onOpenSettings={() => setShowSettings(true)}
                   resetNonce={resetNonce}
                 />
               </aside>

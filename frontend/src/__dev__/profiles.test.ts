@@ -110,7 +110,8 @@ describe("needs-help-dashboard profile", () => {
       language: "python",
       estimatedMinutes,
       objectives: [],
-      conceptTags: [],
+      teachesConceptTags: [],
+      usesConceptTags: [],
       completionRules: [],
       prerequisiteLessonIds: [],
     };

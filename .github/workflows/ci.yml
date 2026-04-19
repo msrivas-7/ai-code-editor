@@ -37,6 +37,45 @@ jobs:
           npm ci
           npx tsc --noEmit
 
+  content-lint:
+    name: Content lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frontend — install & content-lint
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint:content
+
+  solutions-pass:
+    name: Verify golden solutions
+    needs: content-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frontend — install & verify solutions
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run verify:solutions
+
   test:
     name: Test (${{ matrix.os }})
     strategy:

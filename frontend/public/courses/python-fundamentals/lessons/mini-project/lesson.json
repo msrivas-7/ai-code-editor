@@ -11,14 +11,26 @@
     "Design a program from requirements",
     "Parse structured input and produce formatted output"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "project",
-    "functions",
-    "lists",
-    "dictionaries",
-    "loops",
-    "conditionals",
     "design"
+  ],
+  "usesConceptTags": [
+    "def",
+    "return",
+    "list",
+    "dict",
+    "for",
+    "iteration",
+    "if",
+    "elif",
+    "else",
+    "f-strings",
+    "print",
+    "input",
+    "int",
+    "float",
+    "variables"
   ],
   "completionRules": [
     {
@@ -95,12 +107,20 @@
     {
       "id": "top-student",
       "title": "Find the top student",
-      "prompt": "Given the grade book below, write a function `top_student(book)` that returns the name of the student with the highest average. Print their name. Expected output: `Bob`.",
+      "prompt": "Write a function `top_student(book)` that returns the name of the student with the highest average grade. The grader will test it with several grade books.",
       "goal": "Loop over a dict-of-lists, compute averages, track the max.",
-      "starterCode": "book = {\n    \"Alice\": [80, 85, 90],\n    \"Bob\": [95, 92, 98],\n    \"Cara\": [70, 75, 80],\n}\n\ndef top_student(book):\n    # Return the name with the highest average\n    pass\n\nprint(top_student(book))\n",
+      "starterCode": "def top_student(book):\n    # Return the name with the highest average\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "Bob" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def top_student" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def top_student" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "three-student book", "call": "top_student({'Alice': [80, 85, 90], 'Bob': [95, 92, 98], 'Cara': [70, 75, 80]})", "expected": "'Bob'" },
+            { "name": "single student", "call": "top_student({'Solo': [75, 80, 85]})", "expected": "'Solo'" },
+            { "name": "Alice wins", "call": "top_student({'Alice': [100, 100], 'Bob': [50, 50]})", "expected": "'Alice'" },
+            { "name": "different class sizes", "call": "top_student({'Ada': [90], 'Ben': [85, 85, 85]})", "expected": "'Ada'", "hidden": true, "category": "uneven-grade-counts" }
+          ]
+        }
       ],
       "hints": [
         "Loop over book.items(): you get (name, grades) pairs.",
@@ -111,12 +131,20 @@
     {
       "id": "class-average",
       "title": "Class average",
-      "prompt": "Given the same grade book, write a function `class_average(book)` that returns the average of ALL grades across all students, rounded to 1 decimal place. Print it. Expected output: `84.3`.",
+      "prompt": "Write a function `class_average(book)` that returns the average of ALL grades across all students, rounded to 1 decimal place. The grader will test it with several grade books.",
       "goal": "Flatten nested data and compute a single aggregate.",
-      "starterCode": "book = {\n    \"Alice\": [80, 85, 90],\n    \"Bob\": [95, 92, 98],\n    \"Cara\": [70, 75, 80],\n}\n\ndef class_average(book):\n    # Return the class-wide average, rounded to 1 decimal\n    pass\n\nprint(class_average(book))\n",
+      "starterCode": "def class_average(book):\n    # Return the class-wide average, rounded to 1 decimal\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "84.3" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def class_average" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def class_average" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "three-student book", "call": "class_average({'Alice': [80, 85, 90], 'Bob': [95, 92, 98], 'Cara': [70, 75, 80]})", "expected": "85.0" },
+            { "name": "single student", "call": "class_average({'Solo': [100, 50]})", "expected": "75.0" },
+            { "name": "all same grade", "call": "class_average({'A': [90], 'B': [90], 'C': [90]})", "expected": "90.0" },
+            { "name": "rounds halfway down with bankers' rounding", "call": "class_average({'X': [85, 86]})", "expected": "85.5", "hidden": true, "category": "rounding" }
+          ]
+        }
       ],
       "hints": [
         "Collect all grades into one list, or accumulate total + count directly.",

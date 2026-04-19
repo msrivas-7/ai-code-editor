@@ -11,7 +11,7 @@
     "Use comparison operators (==, !=, <, >, <=, >=)",
     "Combine conditions with and, or, not"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "if",
     "elif",
     "else",
@@ -20,6 +20,13 @@
     "and",
     "or",
     "not"
+  ],
+  "usesConceptTags": [
+    "variables",
+    "bool",
+    "int",
+    "input",
+    "print"
   ],
   "completionRules": [
     {

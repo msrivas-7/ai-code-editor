@@ -9,6 +9,10 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
+// Side-effect import: applies `data-theme` on <html> from the stored preference
+// at module load. Routes that don't transitively import theme.ts (e.g. the
+// standalone /dev/content dashboard) otherwise render in default dark.
+import "./util/theme";
 
 // Dev-only global keyboard shortcut. The import is guarded by
 // import.meta.env.DEV so Vite tree-shakes the whole __dev__ folder in prod.

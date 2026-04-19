@@ -22,12 +22,15 @@ interface GuidedTutorPanelProps {
   lessonMeta: LessonMeta;
   totalLessons: number;
   progressSummary: string;
+  // Concepts taught in earlier lessons + course baseVocabulary. Used to scope
+  // the tutor's explanations ("safe to reference") vs. future material.
+  priorConcepts: string[];
   onCollapse?: () => void;
   onOpenSettings?: () => void;
   resetNonce?: number;
 }
 
-export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, onCollapse, onOpenSettings, resetNonce }: GuidedTutorPanelProps) {
+export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, priorConcepts, onCollapse, onOpenSettings, resetNonce }: GuidedTutorPanelProps) {
   const incrementHint = useProgressStore((s) => s.incrementHint);
   const keys = useShortcutLabels();
   const {
@@ -129,7 +132,9 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, on
             lessonId: lessonMeta.id,
             lessonTitle: lessonMeta.title,
             lessonObjectives: lessonMeta.objectives,
-            conceptTags: lessonMeta.conceptTags,
+            teachesConceptTags: lessonMeta.teachesConceptTags,
+            usesConceptTags: lessonMeta.usesConceptTags,
+            priorConcepts,
             completionRules: lessonMeta.completionRules,
             studentProgressSummary: progressSummary,
             lessonOrder: lessonMeta.order,

@@ -12,7 +12,7 @@
     "Iterate over keys, values, and items",
     "Use .get() for safe access"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "dict",
     "key-value",
     "get",
@@ -20,6 +20,18 @@
     "keys",
     "values",
     "nesting"
+  ],
+  "usesConceptTags": [
+    "list",
+    "def",
+    "return",
+    "for",
+    "iteration",
+    "print",
+    "str",
+    "int",
+    "if",
+    "variables"
   ],
   "completionRules": [
     {
@@ -89,49 +101,75 @@
     {
       "id": "word-count",
       "title": "Word frequency",
-      "prompt": "Given `text = \"to be or not to be\"`, build a dictionary counting how often each word appears, then print `to: 2`. Use split() to separate words.",
+      "prompt": "Write a function `word_counts(text)` that splits `text` on whitespace and returns a dict counting how often each word appears. The grader will test it with several strings.",
       "goal": "Count occurrences with a dictionary and .get().",
-      "starterCode": "text = \"to be or not to be\"\ncounts = {}\n# Fill counts, then print \"to: 2\"\n",
+      "starterCode": "def word_counts(text):\n    # Return a dict mapping each word to its count\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "to: 2" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def word_counts" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "basic sentence with repeats", "call": "word_counts('to be or not to be')", "expected": "{'to': 2, 'be': 2, 'or': 1, 'not': 1}" },
+            { "name": "single word", "call": "word_counts('hello')", "expected": "{'hello': 1}" },
+            { "name": "all unique words", "call": "word_counts('a b c')", "expected": "{'a': 1, 'b': 1, 'c': 1}" },
+            { "name": "empty string returns empty dict", "call": "word_counts('')", "expected": "{}", "hidden": true, "category": "empty-input" }
+          ]
+        }
       ],
       "hints": [
-        "Loop over words: `for word in text.split():`.",
-        "Use .get() with a default: `counts[word] = counts.get(word, 0) + 1`.",
-        "Then print(f\"to: {counts['to']}\")."
+        "Split first: `words = text.split()`.",
+        "Loop over words: `counts[word] = counts.get(word, 0) + 1`.",
+        "`split()` with no argument handles multiple spaces and returns `[]` for an empty string."
       ]
     },
     {
       "id": "safe-lookup",
-      "title": "Safe lookup with default",
-      "prompt": "Given `prices = {\"apple\": 1.0, \"banana\": 0.5}`, use .get() to look up `\"cherry\"` with a default of `0.0` and print `Cherry price: 0.0`.",
+      "title": "Safe price lookup",
+      "prompt": "Write a function `price_of(prices, item)` that returns the price for `item` using `.get()` with a default of `0.0` when the item isn't in the dict. The grader will test it with several price sheets.",
       "goal": "Use .get() to avoid KeyError on missing keys.",
-      "starterCode": "prices = {\"apple\": 1.0, \"banana\": 0.5}\n# Print \"Cherry price: 0.0\" using .get() with a default\n",
+      "starterCode": "def price_of(prices, item):\n    # Return prices[item], or 0.0 if item is missing — use .get()\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "Cherry price: 0.0" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def price_of" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": ".get(" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "existing item", "call": "price_of({'apple': 1.0, 'banana': 0.5}, 'apple')", "expected": "1.0" },
+            { "name": "missing item defaults to 0.0", "call": "price_of({'apple': 1.0, 'banana': 0.5}, 'cherry')", "expected": "0.0" },
+            { "name": "empty dict", "call": "price_of({}, 'anything')", "expected": "0.0" },
+            { "name": "zero-priced item stays zero", "call": "price_of({'free': 0.0, 'apple': 1.0}, 'free')", "expected": "0.0", "hidden": true, "category": "zero-value" }
+          ]
+        }
       ],
       "hints": [
-        "`prices.get(\"cherry\", 0.0)` returns 0.0 if the key doesn't exist.",
-        "Store in a variable, or use it directly in an f-string.",
-        "print(f\"Cherry price: {prices.get('cherry', 0.0)}\")"
+        "`prices.get(item, 0.0)` returns 0.0 if the key doesn't exist.",
+        "That's a one-liner: `return prices.get(item, 0.0)`.",
+        "Don't check `if item in prices` — that's what `.get()` replaces."
       ]
     },
     {
       "id": "merge-dicts",
       "title": "Merge two dicts",
-      "prompt": "Given `a = {\"x\": 1, \"y\": 2}` and `b = {\"y\": 20, \"z\": 30}`, build a merged dict where values from `b` win for shared keys. Print the value of `y` only — expected output: `20`.",
+      "prompt": "Write a function `merge(a, b)` that returns a new dict containing all keys from both `a` and `b`. When a key appears in both, `b`'s value wins. The grader will test it with several pairs.",
       "goal": "Combine two dictionaries by iterating.",
-      "starterCode": "a = {\"x\": 1, \"y\": 2}\nb = {\"y\": 20, \"z\": 30}\nmerged = {}\n# Fill merged — b's values should win — then print merged[\"y\"]\n",
+      "starterCode": "def merge(a, b):\n    # Return a merged dict where b's values win on collision\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "20" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "for " }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def merge" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "overlapping keys, b wins", "call": "merge({'x': 1, 'y': 2}, {'y': 20, 'z': 30})", "expected": "{'x': 1, 'y': 20, 'z': 30}" },
+            { "name": "disjoint keys", "call": "merge({'a': 1}, {'b': 2})", "expected": "{'a': 1, 'b': 2}" },
+            { "name": "empty a", "call": "merge({}, {'z': 9})", "expected": "{'z': 9}" },
+            { "name": "empty b leaves a unchanged", "call": "merge({'a': 1, 'b': 2}, {})", "expected": "{'a': 1, 'b': 2}", "hidden": true, "category": "empty-override" }
+          ]
+        }
       ],
       "hints": [
-        "Copy `a` first: loop `for k, v in a.items(): merged[k] = v`.",
-        "Then overwrite with `b`: loop `for k, v in b.items(): merged[k] = v`.",
-        "Finally: `print(merged[\"y\"])`."
+        "Start with `merged = {}`; loop `for k, v in a.items(): merged[k] = v`.",
+        "Then overwrite with `b`: `for k, v in b.items(): merged[k] = v`.",
+        "Finally `return merged`."
       ]
     }
   ]

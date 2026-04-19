@@ -12,7 +12,7 @@
     "Iterate over lists with for loops",
     "Use list comprehensions"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "list",
     "indexing",
     "slicing",
@@ -20,6 +20,15 @@
     "remove",
     "comprehension",
     "len"
+  ],
+  "usesConceptTags": [
+    "def",
+    "return",
+    "for",
+    "iteration",
+    "print",
+    "int",
+    "variables"
   ],
   "completionRules": [
     {
@@ -106,33 +115,51 @@
     {
       "id": "sum-doubled",
       "title": "Double, then sum",
-      "prompt": "Given `nums = [1, 2, 3, 4, 5]`, build a NEW list where each number is doubled (use append), then print the sum of the new list. Expected output: `30`.",
+      "prompt": "Write a function `sum_doubled(nums)` that builds a new list where each number is doubled, then returns the SUM of that new list. Use `append()` to build it. The grader will test with several lists.",
       "goal": "Use append() to build a list, then sum it.",
-      "starterCode": "nums = [1, 2, 3, 4, 5]\ndoubled = []\n# Append each doubled number to doubled, then print sum(doubled)\n",
+      "starterCode": "def sum_doubled(nums):\n    doubled = []\n    # Append each doubled number, then return sum(doubled)\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "30" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "append(" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def sum_doubled" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "append(" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "standard list", "call": "sum_doubled([1, 2, 3, 4, 5])", "expected": "30" },
+            { "name": "empty list", "call": "sum_doubled([])", "expected": "0" },
+            { "name": "single element", "call": "sum_doubled([10])", "expected": "20" },
+            { "name": "negatives cancel out", "call": "sum_doubled([-1, 1])", "expected": "0", "hidden": true, "category": "negatives" }
+          ]
+        }
       ],
       "hints": [
         "Loop: `for n in nums: doubled.append(n * 2)`.",
-        "sum(doubled) returns the total.",
-        "Then just `print(sum(doubled))`."
+        "Then `return sum(doubled)`.",
+        "An empty input list should produce 0."
       ]
     },
     {
       "id": "unique-keep-order",
       "title": "Remove duplicates, keep order",
-      "prompt": "Given `items = [3, 1, 2, 3, 1, 4, 2]`, build a new list with duplicates removed while keeping the first-seen order. Print the result. Expected output: `[3, 1, 2, 4]`.",
+      "prompt": "Write a function `dedupe(items)` that returns a new list with duplicates removed while preserving the first-seen order. The grader will test with several lists.",
       "goal": "Build a deduplicated list without reordering.",
-      "starterCode": "items = [3, 1, 2, 3, 1, 4, 2]\n# Build a list with duplicates removed, preserving order\n",
+      "starterCode": "def dedupe(items):\n    # Return a new list with duplicates removed, preserving first-seen order\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "[3, 1, 2, 4]" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "append(" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def dedupe" },
+        { "type": "required_file_contains", "file": "main.py", "pattern": "append(" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "mixed repeats", "call": "dedupe([3, 1, 2, 3, 1, 4, 2])", "expected": "[3, 1, 2, 4]" },
+            { "name": "empty list", "call": "dedupe([])", "expected": "[]" },
+            { "name": "all the same", "call": "dedupe([1, 1, 1])", "expected": "[1]" },
+            { "name": "strings work too", "call": "dedupe(['a', 'b', 'a', 'c', 'b'])", "expected": "['a', 'b', 'c']", "hidden": true, "category": "other-types" }
+          ]
+        }
       ],
       "hints": [
         "Start with `result = []`.",
         "Loop each item: `if item not in result: result.append(item)`.",
-        "Then `print(result)`."
+        "Then `return result`."
       ]
     }
   ]

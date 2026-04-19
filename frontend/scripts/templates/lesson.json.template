@@ -1,0 +1,28 @@
+{
+  "id": "{{LESSON_ID}}",
+  "courseId": "{{COURSE_ID}}",
+  "title": "{{TITLE}}",
+  "description": "{{DESCRIPTION}}",
+  "order": {{ORDER}},
+  "language": "{{LANGUAGE}}",
+  "estimatedMinutes": {{ESTIMATED_MINUTES}},
+  "objectives": [
+    "Describe the primary skill this lesson teaches",
+    "List a second concrete goal",
+    "Add a third — keep each a single short action verb phrase"
+  ],
+  "teachesConceptTags": [],
+  "usesConceptTags": [],
+  "completionRules": [
+    {
+      "type": "expected_stdout",
+      "expected": "REPLACE_WITH_EXPECTED_OUTPUT"
+    }
+  ],
+  "prerequisiteLessonIds": [{{PREREQ_JSON}}],
+  "recap": "Summarize in 1-2 sentences what the learner just accomplished.",
+  "practicePrompts": [
+    "Add an open-ended question that stretches the lesson idea."
+  ],
+  "practiceExercises": []
+}

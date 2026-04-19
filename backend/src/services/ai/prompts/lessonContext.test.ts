@@ -7,7 +7,9 @@ const full: LessonContext = {
   lessonId: "hello-world",
   lessonTitle: "Hello, World!",
   lessonObjectives: ["Write and run a Python program", "Use print()"],
-  conceptTags: ["print", "strings", "syntax"],
+  teachesConceptTags: ["print", "strings"],
+  usesConceptTags: ["syntax"],
+  priorConcepts: ["identifiers", "whitespace"],
   completionRules: [{ type: "expected_stdout", expected: "Hello, World!" }],
   studentProgressSummary: "attempt 1, 0 runs",
   lessonOrder: 1,
@@ -26,9 +28,18 @@ describe("buildLessonContextBlock", () => {
     expect(block).toMatch(/- Use print\(\)/);
   });
 
-  it("renders concept tags as comma-separated list", () => {
+  it("renders teaches, uses, and prior concepts on separate labeled lines", () => {
     const block = buildLessonContextBlock(full);
-    expect(block).toMatch(/Concepts covered: print, strings, syntax/);
+    expect(block).toMatch(/TEACHES.*print, strings/);
+    expect(block).toMatch(/USES.*syntax/);
+    expect(block).toMatch(/EARLIER lessons.*identifiers, whitespace/);
+  });
+
+  it("labels empty concept lists as (none declared) instead of dropping the line", () => {
+    const ctx: LessonContext = { ...full, usesConceptTags: [], priorConcepts: [] };
+    const block = buildLessonContextBlock(ctx);
+    expect(block).toMatch(/USES.*\(none declared\)/);
+    expect(block).toMatch(/EARLIER lessons.*\(none declared\)/);
   });
 
   it("renders expected_stdout rule as task description", () => {
@@ -52,6 +63,15 @@ describe("buildLessonContextBlock", () => {
     };
     const block = buildLessonContextBlock(ctx);
     expect(block).toMatch(/write code in main\.py containing `def `/);
+  });
+
+  it("describes function_tests as defining the tested functions", () => {
+    const ctx: LessonContext = {
+      ...full,
+      completionRules: [{ type: "function_tests" }],
+    };
+    const block = buildLessonContextBlock(ctx);
+    expect(block).toMatch(/define the tested function/);
   });
 
   it("renders custom_validator as pass custom validation", () => {
@@ -92,10 +112,11 @@ describe("buildLessonContextBlock", () => {
     expect(block).toMatch(/Progress: attempt 1, 0 runs/);
   });
 
-  it("includes lesson rules", () => {
+  it("includes lesson rules warning about future material", () => {
     const block = buildLessonContextBlock(full);
     expect(block).toMatch(/IMPORTANT LESSON RULES:/);
     expect(block).toMatch(/Stay within the scope/);
+    expect(block).toMatch(/future material/);
     expect(block).toMatch(/Guide toward the solution without giving it away/);
   });
 });

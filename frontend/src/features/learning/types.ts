@@ -6,6 +6,7 @@ export interface Course {
   description: string;
   language: string;
   lessonOrder: string[];
+  baseVocabulary?: string[];
 }
 
 export interface FunctionTest {
@@ -61,7 +62,8 @@ export interface LessonMeta {
   language: string;
   estimatedMinutes: number;
   objectives: string[];
-  conceptTags: string[];
+  teachesConceptTags: string[];
+  usesConceptTags: string[];
   completionRules: CompletionRule[];
   prerequisiteLessonIds: string[];
   recap?: string;

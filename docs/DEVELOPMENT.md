@@ -15,10 +15,47 @@
 (cd frontend && npm test)
 (cd backend  && npm test)
 
+# Content validation (frontend)
+(cd frontend && npm run lint:content)       # schema + structural + concept graph
+(cd frontend && npm run verify:solutions)   # runs every golden solution against its completion rules
+
 # Frontend only (backend in Docker)
 docker compose up -d backend
 cd frontend && npm run dev
 ```
+
+## Authoring lessons
+
+See [CONTENT_AUTHORING.md](./CONTENT_AUTHORING.md) for the full guide. Quick reference:
+
+```bash
+# Scaffold a new lesson
+(cd frontend && npm run new:lesson -- \
+  --course python-fundamentals \
+  --id my-lesson \
+  --title "My lesson" \
+  --description "One-line pitch." \
+  --minutes 15 \
+  --prereq previous-lesson)
+
+# Add a practice exercise to an existing lesson
+(cd frontend && npm run new:practice -- \
+  --course python-fundamentals \
+  --lesson my-lesson \
+  --id my-exercise \
+  --title "Exercise title" \
+  --prompt "Learner-facing prompt" \
+  --goal "What this reinforces" \
+  --rule-style function)     # or stdout | file
+```
+
+Both scaffolders run `npm run lint:content` at the end — expect a few warnings on a fresh scaffold while you fill in objectives, concept tags, and completion rules.
+
+CI runs `lint:content` and `verify:solutions` on every push. The `solutions-pass` job depends on `content-lint` and uses `python3` directly (no Docker), so it completes in ~15 seconds.
+
+## Dev-only content health dashboard
+
+When the frontend is running in dev mode (`npm run dev`), visit **http://localhost:5173/dev/content** for a per-lesson overview: order / rules summary / teaches + uses concept counts / content + solution presence / concept-graph issues. The route is gated on `import.meta.env.DEV` and tree-shaken out of production bundles.
 
 ## Configuration
 

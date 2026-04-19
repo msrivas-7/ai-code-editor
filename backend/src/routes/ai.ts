@@ -86,7 +86,9 @@ const askBody = z.object({
     lessonId: z.string(),
     lessonTitle: z.string(),
     lessonObjectives: z.array(z.string()),
-    conceptTags: z.array(z.string()),
+    teachesConceptTags: z.array(z.string()),
+    usesConceptTags: z.array(z.string()),
+    priorConcepts: z.array(z.string()),
     completionRules: z.array(z.object({
       type: z.string(),
       expected: z.string().optional(),

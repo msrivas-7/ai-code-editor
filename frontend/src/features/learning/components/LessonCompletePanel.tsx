@@ -62,9 +62,9 @@ export function LessonCompletePanel({
           </div>
         )}
 
-        {lesson.conceptTags.length > 0 && (
+        {lesson.teachesConceptTags.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-1.5">
-            {lesson.conceptTags.map((tag) => (
+            {lesson.teachesConceptTags.map((tag) => (
               <span
                 key={tag}
                 className="rounded-full bg-violet/10 px-2 py-0.5 text-[10px] font-medium text-violet"

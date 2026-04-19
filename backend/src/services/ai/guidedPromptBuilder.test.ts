@@ -11,7 +11,9 @@ const lessonCtx: LessonContext = {
   lessonId: "hello-world",
   lessonTitle: "Hello, World!",
   lessonObjectives: ["Write and run a Python program", "Use print()"],
-  conceptTags: ["print", "strings", "syntax"],
+  teachesConceptTags: ["print", "strings"],
+  usesConceptTags: ["syntax"],
+  priorConcepts: [],
   completionRules: [{ type: "expected_stdout", expected: "Hello, World!" }],
   studentProgressSummary: "attempt 2, 1 run, 0 hints",
   lessonOrder: 1,
@@ -44,9 +46,10 @@ describe("buildGuidedSystemPrompt", () => {
     expect(prompt).toMatch(/Use print\(\)/);
   });
 
-  it("includes concept tags", () => {
+  it("includes concept tags split into teaches and uses", () => {
     const prompt = buildGuidedSystemPrompt(noHistory, "hi", lessonCtx);
-    expect(prompt).toMatch(/print, strings, syntax/);
+    expect(prompt).toMatch(/TEACHES.*print, strings/);
+    expect(prompt).toMatch(/USES.*syntax/);
   });
 
   it("includes lesson order info", () => {

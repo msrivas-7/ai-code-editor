@@ -11,7 +11,7 @@
     "Identify common error types (SyntaxError, TypeError, NameError, IndexError)",
     "Use print() to debug step by step"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "debugging",
     "traceback",
     "SyntaxError",
@@ -19,6 +19,15 @@
     "NameError",
     "IndexError",
     "print-debugging"
+  ],
+  "usesConceptTags": [
+    "variables",
+    "list",
+    "dict",
+    "int",
+    "str",
+    "print",
+    "indexing"
   ],
   "completionRules": [
     {

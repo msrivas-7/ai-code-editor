@@ -11,7 +11,7 @@
     "Understand int, float, str, and bool types",
     "Use f-strings for formatted output"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "variables",
     "types",
     "int",
@@ -19,6 +19,10 @@
     "str",
     "bool",
     "f-strings"
+  ],
+  "usesConceptTags": [
+    "print",
+    "strings"
   ],
   "completionRules": [
     {

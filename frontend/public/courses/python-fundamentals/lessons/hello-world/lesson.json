@@ -11,11 +11,12 @@
     "Use the print() function",
     "Understand strings and quotes"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "print",
     "strings",
     "syntax"
   ],
+  "usesConceptTags": [],
   "completionRules": [
     {
       "type": "expected_stdout",

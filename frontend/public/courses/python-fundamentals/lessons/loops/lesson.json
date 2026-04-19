@@ -11,13 +11,20 @@
     "Use while loops with a condition",
     "Control loops with break and continue"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "for",
     "while",
     "range",
     "break",
     "continue",
     "iteration"
+  ],
+  "usesConceptTags": [
+    "if",
+    "comparison",
+    "int",
+    "print",
+    "variables"
   ],
   "completionRules": [
     {

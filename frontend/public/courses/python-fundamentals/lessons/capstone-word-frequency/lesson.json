@@ -12,14 +12,25 @@
     "Sort a dictionary by value and break ties alphabetically",
     "Decompose a program into small, named functions"
   ],
-  "conceptTags": [
-    "capstone",
+  "teachesConceptTags": [
+    "sorting"
+  ],
+  "usesConceptTags": [
+    "def",
+    "return",
+    "for",
+    "iteration",
+    "list",
+    "dict",
+    "str",
     "strings",
-    "loops",
-    "dictionaries",
-    "sorting",
-    "functions",
-    "f-strings"
+    "f-strings",
+    "print",
+    "input",
+    "if",
+    "comparison",
+    "append",
+    "variables"
   ],
   "completionRules": [
     {
@@ -101,28 +112,44 @@
     {
       "id": "longest-word",
       "title": "Longest word",
-      "prompt": "Given the word list below, print the LONGEST word. Expected output: `elderberry`.",
+      "prompt": "Write a function `longest(words)` that returns the longest word in the list. If two words are tied for length, return the one that appears FIRST in the list. The grader will test it with several lists.",
       "goal": "Iterate a list, track the longest item seen so far.",
-      "starterCode": "words = [\"apple\", \"banana\", \"cherry\", \"date\", \"elderberry\"]\n\ndef longest(words):\n    # Return the longest word in the list\n    pass\n\nprint(longest(words))\n",
+      "starterCode": "def longest(words):\n    # Return the longest word in the list\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "elderberry" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def longest" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def longest" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "standard list", "call": "longest(['apple', 'banana', 'cherry', 'date', 'elderberry'])", "expected": "'elderberry'" },
+            { "name": "single-word list", "call": "longest(['hello'])", "expected": "'hello'" },
+            { "name": "same length, first wins", "call": "longest(['cat', 'dog', 'pig'])", "expected": "'cat'" },
+            { "name": "mixed case lengths", "call": "longest(['Short', 'LONGERWORD', 'mid'])", "expected": "'LONGERWORD'", "hidden": true, "category": "mixed-case" }
+          ]
+        }
       ],
       "hints": [
-        "Track a `best` variable — start it as the first word or an empty string.",
+        "Track a `best` variable — start it as the first word.",
         "For each word, compare `len(word)` to `len(best)`.",
-        "If longer, update `best = word`."
+        "Use `>` (strictly greater) so the first word of a tie stays as the winner."
       ]
     },
     {
       "id": "unique-words",
       "title": "Count unique words",
-      "prompt": "Given the sentence below, print `Unique: N` where N is the number of distinct words (case-insensitive). Expected output: `Unique: 5`.",
+      "prompt": "Write a function `count_unique(text)` that returns the number of distinct words in `text` (case-insensitive). The grader will test it with several sentences.",
       "goal": "Normalize case, then count distinct items with a set or dict.",
-      "starterCode": "sentence = \"The cat and the dog and the bird\"\n\ndef count_unique(text):\n    # Return the count of distinct lowercased words\n    pass\n\nprint(f\"Unique: {count_unique(sentence)}\")\n",
+      "starterCode": "def count_unique(text):\n    # Return the count of distinct lowercased words\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "Unique: 5" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def count_unique" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def count_unique" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "basic sentence with repeats", "call": "count_unique('The cat and the dog and the bird')", "expected": "5" },
+            { "name": "single word", "call": "count_unique('hello')", "expected": "1" },
+            { "name": "all same word, different spacing", "call": "count_unique('word word word')", "expected": "1" },
+            { "name": "mixed case dedup", "call": "count_unique('Apple apple APPLE banana')", "expected": "2", "hidden": true, "category": "mixed-case" }
+          ]
+        }
       ],
       "hints": [
         "Lowercase first: `text.lower()`, then `.split()`.",
@@ -133,12 +160,20 @@
     {
       "id": "max-frequency",
       "title": "Most frequent word",
-      "prompt": "Given the word list below, print the most-frequent word and its count in the format `apple (3)`. If counts tie, pick the word that comes first alphabetically. Expected output: `apple (3)`.",
+      "prompt": "Write a function `most_frequent(words)` that returns a tuple `(word, count)` for the most-frequent word in the list. If counts tie, pick the word that comes first alphabetically. The grader will test it with several lists.",
       "goal": "Build a frequency dict, then scan for the max — with an alphabetical tiebreaker.",
-      "starterCode": "words = [\"apple\", \"banana\", \"apple\", \"cherry\", \"banana\", \"apple\"]\n\ndef most_frequent(words):\n    # Return a tuple (word, count) of the most-frequent word\n    # Break ties by picking the alphabetically-first word\n    pass\n\nword, count = most_frequent(words)\nprint(f\"{word} ({count})\")\n",
+      "starterCode": "def most_frequent(words):\n    # Return a tuple (word, count) of the most-frequent word\n    # Break ties by picking the alphabetically-first word\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "apple (3)" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def most_frequent" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def most_frequent" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "clear max", "call": "most_frequent(['apple', 'banana', 'apple', 'cherry', 'banana', 'apple'])", "expected": "('apple', 3)" },
+            { "name": "two-way tie, alphabetical wins", "call": "most_frequent(['cat', 'dog', 'cat', 'dog'])", "expected": "('cat', 2)" },
+            { "name": "single-word input", "call": "most_frequent(['solo'])", "expected": "('solo', 1)" },
+            { "name": "all unique, alphabetical wins", "call": "most_frequent(['zebra', 'apple', 'mango'])", "expected": "('apple', 1)", "hidden": true, "category": "all-unique-tiebreak" }
+          ]
+        }
       ],
       "hints": [
         "Build `counts = {}` with `counts[w] = counts.get(w, 0) + 1`.",

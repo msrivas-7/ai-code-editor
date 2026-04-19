@@ -86,17 +86,22 @@ export function DeveloperSection() {
         <label className="text-[10px] font-medium uppercase tracking-wide text-muted">
           Profile
         </label>
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition hover:border-violet/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet"
-        >
-          {PROFILES.map((p, i) => (
-            <option key={p.id} value={p.id}>
-              {i + 1}. {p.label} {p.frozen ? "" : "— persistent"}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className="w-full appearance-none rounded-md border border-border bg-elevated px-2.5 py-1.5 pr-7 text-xs text-ink transition hover:border-violet/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet"
+          >
+            {PROFILES.map((p, i) => (
+              <option key={p.id} value={p.id}>
+                {i + 1}. {p.label} {p.frozen ? "" : "— persistent"}
+              </option>
+            ))}
+          </select>
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted">
+            ▾
+          </span>
+        </div>
         {selectedProfile && (
           <p className="text-[10px] leading-relaxed text-faint">
             {selectedProfile.description}
@@ -127,6 +132,24 @@ export function DeveloperSection() {
         >
           Exit profile
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-violet/20 pt-2">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted">
+          Tools
+        </span>
+        <a
+          href="/dev/content"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 rounded-md border border-violet/40 px-2.5 py-1 text-[10px] font-medium text-violet transition hover:bg-violet/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet"
+          title="Open the content health dashboard in a new tab"
+        >
+          Content health
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M7 17L17 7M17 7H9M17 7V15" />
+          </svg>
+        </a>
       </div>
 
       <div className="flex flex-wrap gap-1.5 border-t border-violet/20 pt-2">

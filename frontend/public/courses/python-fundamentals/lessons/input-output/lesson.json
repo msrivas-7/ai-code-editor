@@ -11,12 +11,19 @@
     "Convert strings to numbers with int() and float()",
     "Build a simple interactive program"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "input",
     "type-conversion",
     "int()",
-    "float()",
-    "print"
+    "float()"
+  ],
+  "usesConceptTags": [
+    "variables",
+    "print",
+    "str",
+    "int",
+    "float",
+    "f-strings"
   ],
   "completionRules": [
     {

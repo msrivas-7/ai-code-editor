@@ -5,6 +5,7 @@ import { loadCourse, loadAllLessonMetas } from "../content/courseLoader";
 import { useProgressStore, loadAllLessonProgress } from "../stores/progressStore";
 import { useLearnerStore } from "../stores/learnerStore";
 import { CourseCard } from "../components/CourseCard";
+import { SettingsButton } from "../../../components/SettingsButton";
 import { pickShakyLessons, formatTimeSpent } from "../utils/mastery";
 
 const COURSES = ["python-fundamentals"];
@@ -114,6 +115,9 @@ export default function LearningDashboardPage() {
           AI
         </div>
         <h1 className="text-sm font-semibold tracking-tight">Guided Learning</h1>
+        <div className="ml-auto">
+          <SettingsButton />
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto">

@@ -12,14 +12,26 @@
     "Parse command lines with str.split(maxsplit=...)",
     "Print aligned, formatted output with f-strings"
   ],
-  "conceptTags": [
-    "capstone",
-    "lists",
-    "dictionaries",
-    "functions",
-    "conditionals",
-    "string-parsing",
-    "f-strings"
+  "teachesConceptTags": [
+    "string-parsing"
+  ],
+  "usesConceptTags": [
+    "def",
+    "return",
+    "list",
+    "dict",
+    "if",
+    "elif",
+    "else",
+    "for",
+    "iteration",
+    "f-strings",
+    "print",
+    "input",
+    "comparison",
+    "append",
+    "nesting",
+    "variables"
   ],
   "completionRules": [
     {
@@ -101,12 +113,20 @@
     {
       "id": "pending-count",
       "title": "Count pending tasks",
-      "prompt": "Given the task list below, print `Pending: N` where N is the number of tasks where `done` is False. Expected output: `Pending: 2`.",
+      "prompt": "Write a function `pending(tasks)` that returns the number of tasks where `done` is False. The grader will test it with several lists.",
       "goal": "Filter a list of dicts by a boolean field.",
-      "starterCode": "tasks = [\n    {\"id\": 1, \"text\": \"A\", \"done\": True},\n    {\"id\": 2, \"text\": \"B\", \"done\": False},\n    {\"id\": 3, \"text\": \"C\", \"done\": False},\n]\n\ndef pending(tasks):\n    # Return the count of tasks where done is False\n    pass\n\nprint(f\"Pending: {pending(tasks)}\")\n",
+      "starterCode": "def pending(tasks):\n    # Return the count of tasks where done is False\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "Pending: 2" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def pending" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def pending" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "mix of done and pending", "call": "pending([{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': False}, {'id': 3, 'text': 'C', 'done': False}])", "expected": "2" },
+            { "name": "all done", "call": "pending([{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': True}])", "expected": "0" },
+            { "name": "all pending", "call": "pending([{'id': 1, 'text': 'A', 'done': False}, {'id': 2, 'text': 'B', 'done': False}])", "expected": "2" },
+            { "name": "empty list", "call": "pending([])", "expected": "0", "hidden": true, "category": "empty-input" }
+          ]
+        }
       ],
       "hints": [
         "Loop and increment a counter when `not t[\"done\"]`.",
@@ -117,12 +137,20 @@
     {
       "id": "toggle-task",
       "title": "Toggle a task",
-      "prompt": "Write `toggle(tasks, task_id)` that flips `done` on the task with the given id. Call it with id=1, then print each task as `{id}. [x|' '] {text}`. Expected output: `1. [ ] A\\n2. [ ] B`.",
-      "goal": "Find an item by id, mutate it, then format each item.",
-      "starterCode": "tasks = [\n    {\"id\": 1, \"text\": \"A\", \"done\": True},\n    {\"id\": 2, \"text\": \"B\", \"done\": False},\n]\n\ndef toggle(tasks, task_id):\n    # Flip the done flag on the matching task\n    pass\n\ntoggle(tasks, 1)\nfor t in tasks:\n    mark = \"x\" if t[\"done\"] else \" \"\n    print(f'{t[\"id\"]}. [{mark}] {t[\"text\"]}')\n",
+      "prompt": "Write `toggle(tasks, task_id)` that flips `done` on the task with the given id. The function should mutate the list in place (no return needed). The grader will call it and then check the task's `done` flag.",
+      "goal": "Find an item by id, mutate it in place.",
+      "starterCode": "def toggle(tasks, task_id):\n    # Flip the done flag on the matching task\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "1. [ ] A\n2. [ ] B" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def toggle" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def toggle" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "toggle done to pending", "setup": "_tasks = [{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': False}]\ntoggle(_tasks, 1)", "call": "_tasks[0]['done']", "expected": "False" },
+            { "name": "toggle pending to done", "setup": "_tasks = [{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': False}]\ntoggle(_tasks, 2)", "call": "_tasks[1]['done']", "expected": "True" },
+            { "name": "leaves other tasks alone", "setup": "_tasks = [{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': False}]\ntoggle(_tasks, 1)", "call": "_tasks[1]['done']", "expected": "False" },
+            { "name": "toggling twice returns to original", "setup": "_tasks = [{'id': 1, 'text': 'A', 'done': True}]\ntoggle(_tasks, 1)\ntoggle(_tasks, 1)", "call": "_tasks[0]['done']", "expected": "True", "hidden": true, "category": "double-toggle" }
+          ]
+        }
       ],
       "hints": [
         "Loop: `for t in tasks: if t[\"id\"] == task_id: ...`.",
@@ -133,12 +161,20 @@
     {
       "id": "first-pending",
       "title": "First pending task",
-      "prompt": "Given the task list below, print the text of the FIRST pending task (lowest id where done is False). Expected output: `First pending: B`.",
+      "prompt": "Write a function `first_pending(tasks)` that returns the `text` of the FIRST pending task (first in list order where `done` is False). Return `None` if every task is done. The grader will test it with several lists.",
       "goal": "Short-circuit a search through a list of dicts.",
-      "starterCode": "tasks = [\n    {\"id\": 1, \"text\": \"A\", \"done\": True},\n    {\"id\": 2, \"text\": \"B\", \"done\": False},\n    {\"id\": 3, \"text\": \"C\", \"done\": False},\n]\n\ndef first_pending(tasks):\n    # Return the text of the first task with done=False, or None\n    pass\n\nprint(f\"First pending: {first_pending(tasks)}\")\n",
+      "starterCode": "def first_pending(tasks):\n    # Return the text of the first task with done=False, or None\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "First pending: B" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def first_pending" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def first_pending" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "first pending in middle", "call": "first_pending([{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': False}, {'id': 3, 'text': 'C', 'done': False}])", "expected": "'B'" },
+            { "name": "all done returns None", "call": "first_pending([{'id': 1, 'text': 'A', 'done': True}, {'id': 2, 'text': 'B', 'done': True}])", "expected": "None" },
+            { "name": "first is pending", "call": "first_pending([{'id': 1, 'text': 'A', 'done': False}, {'id': 2, 'text': 'B', 'done': False}])", "expected": "'A'" },
+            { "name": "list order beats id order", "call": "first_pending([{'id': 5, 'text': 'Fifth', 'done': False}, {'id': 1, 'text': 'First', 'done': False}])", "expected": "'Fifth'", "hidden": true, "category": "list-order" }
+          ]
+        }
       ],
       "hints": [
         "Loop in order; return as soon as you find `not t[\"done\"]`.",

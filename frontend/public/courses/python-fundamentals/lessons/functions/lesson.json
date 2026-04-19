@@ -11,12 +11,24 @@
     "Use parameters and return values",
     "Understand scope (local vs global)"
   ],
-  "conceptTags": [
+  "teachesConceptTags": [
     "def",
     "parameters",
     "return",
     "scope",
     "default-arguments"
+  ],
+  "usesConceptTags": [
+    "variables",
+    "if",
+    "elif",
+    "else",
+    "comparison",
+    "int",
+    "float",
+    "str",
+    "print",
+    "f-strings"
   ],
   "completionRules": [
     {
@@ -103,46 +115,70 @@
     {
       "id": "square-function",
       "title": "Square function",
-      "prompt": "Write a function `square(n)` that returns n * n. Then call it with 5 and print the result. Output should be `25`.",
+      "prompt": "Write a function `square(n)` that returns n * n. The grader will test it with several values.",
       "goal": "Define a function with one parameter and a return value.",
-      "starterCode": "# Define square(n), call square(5), print the result\n",
+      "starterCode": "# TODO: Define square(n) that returns n * n\ndef square(n):\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "25" },
         { "type": "required_file_contains", "file": "main.py", "pattern": "def square" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "return " }
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "square of 5", "call": "square(5)", "expected": "25" },
+            { "name": "square of 0", "call": "square(0)", "expected": "0" },
+            { "name": "square of 7", "call": "square(7)", "expected": "49" },
+            { "name": "square of a negative", "call": "square(-3)", "expected": "9", "hidden": true, "category": "negative-input" }
+          ]
+        }
       ],
       "hints": [
         "def square(n):",
         "    return n * n",
-        "Then: print(square(5))"
+        "Multiplying a negative by a negative gives a positive, so square(-3) should be 9."
       ]
     },
     {
       "id": "greet-default",
       "title": "Greeting with default",
-      "prompt": "Write `greet(name, greeting=\"Hello\")` that returns `<greeting>, <name>!`. Call it twice:\n1) `greet(\"Sam\")` → should give `Hello, Sam!`\n2) `greet(\"Sam\", \"Hi\")` → should give `Hi, Sam!`\nPrint both results, one per line.",
+      "prompt": "Write `greet(name, greeting=\"Hello\")` that returns `<greeting>, <name>!`. The grader will test it with and without the second argument.",
       "goal": "Use a default parameter value.",
-      "starterCode": "# Define greet(name, greeting=\"Hello\") and call it twice\n",
+      "starterCode": "# TODO: Define greet(name, greeting=\"Hello\") that returns f\"{greeting}, {name}!\"\ndef greet(name, greeting=\"Hello\"):\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "Hello, Sam!\nHi, Sam!" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "def greet" }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "def greet" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "default greeting", "call": "greet('Sam')", "expected": "'Hello, Sam!'" },
+            { "name": "custom greeting", "call": "greet('Sam', 'Hi')", "expected": "'Hi, Sam!'" },
+            { "name": "different name with default", "call": "greet('Alice')", "expected": "'Hello, Alice!'" },
+            { "name": "another custom greeting", "call": "greet('Bob', 'Hey')", "expected": "'Hey, Bob!'", "hidden": true, "category": "default-override" }
+          ]
+        }
       ],
       "hints": [
         "Default values go in the function definition: `def greet(name, greeting=\"Hello\"):`.",
         "Return an f-string: `return f\"{greeting}, {name}!\"`.",
-        "Call it both with and without the second argument."
+        "Note the exact format: `Hello, Sam!` — comma, space, exclamation mark."
       ]
     },
     {
       "id": "max-of-three",
       "title": "Max of three numbers",
-      "prompt": "Write a function `max_of_three(a, b, c)` that returns the largest of the three numbers WITHOUT using Python's built-in `max()`. Call it with `max_of_three(4, 9, 7)` and print the result. Output should be `9`.",
+      "prompt": "Write a function `max_of_three(a, b, c)` that returns the largest of the three numbers WITHOUT using Python's built-in `max()`. The grader will test it with several combinations.",
       "goal": "Compare three values using if/elif and return the largest.",
-      "starterCode": "# Define max_of_three(a, b, c) and call it\n",
+      "starterCode": "# TODO: Define max_of_three(a, b, c) — don't use built-in max()\ndef max_of_three(a, b, c):\n    pass\n",
       "completionRules": [
-        { "type": "expected_stdout", "expected": "9" },
         { "type": "required_file_contains", "file": "main.py", "pattern": "def max_of_three" },
-        { "type": "required_file_contains", "file": "main.py", "pattern": "return " }
+        { "type": "required_file_contains", "file": "main.py", "pattern": "return " },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "b is the largest", "call": "max_of_three(4, 9, 7)", "expected": "9" },
+            { "name": "c is the largest", "call": "max_of_three(1, 2, 3)", "expected": "3" },
+            { "name": "a is the largest", "call": "max_of_three(10, 5, 2)", "expected": "10" },
+            { "name": "two tied at the top", "call": "max_of_three(5, 5, 3)", "expected": "5", "hidden": true, "category": "ties" },
+            { "name": "all negatives", "call": "max_of_three(-1, -2, -3)", "expected": "-1", "hidden": true, "category": "negatives" }
+          ]
+        }
       ],
       "hints": [
         "Compare a to b first to find the larger of the first two.",
