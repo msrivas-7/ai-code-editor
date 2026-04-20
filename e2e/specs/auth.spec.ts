@@ -53,9 +53,28 @@ test.describe("auth flow", () => {
     await page.getByLabel(/confirm password/i).fill(PASSWORD);
     await page.getByRole("button", { name: /create account/i }).click();
 
-    // With auth.email.enable_confirmations=false (see supabase/config.toml),
-    // signUp returns a live session. The SignupPage's useEffect bounces to /.
-    await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+    // Supabase free tier caps "emails sent" at 2/hour per project, and GoTrue
+    // increments that counter on every signup even when email confirmation is
+    // off. When tripped, the form surfaces "email rate limit exceeded" in an
+    // alert role. Skip gracefully — the login spec below still exercises the
+    // full auth pipeline via admin-create + signInWithPassword.
+    const rateLimited = page
+      .getByRole("alert")
+      .filter({ hasText: /email rate limit/i });
+    const deadline = Date.now() + 15_000;
+    let redirected = false;
+    while (Date.now() < deadline) {
+      if (await rateLimited.isVisible().catch(() => false)) {
+        test.skip(true, "Supabase free-tier email rate limit tripped (2/hr)");
+        return;
+      }
+      if (new URL(page.url()).pathname === "/") {
+        redirected = true;
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+    expect(redirected, "signup should redirect to /").toBe(true);
 
     // Supabase session persisted under the app-owned storage key.
     const authBlob = await page.evaluate(() =>
