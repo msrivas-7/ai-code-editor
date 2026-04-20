@@ -5,7 +5,7 @@ import type { Lesson } from "../types";
 import { loadFullLesson, loadCourse, loadAllLessonMetas } from "../content/courseLoader";
 import { conceptsAvailableBefore } from "../content/conceptGraph";
 import { useProgressStore, loadSavedCode } from "../stores/progressStore";
-import { useLearnerStore } from "../stores/learnerStore";
+import { useAuthStore } from "../../../auth/authStore";
 import { LessonInstructionsPanel } from "../components/LessonInstructionsPanel";
 import { PracticeInstructionsView } from "../components/PracticeInstructionsView";
 import { GuidedTutorPanel } from "../components/GuidedTutorPanel";
@@ -14,6 +14,7 @@ import { EditorTabs } from "../../../components/EditorTabs";
 import { OutputPanel } from "../../../components/OutputPanel";
 import { Splitter } from "../../../components/Splitter";
 import { SettingsModal } from "../../../components/SettingsModal";
+import { UserMenu } from "../../../components/UserMenu";
 import { SessionErrorBanner } from "../../../components/SessionErrorBanner";
 import { Modal } from "../../../components/Modal";
 import { useSessionLifecycle } from "../../../hooks/useSessionLifecycle";
@@ -24,7 +25,8 @@ import { useAIStore } from "../../../state/aiStore";
 import { api } from "../../../api/client";
 import { validateLesson, pickFirstFailure } from "../utils/validator";
 import { LessonCompletePanel } from "../components/LessonCompletePanel";
-import { WorkspaceCoach, isOnboardingDone } from "../components/WorkspaceCoach";
+import { WorkspaceCoach } from "../components/WorkspaceCoach";
+import { usePreferencesStore } from "../../../state/preferencesStore";
 import { computeMastery, formatTimeSpent } from "../utils/mastery";
 import { FailedTestCallout } from "../components/FailedTestCallout";
 import type { FunctionTest, TestReport, ValidationResult } from "../types";
@@ -53,7 +55,8 @@ export default function LessonPage() {
   }>();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { identity } = useLearnerStore();
+  const user = useAuthStore((s) => s.user);
+  const learnerId = user!.id;
   const startLesson = useProgressStore((s) => s.startLesson);
   const completeLesson = useProgressStore((s) => s.completeLesson);
   const incrementRun = useProgressStore((s) => s.incrementRun);
@@ -61,6 +64,7 @@ export default function LessonPage() {
   const saveOutput = useProgressStore((s) => s.saveOutput);
   const resetLessonProgress = useProgressStore((s) => s.resetLessonProgress);
   const completePracticeExercise = useProgressStore((s) => s.completePracticeExercise);
+  const savePracticeCode = useProgressStore((s) => s.savePracticeCode);
   const resetPracticeProgress = useProgressStore((s) => s.resetPracticeProgress);
   const incrementLessonTime = useProgressStore((s) => s.incrementLessonTime);
   const lessonProgressMap = useProgressStore((s) => s.lessonProgress);
@@ -188,7 +192,7 @@ export default function LessonPage() {
         setLessonOrder(course.lessonOrder);
         const metaMap = new Map(metas.map((m) => [m.id, m]));
         setPriorConcepts(conceptsAvailableBefore(course, metaMap, lessonId));
-        startLesson(identity.learnerId, courseId, lessonId);
+        startLesson(learnerId, courseId, lessonId);
       })
       .catch(() => {
         if (cancelled) return;
@@ -201,7 +205,7 @@ export default function LessonPage() {
     return () => {
       cancelled = true;
     };
-  }, [courseId, lessonId, identity.learnerId, startLesson]);
+  }, [courseId, lessonId, learnerId, startLesson]);
 
   useEffect(() => {
     if (!lesson || !courseId || !lessonId || initialized.current) return;
@@ -242,13 +246,14 @@ export default function LessonPage() {
     });
   }, [lesson, courseId, lessonId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const workspaceCoachDone = usePreferencesStore((s) => s.workspaceCoachDone);
   useEffect(() => {
     if (!lesson || loading) return;
-    if (!isOnboardingDone()) {
+    if (!workspaceCoachDone) {
       const timer = setTimeout(() => setShowCoach(true), COACH_AUTO_OPEN_MS);
       return () => clearTimeout(timer);
     }
-  }, [lesson, loading]);
+  }, [lesson, loading, workspaceCoachDone]);
 
   const handleRun = useCallback(async () => {
     if (!sessionId || sessionPhase !== "active" || running || !courseId || !lessonId || !lesson) return;
@@ -278,21 +283,29 @@ export default function LessonPage() {
   }, [sessionId, sessionPhase, running, courseId, lessonId, lesson, setRunning, setRunError, setResult, incrementRun, saveOutput, saveCode, practiceMode]);
 
   const applyPracticeStarter = useCallback((exerciseIndex: number) => {
-    if (!lesson?.practiceExercises) return;
+    if (!lesson?.practiceExercises || !courseId || !lessonId) return;
     const exercise = lesson.practiceExercises[exerciseIndex];
     if (!exercise) return;
-    const starter = exercise.starterCode ?? "# Write your code here\n";
     const entry = LANGUAGE_ENTRYPOINT[lesson.language];
+    // Prefer the learner's persisted WIP for this specific exercise. Falls
+    // back to the authored starter only on first visit or after an explicit
+    // practice reset (which clears the persisted map).
+    const lp = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
+    const persisted = lp?.practiceExerciseCode?.[exercise.id];
+    const files = persisted && Object.keys(persisted).length > 0
+      ? persisted
+      : { [entry]: exercise.starterCode ?? "# Write your code here\n" };
+    const order = Object.keys(files);
     useProjectStore.setState({
-      files: { [entry]: starter },
-      order: [entry],
-      activeFile: entry,
-      openTabs: [entry],
+      files,
+      order,
+      activeFile: order[0] ?? entry,
+      openTabs: [order[0] ?? entry],
     });
     useRunStore.getState().setResult(null);
     useRunStore.getState().setError(null);
     setPracticeValidation(null);
-  }, [lesson]);
+  }, [lesson, courseId, lessonId]);
 
   const handleReset = useCallback(() => {
     if (!lesson || !courseId || !lessonId) return;
@@ -458,11 +471,11 @@ export default function LessonPage() {
       setLastFailedName(null);
     }
     if (v.passed && !validation?.passed) {
-      completeLesson(identity.learnerId, courseId, lessonId, totalLessons);
+      completeLesson(learnerId, courseId, lessonId, totalLessons);
       confetti({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
       setShowComplete(true);
     }
-  }, [lesson, courseId, lessonId, completeLesson, identity.learnerId, totalLessons, validation, practiceMode, practiceIndex, completePracticeExercise, sessionId, functionTests, testReport, lastFailedName]);
+  }, [lesson, courseId, lessonId, completeLesson, learnerId, totalLessons, validation, practiceMode, practiceIndex, completePracticeExercise, sessionId, functionTests, testReport, lastFailedName]);
 
   const handleEnterPractice = useCallback(() => {
     if (!lesson?.practiceExercises?.length) return;
@@ -555,18 +568,25 @@ export default function LessonPage() {
     if (initialized.current) setTestReport(null);
   }, [projectFiles]);
 
-  // Auto-save code to localStorage on edits (debounced, lesson mode only)
+  // Auto-save code on edits (debounced). Lesson-mode writes to `lastCode`;
+  // practice-mode writes to `practiceExerciseCode[exerciseId]` so switching
+  // between exercises doesn't clobber the main lesson buffer.
   useEffect(() => {
-    if (!courseId || !lessonId || !initialized.current || practiceMode) return;
+    if (!courseId || !lessonId || !initialized.current) return;
     const timer = setTimeout(() => {
       const snap = useProjectStore.getState().snapshot();
       if (snap.length === 0) return;
       const codeMap: Record<string, string> = {};
       for (const f of snap) codeMap[f.path] = f.content;
-      saveCode(courseId, lessonId, codeMap);
+      if (practiceMode) {
+        const exercise = lesson?.practiceExercises?.[practiceIndex];
+        if (exercise) savePracticeCode(courseId, lessonId, exercise.id, codeMap);
+      } else {
+        saveCode(courseId, lessonId, codeMap);
+      }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [projectFiles, courseId, lessonId, saveCode, practiceMode]);
+  }, [projectFiles, courseId, lessonId, saveCode, savePracticeCode, practiceMode, practiceIndex, lesson]);
 
   // Time-spent tracking — tick only while the document is visible and the
   // lesson isn't yet complete. Uses a lastTick ref so we credit real elapsed
@@ -657,7 +677,7 @@ export default function LessonPage() {
 
   const handleResetLessonProgress = useCallback(() => {
     if (!lesson || !courseId || !lessonId) return;
-    resetLessonProgress(identity.learnerId, courseId, lessonId);
+    resetLessonProgress(learnerId, courseId, lessonId);
     const files: Record<string, string> = {};
     const order: string[] = [];
     for (const f of lesson.starterFiles) {
@@ -682,8 +702,8 @@ export default function LessonPage() {
     setFailedCheckCount(0);
     setFailedVisibleTests(0);
     setFailedHiddenTests(0);
-    startLesson(identity.learnerId, courseId, lessonId);
-  }, [lesson, courseId, lessonId, identity.learnerId, resetLessonProgress, startLesson]);
+    startLesson(learnerId, courseId, lessonId);
+  }, [lesson, courseId, lessonId, learnerId, resetLessonProgress, startLesson]);
 
   const nextLessonId = (() => {
     if (!lessonId || lessonOrder.length === 0) return null;
@@ -777,17 +797,7 @@ export default function LessonPage() {
               Next →
             </button>
           )}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="rounded p-1.5 text-muted transition hover:bg-elevated hover:text-ink"
-            title="Settings"
-            aria-label="Open settings"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 5a3 3 0 100 6 3 3 0 000-6zm0 4.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
-              <path d="M13.87 9.4l1.09.64a.5.5 0 01.17.68l-1.5 2.6a.5.5 0 01-.68.18l-1.08-.63a5.44 5.44 0 01-1.78 1.03l-.17 1.25a.5.5 0 01-.5.44h-3a.5.5 0 01-.5-.44L5.75 13.9a5.44 5.44 0 01-1.78-1.03l-1.08.63a.5.5 0 01-.68-.17l-1.5-2.6a.5.5 0 01.17-.68l1.09-.64a5.38 5.38 0 010-2l-1.09-.65a.5.5 0 01-.17-.68l1.5-2.6a.5.5 0 01.68-.17l1.08.63A5.44 5.44 0 015.75 2.1l.17-1.25A.5.5 0 016.42.4h3a.5.5 0 01.5.44l.17 1.26c.67.25 1.28.6 1.78 1.03l1.08-.63a.5.5 0 01.68.17l1.5 2.6a.5.5 0 01-.17.68l-1.09.65a5.38 5.38 0 010 2z" />
-            </svg>
-          </button>
+          <UserMenu />
         </div>
       </header>
 

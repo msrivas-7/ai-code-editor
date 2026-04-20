@@ -1,56 +1,51 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const storage = new Map<string, string>();
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() { return storage.size; },
-  key: () => null as string | null,
-});
+// Phase 18b: theme pref lives in the preferencesStore, not localStorage.
+// Mock the store entry-points so the module under test doesn't try to hit
+// the backend. We assert against the captured patch payloads instead of
+// storage.
+
+const state = { theme: "dark" as "system" | "light" | "dark", hydrated: true };
+const patch = vi.fn(async (_body: { theme: typeof state.theme }) => {});
+
+vi.mock("../state/preferencesStore", () => ({
+  usePreferencesStore: Object.assign(
+    (selector: (s: typeof state) => unknown) => selector(state),
+    {
+      getState: () => state,
+      subscribe: () => () => {},
+    },
+  ),
+  setTheme: async (t: typeof state.theme) => {
+    state.theme = t;
+    await patch({ theme: t });
+  },
+}));
 
 import { getThemePref, setThemePref } from "./theme";
 
 beforeEach(() => {
-  storage.clear();
+  state.theme = "dark";
+  patch.mockClear();
 });
 
 describe("theme preference", () => {
-  it("defaults to 'system' when nothing is persisted", () => {
-    expect(getThemePref()).toBe("system");
-  });
-
-  it("returns persisted 'light' and 'dark' values", () => {
-    storage.set("ui:theme-pref", "light");
+  it("reads the current theme from preferencesStore", () => {
+    state.theme = "light";
     expect(getThemePref()).toBe("light");
-    storage.set("ui:theme-pref", "dark");
+    state.theme = "system";
+    expect(getThemePref()).toBe("system");
+    state.theme = "dark";
     expect(getThemePref()).toBe("dark");
   });
 
-  it("returns persisted 'system' value", () => {
-    storage.set("ui:theme-pref", "system");
-    expect(getThemePref()).toBe("system");
-  });
-
-  it("coerces garbage localStorage values back to 'system'", () => {
-    storage.set("ui:theme-pref", "purple");
-    expect(getThemePref()).toBe("system");
-    storage.set("ui:theme-pref", "");
-    expect(getThemePref()).toBe("system");
-  });
-
-  it("setThemePref persists the new value", () => {
+  it("setThemePref forwards to preferencesStore.setTheme", () => {
     setThemePref("light");
-    expect(storage.get("ui:theme-pref")).toBe("light");
+    expect(patch).toHaveBeenCalledWith({ theme: "light" });
     expect(getThemePref()).toBe("light");
-
-    setThemePref("dark");
-    expect(storage.get("ui:theme-pref")).toBe("dark");
-    expect(getThemePref()).toBe("dark");
 
     setThemePref("system");
-    expect(storage.get("ui:theme-pref")).toBe("system");
+    expect(patch).toHaveBeenCalledWith({ theme: "system" });
     expect(getThemePref()).toBe("system");
   });
 });

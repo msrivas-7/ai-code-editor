@@ -1,5 +1,24 @@
 # Development
 
+## First-time setup (auth stack)
+
+The project uses **Supabase cloud** for auth + Postgres — no local Supabase CLI install, no local stack to boot. There are two Supabase projects on one cloud account: `codetutor-dev` (dev + CI/E2E) and `codetutor-prod` (production). Real credentials are gitignored; committed `.example` files document the shape.
+
+**Getting credentials (contributors).** Request the `codetutor-dev` credential bundle from the repo owner (see the project's `README.md` for contact). If you're forking, create your own Supabase project and use its values.
+
+**Populate env files on disk (all gitignored):**
+
+```bash
+cp .env.example       .env            # docker compose reads this automatically
+cp .env.example       .env.local      # playwright (e2e) reads this via dotenv
+cp frontend/.env.development.example  frontend/.env.development.local
+# For prod builds only:
+cp .env.production.example            .env.production
+cp frontend/.env.production.example   frontend/.env.production.local
+```
+
+Fill in the real values from the credential bundle. `.env` and `.env.local` carry the same backend-side Supabase values; populate both so both the compose stack and the e2e runner have what they need.
+
 ## Local Setup
 
 ```bash
@@ -20,6 +39,8 @@
 (cd frontend && npm run verify:solutions)   # runs every golden solution against its completion rules
 
 # End-to-end tests (Playwright, mocked OpenAI; see e2e/README.md)
+# Uses codetutor-dev cloud — the auth fixture admin-creates per-worker
+# test users via the service_role key from .env.local.
 docker compose up -d
 (cd e2e && npm install && npx playwright install --with-deps chromium && npm test)
 
@@ -76,11 +97,16 @@ All optional — defaults work for local use. See [.env.example](../.env.example
 | `EXECUTION_BACKEND` | `local-docker` | Execution backend impl (future: cloud variants) |
 | `DOCKER_HOST` | `tcp://socket-proxy:2375` | Docker endpoint — set by compose so dockerode talks to the allowlisted socket proxy, not the raw socket |
 | `AI_RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window for `/api/ai/*` |
-| `AI_RATE_LIMIT_MAX` | `60` | Max AI requests per window per `sid\|ip` bucket (unknown sids fall back to IP) |
-| `SESSION_CREATE_RATE_LIMIT_WINDOW_MS` | `60000` | Window for `/api/session*` per-IP bucket |
-| `SESSION_CREATE_RATE_LIMIT_MAX` | `30` | Max session lifecycle calls per window per IP |
-| `MUTATION_RATE_LIMIT_WINDOW_MS` | `60000` | Window for `/api/project/snapshot` + `/api/execute*` per-IP bucket |
-| `MUTATION_RATE_LIMIT_MAX` | `120` | Max mutation calls per window per IP |
+| `AI_RATE_LIMIT_MAX` | `60` | Max AI requests per window per `user:<id>` (authenticated) or `sid\|ip` (public) bucket |
+| `SESSION_CREATE_RATE_LIMIT_WINDOW_MS` | `60000` | Window for `/api/session*` per-user bucket |
+| `SESSION_CREATE_RATE_LIMIT_MAX` | `30` | Max session lifecycle calls per window per user (IP floor prevents account-churn bypass) |
+| `MUTATION_RATE_LIMIT_WINDOW_MS` | `60000` | Window for `/api/project/snapshot` + `/api/execute*` per-user bucket |
+| `MUTATION_RATE_LIMIT_MAX` | `120` | Max mutation calls per window per user |
+| `SUPABASE_URL` | **required** | Supabase API root — `https://<project-ref>.supabase.co`. Same value for backend (env) and browser (VITE_SUPABASE_URL). |
+| `VITE_SUPABASE_URL` | **required** | Browser-side Supabase URL. In dev, docker-compose surfaces it as a runtime env var on the frontend service (sourced from the root `.env`) and Vite picks it up into `import.meta.env`. For prod, `vite build` inlines it from the build env. |
+| `VITE_SUPABASE_ANON_KEY` | **required** | Public `sb_publishable_...` key from the Supabase project's API settings. Browser-safe; committed `.example` carries placeholder only. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **required for E2E** | `sb_secret_...` key. The e2e auth helper uses it to admin-create per-worker test users. **Never** set in prod; the backend only verifies tokens, it has no need for the service role. |
+| `DATABASE_URL` | **required** | Postgres transaction pooler URL from the Supabase project's database settings (port 6543). The backend sets `prepare: false` on the postgres.js pool because the transaction pooler recycles connections between transactions and does not support prepared statements. |
 | `DEBUG_PROMPTS` | unset | When `1`, the AI provider logs full system + user turn text. Leave unset; learner code would otherwise reach the backend log. |
 
 ## Direct Docker Compose

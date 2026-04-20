@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { api } from "../api/client";
 import { useSessionStore } from "../state/sessionStore";
+import { useAuthStore } from "../auth/authStore";
 
 const HEARTBEAT_MS = 25_000;
 // How many consecutive heartbeat failures before we stop saying "reconnecting"
@@ -10,11 +11,19 @@ const MAX_FAILURES = 3;
 
 export function useSessionLifecycle() {
   const { sessionId, setSession, setPhase, setError, clear } = useSessionStore();
+  // Phase 18a: don't start a session until Supabase has hydrated — the first
+  // render sees `loading: true`, and `startSession` would otherwise fire
+  // without an Authorization header and 401. Gate on `user` presence too so
+  // RequireAuth bounces unauth'd users to /login before we try to start
+  // a container for them.
+  const authLoading = useAuthStore((s) => s.loading);
+  const user = useAuthStore((s) => s.user);
   const started = useRef(false);
   const failures = useRef(0);
   const recovering = useRef(false);
 
   useEffect(() => {
+    if (authLoading || !user) return;
     if (started.current) return;
     // sessionStore persists across page navigations; if the previous page
     // (Editor ⇄ Lesson) already started a session, reuse it instead of
@@ -29,7 +38,7 @@ export function useSessionLifecycle() {
       .startSession()
       .then(({ sessionId: id }) => setSession(id))
       .catch((err: Error) => setError(err.message));
-  }, [sessionId, setSession, setPhase, setError]);
+  }, [authLoading, user, sessionId, setSession, setPhase, setError]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -78,10 +87,26 @@ export function useSessionLifecycle() {
   useEffect(() => {
     if (!sessionId) return;
     const endBeacon = () => {
-      navigator.sendBeacon?.(
-        "/api/session/end",
-        new Blob([JSON.stringify({ sessionId })], { type: "application/json" })
-      );
+      // sendBeacon can't set headers (including Authorization), so it
+      // would 401 with the Phase 18a auth middleware. Fall back to a
+      // synchronous fetch with keepalive + the current token. keepalive:true
+      // lets the request survive the page unload up to the browser limit.
+      // We only read the cached token from the authStore synchronously —
+      // calling `supabase.auth.getSession()` here would return a Promise
+      // that the browser won't wait on during unload, so we skip it and
+      // let the backend sweeper reap the session if the token isn't hot.
+      const token = useAuthStore.getState().session?.access_token;
+      if (!token) return;
+      void fetch("/api/session/end", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "codetutor",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId }),
+        keepalive: true,
+      }).catch(() => {});
     };
     // Only fire on true unload — `pagehide` with persisted=false means the page
     // is actually going away (not just bfcache-frozen, which would resurrect).

@@ -14,8 +14,8 @@ import { getSession } from "../services/session/sessionManager.js";
 
 // Thin builder so every test starts from a known-good shape without typing
 // out the rest of the Express Request interface.
-function makeReq(ip: string, body: unknown): Request {
-  return { ip, body } as unknown as Request;
+function makeReq(ip: string, body: unknown, userId?: string): Request {
+  return { ip, body, userId } as unknown as Request;
 }
 
 describe("aiRateLimit bucketKey", () => {
@@ -49,6 +49,7 @@ describe("aiRateLimit bucketKey", () => {
   it("uses a combined sid|ip bucket when the session exists", () => {
     vi.mocked(getSession).mockReturnValue({
       id: "s-real",
+      userId: "u-owner",
       handle: null,
       lastSeen: 0,
       createdAt: 0,
@@ -58,9 +59,30 @@ describe("aiRateLimit bucketKey", () => {
     expect(key).toBe("sid:s-real|ip:127.0.0.1");
   });
 
+  it("prefers user:<userId> when an authenticated user is present", () => {
+    // Phase 18a: a logged-in caller gets a user-keyed bucket regardless of
+    // what sessionId they send or what IP they come from. Two devices on the
+    // same account share the bucket (intentional).
+    const key = bucketKey(makeReq("127.0.0.1", { sessionId: "s-real" }, "u-42"));
+    expect(key).toBe("user:u-42");
+    // When userId is present the sid lookup is skipped entirely — it's the
+    // durable identity, we don't need to double-check the sid.
+    expect(vi.mocked(getSession)).not.toHaveBeenCalled();
+  });
+
+  it("merges two IPs for the same authenticated user into one bucket", () => {
+    // A user logging in on laptop + phone should share the bucket. If they
+    // didn't, a user with N devices would effectively have N*budget capacity.
+    const k1 = bucketKey(makeReq("10.0.0.1", {}, "u-42"));
+    const k2 = bucketKey(makeReq("10.0.0.2", {}, "u-42"));
+    expect(k1).toBe(k2);
+    expect(k1).toBe("user:u-42");
+  });
+
   it("does not merge different IPs into the same trusted-sid bucket", () => {
     vi.mocked(getSession).mockReturnValue({
       id: "s-real",
+      userId: "u-owner",
       handle: null,
       lastSeen: 0,
       createdAt: 0,

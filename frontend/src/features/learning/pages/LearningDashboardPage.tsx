@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import type { Course, LessonMeta, LessonProgress, CourseProgress } from "../types";
 import { listPublicCourses, loadAllLessonMetas } from "../content/courseLoader";
 import { useProgressStore, loadAllLessonProgress } from "../stores/progressStore";
-import { useLearnerStore } from "../stores/learnerStore";
+import { useAuthStore } from "../../../auth/authStore";
 import { CourseCard } from "../components/CourseCard";
-import { SettingsButton } from "../../../components/SettingsButton";
+import { UserMenu } from "../../../components/UserMenu";
 import { pickShakyLessons, formatTimeSpent } from "../utils/mastery";
 
 interface CourseData {
@@ -15,7 +15,8 @@ interface CourseData {
 
 export default function LearningDashboardPage() {
   const nav = useNavigate();
-  const { identity } = useLearnerStore();
+  const user = useAuthStore((s) => s.user);
+  const learnerId = user!.id;
   const loadCourseProgress = useProgressStore((s) => s.loadCourseProgress);
   const courseProgressMap = useProgressStore((s) => s.courseProgress);
 
@@ -29,7 +30,7 @@ export default function LearningDashboardPage() {
         const data = await Promise.all(
           publicCourses.map(async (course) => {
             const lessons = await loadAllLessonMetas(course.id);
-            loadCourseProgress(identity.learnerId, course.id);
+            loadCourseProgress(learnerId, course.id);
             return { course, lessons };
           }),
         );
@@ -41,7 +42,7 @@ export default function LearningDashboardPage() {
         setAllLessonProgress(lps);
       })
       .finally(() => setLoading(false));
-  }, [identity.learnerId, loadCourseProgress]);
+  }, [learnerId, loadCourseProgress]);
 
   const activeCourse = courses[0] ?? null;
   const activeProgress: CourseProgress | null =
@@ -111,8 +112,8 @@ export default function LearningDashboardPage() {
           AI
         </div>
         <h1 className="text-sm font-semibold tracking-tight">Guided Learning</h1>
-        <div className="ml-auto">
-          <SettingsButton />
+        <div className="ml-auto flex items-center gap-2">
+          <UserMenu />
         </div>
       </header>
 

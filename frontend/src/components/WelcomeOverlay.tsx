@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CoachBubble } from "../features/learning/components/CoachBubble";
-
-const LS_KEY = "onboarding:v1:welcome-done";
+import {
+  markOnboardingDone,
+  usePreferencesStore,
+} from "../state/preferencesStore";
 
 export function isWelcomeDone(): boolean {
-  try { return localStorage.getItem(LS_KEY) === "1"; } catch { return false; }
+  return usePreferencesStore.getState().welcomeDone;
 }
 
 export function markWelcomeDone(): void {
-  try { localStorage.setItem(LS_KEY, "1"); } catch { /* */ }
+  markOnboardingDone("welcomeDone");
 }
 
 interface WelcomeStep {
@@ -114,7 +116,14 @@ export function WelcomeOverlay({ refs, onDismiss }: WelcomeOverlayProps) {
       >
         Skip
       </button>
-      <div className="z-[52]">
+      {/*
+        stopPropagation so clicks on the bubble's inner Next button don't
+        also bubble to the full-screen overlay above and double-advance the
+        step. The 200ms rate-limit inside `advance` catches it, but relying
+        on timing is fragile — swallowing the event at the boundary is the
+        real fix.
+      */}
+      <div className="z-[52]" onClick={(e) => e.stopPropagation()}>
         <CoachBubble
           title={currentStep.title}
           body={currentStep.body}

@@ -1,26 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { WelcomeOverlay, isWelcomeDone } from "../components/WelcomeOverlay";
-import { SettingsButton } from "../components/SettingsButton";
+import { WelcomeOverlay } from "../components/WelcomeOverlay";
+import { UserMenu } from "../components/UserMenu";
+import { usePreferencesStore } from "../state/preferencesStore";
 
 export default function StartPage() {
   const nav = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
+  const welcomeDone = usePreferencesStore((s) => s.welcomeDone);
 
   useEffect(() => {
-    if (!isWelcomeDone()) {
+    if (!welcomeDone) {
       const t = setTimeout(() => setShowWelcome(true), 300);
       return () => clearTimeout(t);
     }
-  }, []);
+  }, [welcomeDone]);
   const headerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLButtonElement>(null);
   const guidedRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="relative flex h-full flex-col bg-bg text-ink">
-      <div className="absolute right-4 top-3 z-10">
-        <SettingsButton />
+      <div className="absolute right-4 top-3 z-10 flex items-center gap-2">
+        <UserMenu />
       </div>
       <div className="flex flex-1 flex-col items-center justify-center px-6">
         <div ref={headerRef} className="mb-10 flex flex-col items-center gap-3">

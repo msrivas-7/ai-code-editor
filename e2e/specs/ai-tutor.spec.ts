@@ -9,7 +9,8 @@
 // tests gated by `if (!REAL_OPENAI) test.skip(...)` will then run without
 // mocks. Keep this set small — we don't want OpenAI bills on every PR.
 
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import {
   mockAskJson,

@@ -60,4 +60,44 @@ export const config = {
     ),
     mutationMax: num(process.env.MUTATION_RATE_LIMIT_MAX, 120),
   },
+
+  // Phase 18a: Supabase Auth. `url` points at the Supabase API root (GoTrue
+  // lives under /auth/v1). The backend does NOT use an anon/service-role
+  // key — it only verifies access tokens coming from the browser, by
+  // fetching the JWKS from the auth server. JWKS verification needs no
+  // shared secret; it's asymmetric.
+  //
+  // 12-factor: no default. The value must come from env (.env / .env.production).
+  // Missing env at boot is a deployment misconfig; assertConfigValid() fails
+  // fast rather than silently pointing at a wrong URL.
+  supabase: {
+    url: process.env.SUPABASE_URL,
+  },
+
+  // Phase 18b: Postgres for per-user state (preferences, progress, editor
+  // project). Points at the Supabase-managed Postgres for the current
+  // environment (transaction pooler URL from Project Settings → Database).
+  databaseUrl: process.env.DATABASE_URL,
 } as const;
+
+export function assertConfigValid(): void {
+  if (!config.supabase.url || config.supabase.url.trim() === "") {
+    throw new Error(
+      "[config] SUPABASE_URL is required. Populate `.env` from `.env.example` " +
+        "with your codetutor-dev / codetutor-prod project URL.",
+    );
+  }
+  try {
+    new URL(config.supabase.url);
+  } catch {
+    throw new Error(
+      `[config] SUPABASE_URL is not a valid URL: ${config.supabase.url}`,
+    );
+  }
+  if (!config.databaseUrl || config.databaseUrl.trim() === "") {
+    throw new Error(
+      "[config] DATABASE_URL is required. Populate `.env` from `.env.example` " +
+        "with your project's transaction-pooler connection string.",
+    );
+  }
+}

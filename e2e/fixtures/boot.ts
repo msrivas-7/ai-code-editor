@@ -36,9 +36,23 @@ async function ping(url: string, label: string) {
 export default async function globalSetup() {
   await Promise.all([
     ping(FRONTEND, "frontend"),
-    ping(`${BACKEND}/api/ai/validate-key`, "backend"),
     // validate-key with no body → 400 is expected + means the route is mounted.
+    ping(`${BACKEND}/api/ai/validate-key`, "backend"),
   ]);
+
+  if (!process.env.SUPABASE_URL) {
+    throw new Error(
+      "E2E globalSetup: SUPABASE_URL is required. Populate `../.env.local` " +
+        "from `../.env.example` with your codetutor-dev project URL. See docs/DEVELOPMENT.md.",
+    );
+  }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "E2E globalSetup: SUPABASE_SERVICE_ROLE_KEY is required. " +
+        "Populate `../.env.local` from `../.env.example` or inject via CI secret. " +
+        "See e2e/fixtures/auth.ts.",
+    );
+  }
 
   if (process.env.E2E_REAL_OPENAI === "1" && !process.env.OPENAI_API_KEY) {
     throw new Error(

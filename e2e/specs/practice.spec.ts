@@ -6,7 +6,7 @@
 // restores the saved lesson code. AI is mocked — the Docker backend runs the
 // function_tests harness for real so the validator path is authentic.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { setMonacoValue, waitForMonacoReady } from "../fixtures/monaco";

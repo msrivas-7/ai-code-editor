@@ -1,5 +1,14 @@
-import { useEffect, useState } from "react";
-import { noteStorageQuotaError } from "../state/storageStore";
+import { useCallback } from "react";
+import {
+  setUiLayoutValue,
+  useUiLayoutValue,
+  usePreferencesStore,
+} from "../state/preferencesStore";
+
+// Phase 18b: layout prefs (panel widths, collapsed flags) live in the
+// user_preferences.ui_layout jsonb bucket instead of localStorage. The two
+// useXxx hooks below mirror the pre-18b signatures so consuming pages
+// (EditorPage, LessonPage) can keep calling them unchanged.
 
 // Side panels are clamped against a fraction of viewport width so that on
 // narrow displays the user can't drag a side panel wide enough to starve the
@@ -16,25 +25,34 @@ export function clampSide(v: number, [min, hardMax]: readonly [number, number]):
   return Math.max(min, Math.min(max, v));
 }
 
+function readLayout<T>(key: string, fallback: T, predicate: (v: unknown) => v is T): T {
+  const v = usePreferencesStore.getState().uiLayout[key];
+  return predicate(v) ? v : fallback;
+}
+
+const isFiniteNumber = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v > 0;
+const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+
 export function usePersistedNumber(
   key: string,
   fallback: number,
 ): [number, React.Dispatch<React.SetStateAction<number>>] {
-  const [value, setValue] = useState<number>(() => {
-    try {
-      const v = Number(localStorage.getItem(key));
-      return Number.isFinite(v) && v > 0 ? v : fallback;
-    } catch {
-      return fallback;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, String(value));
-    } catch (err) {
-      noteStorageQuotaError(err);
-    }
-  }, [key, value]);
+  const raw = useUiLayoutValue<number>(key, fallback);
+  const value = isFiniteNumber(raw) ? raw : fallback;
+  // Functional updates MUST read from the live store — mousemove events on a
+  // splitter drag fire multiple times within one React render cycle, so a
+  // closure-captured `value` would cause every event to compute from the
+  // same stale base and drop intermediate drags.
+  const setValue = useCallback<React.Dispatch<React.SetStateAction<number>>>(
+    (next) => {
+      const resolved = typeof next === "function"
+        ? (next as (prev: number) => number)(readLayout(key, fallback, isFiniteNumber))
+        : next;
+      setUiLayoutValue(key, resolved);
+    },
+    [key, fallback],
+  );
   return [value, setValue];
 }
 
@@ -42,21 +60,16 @@ export function usePersistedFlag(
   key: string,
   fallback: boolean,
 ): [boolean, React.Dispatch<React.SetStateAction<boolean>>] {
-  const [value, setValue] = useState<boolean>(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw === null) return fallback;
-      return raw === "1";
-    } catch {
-      return fallback;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, value ? "1" : "0");
-    } catch (err) {
-      noteStorageQuotaError(err);
-    }
-  }, [key, value]);
+  const raw = useUiLayoutValue<boolean>(key, fallback);
+  const value = isBool(raw) ? raw : fallback;
+  const setValue = useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (next) => {
+      const resolved = typeof next === "function"
+        ? (next as (prev: boolean) => boolean)(readLayout(key, fallback, isBool))
+        : next;
+      setUiLayoutValue(key, resolved);
+    },
+    [key, fallback],
+  );
   return [value, setValue];
 }

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoachBubble } from "../features/learning/components/CoachBubble";
 import { useShortcutLabels } from "../util/platform";
-
-const LS_KEY = "onboarding:v1:editor-done";
+import {
+  markOnboardingDone,
+  usePreferencesStore,
+} from "../state/preferencesStore";
 
 export function isEditorOnboardingDone(): boolean {
-  try { return localStorage.getItem(LS_KEY) === "1"; } catch { return false; }
+  return usePreferencesStore.getState().editorCoachDone;
 }
 
 function markDone(): void {
-  try { localStorage.setItem(LS_KEY, "1"); } catch { /* */ }
+  markOnboardingDone("editorCoachDone");
 }
 
 interface CoachStep {

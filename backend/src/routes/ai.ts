@@ -2,8 +2,16 @@ import { Router } from "express";
 import { z } from "zod";
 import { openaiProvider } from "../services/ai/openaiProvider.js";
 import { languageSchema } from "../services/execution/commands.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { aiRateLimit } from "../middleware/aiRateLimit.js";
 
 export const aiRouter = Router();
+
+// Phase 18a. `validate-key` stays public: the learner hasn't necessarily
+// finished signup yet (they may want to test their OpenAI key first). Every
+// other AI surface requires a valid Supabase session. Rate-limiting is
+// applied AFTER auth so the per-user bucket sees the authenticated userId.
+const authed = [authMiddleware, aiRateLimit] as const;
 
 // The user's OpenAI key is passed per-request via this header. Never logged,
 // never persisted server-side — the backend forwards it upstream and forgets.
@@ -18,7 +26,7 @@ const validateBody = z.object({
   key: z.string().min(1),
 });
 
-aiRouter.post("/validate-key", async (req, res, next) => {
+aiRouter.post("/validate-key", aiRateLimit, async (req, res, next) => {
   const parsed = validateBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "key required" });
   try {
@@ -29,7 +37,7 @@ aiRouter.post("/validate-key", async (req, res, next) => {
   }
 });
 
-aiRouter.get("/models", async (req, res, next) => {
+aiRouter.get("/models", ...authed, async (req, res, next) => {
   const key = getKey(req);
   if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
   try {
@@ -135,7 +143,7 @@ const summarizeBody = z.object({
   history: historySchema,
 });
 
-aiRouter.post("/ask", async (req, res, next) => {
+aiRouter.post("/ask", ...authed, async (req, res, next) => {
   const key = getKey(req);
   if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
   const parsed = askBody.safeParse(req.body);
@@ -166,7 +174,7 @@ aiRouter.post("/ask", async (req, res, next) => {
   }
 });
 
-aiRouter.post("/ask/stream", async (req, res) => {
+aiRouter.post("/ask/stream", ...authed, async (req, res) => {
   const key = getKey(req);
   if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
   const parsed = askBody.safeParse(req.body);
@@ -235,7 +243,7 @@ aiRouter.post("/ask/stream", async (req, res) => {
   );
 });
 
-aiRouter.post("/summarize", async (req, res, next) => {
+aiRouter.post("/summarize", ...authed, async (req, res, next) => {
   const key = getKey(req);
   if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
   const parsed = summarizeBody.safeParse(req.body);

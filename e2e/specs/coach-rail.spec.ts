@@ -6,7 +6,7 @@
 // elapsed>60) because those would either block the suite or require Date.now
 // mocking.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { waitForMonacoReady } from "../fixtures/monaco";

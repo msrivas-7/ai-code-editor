@@ -95,16 +95,18 @@ Three layers, each catching a different class of bug:
 
 ## API Surface
 
+All non-public routes require `Authorization: Bearer <supabase-access-token>`; `authMiddleware` verifies it via JWKS and attaches `req.userId` downstream. `/api/health` and `/api/ai/validate-key` are the only public routes.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/session` | Create session + runner container |
-| `POST` | `/api/session/ping` | Heartbeat |
-| `POST` | `/api/session/rebind` | Reuse same ID after expiry |
-| `POST` | `/api/session/end` | Destroy session + container |
+| `POST` | `/api/session` | Create session + runner container (owner = `req.userId`) |
+| `POST` | `/api/session/ping` | Heartbeat — 404 for "not found" and "not yours" (privacy) |
+| `POST` | `/api/session/rebind` | Reuse same ID after expiry — 403 on owner mismatch |
+| `POST` | `/api/session/end` | Destroy session + container — 403 on owner mismatch |
 | `POST` | `/api/project/snapshot` | Write project into workspace |
 | `POST` | `/api/execute` | Compile (if needed) and run |
 | `POST` | `/api/execute/tests` | Run a lesson's `function_tests` harness and return a `TestReport` |
-| `POST` | `/api/ai/validate-key` | Check an OpenAI key |
+| `POST` | `/api/ai/validate-key` | Check an OpenAI key (public — stateless) |
 | `GET`  | `/api/ai/models` | List chat-capable models |
 | `POST` | `/api/ai/ask/stream` | Tutor turn (SSE stream, supports `lessonContext`) |
 | `POST` | `/api/ai/ask` | Tutor turn (non-streaming) |
@@ -161,8 +163,10 @@ Defense-in-depth layers on top of the `ExecutionBackend` + socket-proxy seam. Ea
 | HTTP headers | `helmet()` with a strict CSP | Same middleware |
 | Error leakage | 500 fallback returns `{error: "Internal error"}`; full stack logged server-side only | Same |
 | Prompt injection | Untrusted content wrapped in `<user_file>` / `<user_selection>` tags; tutor prompt classifies them as data. Path attribute is XML-escaped and the Zod schema restricts paths to `^[A-Za-z0-9._/-]+$` (Phase 17). | Same |
-| AI abuse | `express-rate-limit` on `/api/ai/*`, combined `sid\|ip` bucket — the sid leg is only trusted if it refers to an extant server-side session, otherwise traffic collapses to the IP bucket (closes the sid-rotation bypass). Phase 18 swaps the sid leg for authenticated user id. | Same middleware; resolver reads user id from auth context |
-| Session / snapshot / execute abuse | `express-rate-limit` per-IP on `/api/session*`, `/api/project/snapshot`, `/api/execute*`. Session-create uses a tighter bucket because spawning a runner is the expensive op (Phase 17). | Same middleware; per-user key once auth lands |
+| Auth | Supabase Auth (GoTrue). Backend verifies access tokens via JWKS (`jose.createRemoteJWKSet`), attaches `req.userId` from `sub`. Asymmetric ES256 — no shared secret. Frontend wraps every non-public route in `<RequireAuth>`; `api/client.ts` attaches `Bearer` on every call; global 401 → signOut + redirect to `/login` (Phase 18a). Dev + CI run against the `codetutor-dev` cloud project; prod against `codetutor-prod` (Phase 18d — no local Supabase stack). | Same impl; `SUPABASE_URL` switches to the prod cloud project in `.env.production` |
+| Session ownership | Every routed handler that takes `sessionId` replaces `getSession(id)` with `requireOwnedSession(id, req.userId)`. `/ping` returns 404 for "not found" or "not yours" (no ownership oracle); `/rebind` + `/end` return 403 so the client can differentiate (Phase 18a). | Same impl |
+| AI abuse | `express-rate-limit` on `/api/ai/*`, keyed `user:<userId>` when authenticated; falls back to combined `sid\|ip` bucket for the public `/api/ai/validate-key` route (Phase 18a swapped the sid leg for user id). | Same middleware; resolver reads user id from auth context |
+| Session / snapshot / execute abuse | `express-rate-limit` on `/api/session*`, `/api/project/snapshot`, `/api/execute*`, keyed `user:<userId>`. Session-create keeps an IP-floor alongside the user bucket because an attacker can churn accounts (Phase 18a). | Same middleware |
 | CSRF | Every mutating route requires `X-Requested-With: codetutor` (forces CORS preflight) **plus** an `Origin` that matches `config.corsOrigin` when present — blocks cross-origin POSTs from pages the learner happens to visit (Phase 17). | Same middleware; origin list comes from the hosted allowlist |
 | Workspace symlink writes | `writeFiles` opens with `O_NOFOLLOW \| O_EXCL \| O_CREAT` after `lstat`-walking every parent segment; `replaceSnapshot` uses `withFileTypes` + explicit `unlink` for symlinks before recursive delete. Closes the `/workspace` bind-mount escape (C-A1 / Phase 17). | Same impl; host filesystem goes away under a cloud runner backend |
 | Harness nonce secrecy | Nonce handed to the harness via stdin only; harness drains stdin to EOF before spawning user code. `/proc/<ppid>/environ` no longer leaks it (Phase 17 fix for H-A1). | Same impl |

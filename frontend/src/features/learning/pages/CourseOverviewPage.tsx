@@ -3,16 +3,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Course, LessonMeta } from "../types";
 import { loadCourse, loadAllLessonMetas } from "../content/courseLoader";
 import { useProgressStore } from "../stores/progressStore";
-import { useLearnerStore } from "../stores/learnerStore";
+import { useAuthStore } from "../../../auth/authStore";
 import { LessonList } from "../components/LessonList";
-import { SettingsButton } from "../../../components/SettingsButton";
+import { UserMenu } from "../../../components/UserMenu";
 import { Modal } from "../../../components/Modal";
 import type { ProgressStatus } from "../types";
 
 export default function CourseOverviewPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const nav = useNavigate();
-  const { identity } = useLearnerStore();
+  const user = useAuthStore((s) => s.user);
+  const learnerId = user!.id;
   const loadCourseProgress = useProgressStore((s) => s.loadCourseProgress);
   const loadLessonProgress = useProgressStore((s) => s.loadLessonProgress);
   const resetCourseProgress = useProgressStore((s) => s.resetCourseProgress);
@@ -30,14 +31,14 @@ export default function CourseOverviewPage() {
       .then(([c, ls]) => {
         setCourse(c);
         setLessons(ls);
-        loadCourseProgress(identity.learnerId, courseId);
+        loadCourseProgress(learnerId, courseId);
         ls.forEach((l) =>
-          loadLessonProgress(identity.learnerId, courseId, l.id)
+          loadLessonProgress(learnerId, courseId, l.id)
         );
       })
       .catch(() => setCourse(null))
       .finally(() => setLoading(false));
-  }, [courseId, identity.learnerId, loadCourseProgress, loadLessonProgress]);
+  }, [courseId, learnerId, loadCourseProgress, loadLessonProgress]);
 
   if (!courseId) return null;
 
@@ -85,8 +86,8 @@ export default function CourseOverviewPage() {
         <h1 className="text-sm font-semibold tracking-tight">
           {course?.title ?? "Course"}
         </h1>
-        <div className="ml-auto">
-          <SettingsButton />
+        <div className="ml-auto flex items-center gap-2">
+          <UserMenu />
         </div>
       </header>
 
@@ -235,7 +236,7 @@ export default function CourseOverviewPage() {
             </button>
             <button
               onClick={() => {
-                resetCourseProgress(identity.learnerId, courseId, course.lessonOrder);
+                resetCourseProgress(learnerId, courseId, course.lessonOrder);
                 setConfirmReset(false);
               }}
               className="flex-1 rounded-lg bg-danger/20 px-4 py-2 text-xs font-semibold text-danger ring-1 ring-danger/40 transition hover:bg-danger/30"

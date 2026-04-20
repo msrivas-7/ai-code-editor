@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoachBubble } from "./CoachBubble";
 import { useShortcutLabels } from "../../../util/platform";
-
-const LS_KEY = "onboarding:v1:workspace-done";
+import {
+  markOnboardingDone,
+  usePreferencesStore,
+} from "../../../state/preferencesStore";
 
 interface CoachStep {
   targetKey: keyof WorkspaceCoachRefs;
@@ -67,11 +69,11 @@ interface WorkspaceCoachProps {
 }
 
 function isDone(): boolean {
-  try { return localStorage.getItem(LS_KEY) === "1"; } catch { return false; }
+  return usePreferencesStore.getState().workspaceCoachDone;
 }
 
 function markDone(): void {
-  try { localStorage.setItem(LS_KEY, "1"); } catch { /* */ }
+  markOnboardingDone("workspaceCoachDone");
 }
 
 export function WorkspaceCoach({ refs, onComplete }: WorkspaceCoachProps) {

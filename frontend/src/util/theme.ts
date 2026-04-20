@@ -1,23 +1,13 @@
 import { useEffect, useState } from "react";
+import { usePreferencesStore, setTheme as setThemeInStore } from "../state/preferencesStore";
+
+// Phase 18b: theme preference is stored in Postgres via preferencesStore.
+// This module is the legacy entry-point; it now thinly wraps the store so
+// existing call sites (useThemePref, setThemePref, useEffectiveTheme) keep
+// working without a refactor at every consumer.
 
 export type ThemePref = "system" | "light" | "dark";
 export type EffectiveTheme = "light" | "dark";
-
-const LS_KEY = "ui:theme-pref";
-
-function readPref(): ThemePref {
-  try {
-    const v = localStorage.getItem(LS_KEY);
-    if (v === "light" || v === "dark" || v === "system") return v;
-  } catch {
-    /* localStorage disabled — fall through */
-  }
-  return "system";
-}
-
-function writePref(pref: ThemePref): void {
-  try { localStorage.setItem(LS_KEY, pref); } catch { /* */ }
-}
 
 function systemTheme(): EffectiveTheme {
   if (typeof window === "undefined" || !window.matchMedia) return "dark";
@@ -28,68 +18,64 @@ function resolve(pref: ThemePref): EffectiveTheme {
   return pref === "system" ? systemTheme() : pref;
 }
 
-// Broadcast channel so every hook instance stays in sync when setThemePref() is
-// called from any part of the app. Browser localStorage 'storage' events only
-// fire cross-tab, not in the same tab — this fills that gap.
-const listeners = new Set<() => void>();
-function notify() { for (const fn of listeners) fn(); }
-
-export function setThemePref(pref: ThemePref): void {
-  writePref(pref);
-  applyDocumentTheme(resolve(pref));
-  notify();
-}
-
-export function getThemePref(): ThemePref {
-  return readPref();
-}
-
 function applyDocumentTheme(theme: EffectiveTheme): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
 }
 
-// Initialize on module load so <html data-theme="..."> is correct before any
-// component mounts. Guarded for SSR / test environments without a document.
+// Apply the current theme once at module load so <html data-theme> is right
+// before the first render. The initial pref is the store default (dark) if
+// hydration hasn't landed yet; a later hydrate() re-applies the real pref.
 if (typeof document !== "undefined") {
-  applyDocumentTheme(resolve(readPref()));
+  applyDocumentTheme(resolve(usePreferencesStore.getState().theme));
+}
+
+// Subscribe once at module scope: any preferencesStore theme change
+// re-applies the document attribute immediately. Also listens for system
+// colour-scheme changes so `pref === "system"` tracks the OS.
+if (typeof window !== "undefined") {
+  usePreferencesStore.subscribe((state, prev) => {
+    if (state.theme !== prev.theme || state.hydrated !== prev.hydrated) {
+      applyDocumentTheme(resolve(state.theme));
+    }
+  });
+  const mq = window.matchMedia?.("(prefers-color-scheme: light)");
+  mq?.addEventListener?.("change", () => {
+    if (usePreferencesStore.getState().theme === "system") {
+      applyDocumentTheme(resolve("system"));
+    }
+  });
+}
+
+export function setThemePref(pref: ThemePref): void {
+  applyDocumentTheme(resolve(pref));
+  void setThemeInStore(pref).catch(() => {
+    /* already logged in preferencesStore.patch() */
+  });
+}
+
+export function getThemePref(): ThemePref {
+  return usePreferencesStore.getState().theme;
 }
 
 export function useEffectiveTheme(): EffectiveTheme {
-  const [theme, setTheme] = useState<EffectiveTheme>(() => resolve(readPref()));
+  const pref = usePreferencesStore((s) => s.theme);
+  const [effective, setEffective] = useState<EffectiveTheme>(() => resolve(pref));
 
   useEffect(() => {
-    const recompute = () => setTheme(resolve(readPref()));
-    listeners.add(recompute);
-    // Respond to OS-level changes when pref is "system".
+    setEffective(resolve(pref));
+    if (pref !== "system") return;
     const mq = window.matchMedia?.("(prefers-color-scheme: light)");
-    const onMedia = () => { if (readPref() === "system") recompute(); };
+    const onMedia = () => setEffective(resolve("system"));
     mq?.addEventListener?.("change", onMedia);
-    // Cross-tab preference changes via localStorage.
-    const onStorage = (e: StorageEvent) => { if (e.key === LS_KEY) recompute(); };
-    window.addEventListener("storage", onStorage);
-    return () => {
-      listeners.delete(recompute);
-      mq?.removeEventListener?.("change", onMedia);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
+    return () => mq?.removeEventListener?.("change", onMedia);
+  }, [pref]);
 
-  return theme;
+  return effective;
 }
 
 export function useThemePref(): [ThemePref, (p: ThemePref) => void] {
-  const [pref, setPref] = useState<ThemePref>(() => readPref());
-  useEffect(() => {
-    const recompute = () => setPref(readPref());
-    listeners.add(recompute);
-    const onStorage = (e: StorageEvent) => { if (e.key === LS_KEY) recompute(); };
-    window.addEventListener("storage", onStorage);
-    return () => {
-      listeners.delete(recompute);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
+  const pref = usePreferencesStore((s) => s.theme);
   return [pref, setThemePref];
 }

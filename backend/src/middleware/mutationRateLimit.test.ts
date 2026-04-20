@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import express from "express";
+import type { Request, Response, NextFunction } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
@@ -21,8 +22,40 @@ function testApp(limit: number) {
     rateLimit({
       windowMs: 60_000,
       limit,
-      keyGenerator: (req: import("express").Request) =>
+      keyGenerator: (req: Request) =>
         `ip:${ipKeyGenerator(req.ip ?? "")}`,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      message: { error: "Too many requests; slow down." },
+    }),
+  );
+  app.post("/probe", (_req, res) => res.json({ ok: true }));
+  return app;
+}
+
+// Mirror of `byUserOrIp` in mutationRateLimit.ts — user-keyed when
+// `req.userId` is set, IP fallback otherwise. We can't import it directly
+// (the real instance is bound to config-baked thresholds), but the shape
+// test proves the guard will bucket two authed users separately.
+function userOrIpApp(limit: number, userByHeader: boolean) {
+  const app = express();
+  app.use(express.json());
+  // Pretend authMiddleware ran: read a test header and attach to req.userId.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (userByHeader) {
+      const u = req.get("x-test-user");
+      if (u) req.userId = u;
+    }
+    next();
+  });
+  app.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit,
+      keyGenerator: (req: Request) => {
+        if (req.userId) return `user:${req.userId}`;
+        return `ip:${ipKeyGenerator(req.ip ?? "")}`;
+      },
       standardHeaders: "draft-7",
       legacyHeaders: false,
       message: { error: "Too many requests; slow down." },
@@ -83,5 +116,38 @@ describe("mutation rate-limit shape", () => {
     expect(res.status).toBe(429);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toMatch(/too many/i);
+  });
+
+  it("keys on user:<userId> when authenticated, isolating users at the same IP", async () => {
+    // Phase 18a core assertion: two signed-in users at the same NAT should
+    // NOT share a bucket. Exhaust user A; user B on the same IP must still
+    // get through. IP fallback for unauthed requests still works and is
+    // its own bucket.
+    srv = await listen(userOrIpApp(2, true));
+    const burstA = async () => {
+      const statuses: number[] = [];
+      for (let i = 0; i < 4; i++) {
+        const res = await fetch(`${srv!.url}/probe`, {
+          method: "POST",
+          headers: { "x-test-user": "user-a" },
+        });
+        statuses.push(res.status);
+      }
+      return statuses;
+    };
+    const statuses = await burstA();
+    // user-a exhausts at 2, sees 429 on 3rd+.
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
+
+    // user-b fresh — not starved.
+    const resB = await fetch(`${srv.url}/probe`, {
+      method: "POST",
+      headers: { "x-test-user": "user-b" },
+    });
+    expect(resB.status).toBe(200);
+
+    // Unauthed (no x-test-user header) gets its own IP-fallback bucket.
+    const resNoAuth = await fetch(`${srv.url}/probe`, { method: "POST" });
+    expect(resNoAuth.status).toBe(200);
   });
 });

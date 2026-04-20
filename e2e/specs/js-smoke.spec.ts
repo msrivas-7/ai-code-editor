@@ -5,7 +5,7 @@
 // lesson, the JS runner executes via the polyglot runner, and validation
 // passes with console.log output matching the expected_stdout rule.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import {

@@ -1,18 +1,18 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
+import { useAuthStore } from "../auth/authStore";
 import type { Persona } from "../types";
 import { useThemePref, type ThemePref } from "../util/theme";
-import { ProgressIOControls } from "./ProgressIOControls";
 
-// Dev-only Developer tab. Both imports are guarded by import.meta.env.DEV
-// so Vite tree-shakes the whole __dev__ folder in prod.
-const DeveloperSection = import.meta.env.DEV
-  ? (await import("../__dev__/DeveloperSection")).DeveloperSection
-  : () => null;
-const useDevModeEnabled = import.meta.env.DEV
-  ? (await import("../__dev__/devModeStore")).useDevModeEnabled
-  : () => false;
+type Tab = "account" | "ai" | "appearance";
+
+const TAB_LABEL: Record<Tab, string> = {
+  account: "Account",
+  ai: "AI",
+  appearance: "Appearance",
+};
 
 const THEME_LABEL: Record<ThemePref, string> = {
   system: "System",
@@ -33,6 +33,245 @@ const PERSONA_BLURB: Record<Persona, string> = {
 };
 
 export function SettingsPanel({ onClose }: { onClose?: () => void }) {
+  const [tab, setTab] = useState<Tab>("account");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Settings
+        </span>
+        {onClose && (
+          <button
+            className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink"
+            onClick={onClose}
+          >
+            close
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-4">
+        <nav
+          aria-label="Settings sections"
+          className="flex w-28 shrink-0 flex-col gap-0.5"
+        >
+          {(Object.keys(TAB_LABEL) as Tab[]).map((t) => {
+            const active = tab === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                aria-current={active ? "page" : undefined}
+                className={`rounded px-2 py-1.5 text-left text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                  active
+                    ? "bg-elevated text-ink"
+                    : "text-muted hover:bg-elevated/60 hover:text-ink"
+                }`}
+              >
+                {TAB_LABEL[t]}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {tab === "account" && <AccountTab onClose={onClose} />}
+          {tab === "ai" && <AITab />}
+          {tab === "appearance" && <AppearanceTab />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountTab({ onClose }: { onClose?: () => void }) {
+  const user = useAuthStore((s) => s.user);
+  const updateDisplayName = useAuthStore((s) => s.updateDisplayName);
+  const signOut = useAuthStore((s) => s.signOut);
+  const nav = useNavigate();
+
+  const meta = (user?.user_metadata ?? {}) as {
+    first_name?: string;
+    last_name?: string;
+  };
+  const [firstName, setFirstName] = useState(meta.first_name ?? "");
+  const [lastName, setLastName] = useState(meta.last_name ?? "");
+  // Re-sync local inputs when auth pushes a fresh user object (USER_UPDATED
+  // after save, or a token refresh carrying newer metadata). The effect is
+  // idempotent for same-value updates so it won't stomp mid-edit state.
+  useEffect(() => {
+    setFirstName(meta.first_name ?? "");
+    setLastName(meta.last_name ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta.first_name, meta.last_name]);
+
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ kind: "saved" | "error"; text: string } | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutErr, setSignOutErr] = useState<string | null>(null);
+
+  // Auto-dismiss the save status after ~2.5s. Using a timer (not CSS) so the
+  // message can also be cleared early on next save. The effect's cleanup
+  // covers unmount + re-run ordering so only the latest timer fires.
+  const timerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!saveMsg) return;
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setSaveMsg(null), 2500);
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, [saveMsg]);
+
+  const firstTrim = firstName.trim();
+  const lastTrim = lastName.trim();
+  const dirty =
+    firstTrim !== (meta.first_name ?? "").trim() ||
+    lastTrim !== (meta.last_name ?? "").trim();
+  const canSave =
+    !saving &&
+    dirty &&
+    firstTrim.length > 0 &&
+    firstTrim.length <= 50 &&
+    lastTrim.length > 0 &&
+    lastTrim.length <= 50;
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await updateDisplayName(firstTrim, lastTrim);
+      setSaveMsg({ kind: "saved", text: "Changes saved" });
+    } catch (e) {
+      setSaveMsg({ kind: "error", text: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setSignOutErr(null);
+    setSigningOut(true);
+    try {
+      await signOut();
+      onClose?.();
+      nav("/login", { replace: true });
+    } catch (e) {
+      setSignOutErr((e as Error).message);
+      setSigningOut(false);
+    }
+  };
+
+  if (!user) return null;
+  return (
+    <>
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-ink">Profile</h3>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-muted">Email</span>
+          <span className="break-all rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink/80">
+            {user.email ?? user.id}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium text-muted">First name</span>
+            <input
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Ada"
+              autoComplete="given-name"
+              maxLength={50}
+              disabled={saving}
+              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium text-muted">Last name</span>
+            <input
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Lovelace"
+              autoComplete="family-name"
+              maxLength={50}
+              disabled={saving}
+              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave}
+            aria-busy={saving}
+            className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-bg transition hover:bg-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {saveMsg && (
+            <span
+              role={saveMsg.kind === "error" ? "alert" : "status"}
+              className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                saveMsg.kind === "saved"
+                  ? "bg-success/15 text-success"
+                  : "bg-danger/15 text-danger"
+              }`}
+            >
+              {saveMsg.kind === "saved" ? `✓ ${saveMsg.text}` : saveMsg.text}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <hr className="border-border" />
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-ink">Session</h3>
+        {signOutErr && (
+          <div
+            role="alert"
+            className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger"
+          >
+            {signOutErr}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          aria-busy={signingOut}
+          className="self-start rounded-md border border-border bg-elevated px-3 py-1 text-[11px] font-semibold text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {signingOut ? "Signing out…" : "Sign out"}
+        </button>
+      </section>
+
+      <hr className="border-border" />
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-ink">Danger zone</h3>
+        <button
+          type="button"
+          disabled
+          title="Available in a future update"
+          className="cursor-not-allowed self-start rounded-md border border-danger/30 bg-elevated px-3 py-1 text-[11px] font-semibold text-faint"
+        >
+          Delete account
+        </button>
+        <p className="text-[10px] leading-relaxed text-faint">
+          Permanently removes your account and all progress. Not yet available.
+        </p>
+      </section>
+    </>
+  );
+}
+
+function AITab() {
   const {
     apiKey,
     keyStatus,
@@ -54,10 +293,6 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   } = useAIStore();
 
   const [reveal, setReveal] = useState(false);
-  const [themePref, setThemePref] = useThemePref();
-  const devEnabled = useDevModeEnabled();
-  const [tab, setTab] = useState<"general" | "developer">("general");
-  const activeTab = devEnabled ? tab : "general";
   // Two-step confirm for Remove API key — clears both the key and the tutor
   // chat, so a single click shouldn't wipe an in-progress conversation.
   const [confirmForget, setConfirmForget] = useState(false);
@@ -104,276 +339,230 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+    <>
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-ink">OpenAI key</h3>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-muted">API Key</span>
+          <div className="flex items-center gap-2">
+            <input
+              type={reveal ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-…"
+              className="flex-1 rounded-md border border-border bg-elevated px-2.5 py-1.5 font-mono text-xs text-ink transition placeholder:text-faint focus:border-accent/60"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              onClick={() => setReveal((v) => !v)}
+              className="flex items-center justify-center rounded-md border border-border bg-elevated p-1.5 text-muted transition hover:border-accent/60 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              title={reveal ? "Hide API key" : "Show API key"}
+              aria-label={reveal ? "Hide API key" : "Show API key"}
+              aria-pressed={reveal}
+            >
+              {reveal ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </label>
+
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-            Settings
+          <button
+            onClick={handleValidate}
+            disabled={!apiKey.trim() || keyStatus === "validating"}
+            title={
+              !apiKey.trim()
+                ? "Enter an API key first"
+                : keyStatus === "validating"
+                  ? "Validating… please wait"
+                  : "Check this API key with OpenAI"
+            }
+            aria-label={
+              !apiKey.trim()
+                ? "Validate API key (enter a key first)"
+                : keyStatus === "validating"
+                  ? "Validating API key"
+                  : "Validate API key"
+            }
+            className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-bg transition hover:bg-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
+          >
+            Validate
+          </button>
+          <div className="text-[11px]">{statusBlurb()}</div>
+        </div>
+
+        <label className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 p-2.5">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            className="mt-0.5 accent-warn"
+          />
+          <div className="text-[11px] leading-relaxed">
+            <div className="font-semibold text-warn">Remember on this device</div>
+            <div className="text-warn/70">
+              Saved on this computer only — don't enable on a shared machine.
+            </div>
+          </div>
+        </label>
+
+        {keyStatus === "valid" && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium text-muted">Model</span>
+            {modelsStatus === "loading" && (
+              <span className="flex items-center gap-1.5 text-[11px] text-warn">
+                <span className="inline-block h-1.5 w-1.5 animate-pulseDot rounded-full bg-warn" />
+                loading models…
+              </span>
+            )}
+            {modelsStatus === "error" && (
+              <span className="text-[11px] text-danger">failed: {modelsError}</span>
+            )}
+            {modelsStatus === "loaded" && models.length > 0 && (
+              <div className="relative">
+                <select
+                  value={selectedModel ?? ""}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  aria-label="Model"
+                  className="w-full appearance-none rounded-md border border-border bg-elevated px-2.5 py-1.5 pr-7 text-xs text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted">
+                  ▾
+                </span>
+              </div>
+            )}
+            {modelsStatus === "loaded" && models.length === 0 && (
+              <span className="text-[11px] text-muted">
+                This key doesn't have access to any chat models — check your OpenAI plan.
+              </span>
+            )}
+          </div>
+        )}
+
+        {apiKey && (
+          confirmForget ? (
+            <div className="flex flex-col gap-1.5 self-start rounded-md border border-danger/40 bg-danger/5 p-2">
+              <span className="text-[11px] text-danger">
+                This also clears your tutor chat — continue?
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { forgetKey(); setConfirmForget(false); }}
+                  className="rounded-md bg-danger px-2.5 py-1 text-[11px] font-semibold text-bg transition hover:bg-danger/80"
+                >
+                  Remove
+                </button>
+                <button
+                  onClick={() => setConfirmForget(false)}
+                  className="rounded-md border border-border bg-elevated px-2.5 py-1 text-[11px] text-muted transition hover:text-ink"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmForget(true)}
+              className="self-start text-[11px] text-danger transition hover:text-danger/80"
+            >
+              Remove API key
+            </button>
+          )
+        )}
+      </section>
+
+      <hr className="border-border" />
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-ink">Tutor style</h3>
+        <div className="flex flex-col gap-1.5">
+          <span id="persona-label" className="text-[11px] font-medium text-muted">
+            Experience level
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby="persona-label"
+            aria-describedby="persona-blurb"
+            className="flex overflow-hidden rounded-md border border-border"
+          >
+            {(Object.keys(PERSONA_LABEL) as Persona[]).map((p, i) => {
+              const active = persona === p;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setPersona(p)}
+                  className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
+                    active
+                      ? "bg-accent text-bg"
+                      : "bg-elevated text-muted hover:bg-elevated/80 hover:text-ink"
+                  } ${i > 0 ? "border-l border-border" : ""}`}
+                >
+                  {PERSONA_LABEL[p]}
+                </button>
+              );
+            })}
+          </div>
+          <span id="persona-blurb" className="text-[10px] leading-relaxed text-faint">
+            {PERSONA_BLURB[persona]}
           </span>
         </div>
-        {onClose && (
-          <button
-            className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink"
-            onClick={onClose}
-          >
-            close
-          </button>
-        )}
-      </div>
-
-      {devEnabled && (
-        <div role="tablist" aria-label="Settings sections" className="flex overflow-hidden rounded-md border border-border">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "general"}
-            onClick={() => setTab("general")}
-            className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
-              activeTab === "general"
-                ? "bg-accent text-bg"
-                : "bg-elevated text-muted hover:bg-elevated/80 hover:text-ink"
-            }`}
-          >
-            General
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "developer"}
-            onClick={() => setTab("developer")}
-            className={`flex-1 border-l border-border px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet ${
-              activeTab === "developer"
-                ? "bg-violet text-bg"
-                : "bg-elevated text-muted hover:bg-elevated/80 hover:text-violet"
-            }`}
-          >
-            Developer
-          </button>
-        </div>
-      )}
-
-      {activeTab === "developer" ? (
-        <DeveloperSection />
-      ) : (
-        <GeneralSettings />
-      )}
-    </div>
+      </section>
+    </>
   );
+}
 
-  function GeneralSettings() {
-    return <>
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-muted">OpenAI API Key</span>
-        <div className="flex items-center gap-2">
-          <input
-            type={reveal ? "text" : "password"}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-…"
-            className="flex-1 rounded-md border border-border bg-elevated px-2.5 py-1.5 font-mono text-xs text-ink transition placeholder:text-faint focus:border-accent/60"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button
-            type="button"
-            onClick={() => setReveal((v) => !v)}
-            className="flex items-center justify-center rounded-md border border-border bg-elevated p-1.5 text-muted transition hover:border-accent/60 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            title={reveal ? "Hide API key" : "Show API key"}
-            aria-label={reveal ? "Hide API key" : "Show API key"}
-            aria-pressed={reveal}
-          >
-            {reveal ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                <line x1="1" y1="1" x2="23" y2="23" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            )}
-          </button>
-        </div>
-      </label>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleValidate}
-          disabled={!apiKey.trim() || keyStatus === "validating"}
-          title={
-            !apiKey.trim()
-              ? "Enter an API key first"
-              : keyStatus === "validating"
-                ? "Validating… please wait"
-                : "Check this API key with OpenAI"
-          }
-          aria-label={
-            !apiKey.trim()
-              ? "Validate API key (enter a key first)"
-              : keyStatus === "validating"
-                ? "Validating API key"
-                : "Validate API key"
-          }
-          className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-bg transition hover:bg-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
-        >
-          Validate
-        </button>
-        <div className="text-[11px]">{statusBlurb()}</div>
+function AppearanceTab() {
+  const [themePref, setThemePref] = useThemePref();
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-semibold text-ink">Theme</h3>
+      <div role="group" aria-label="Theme preference" className="flex overflow-hidden rounded-md border border-border">
+        {(Object.keys(THEME_LABEL) as ThemePref[]).map((t, i) => {
+          const active = themePref === t;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setThemePref(t)}
+              aria-pressed={active}
+              className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
+                active
+                  ? "bg-accent text-bg"
+                  : "bg-elevated text-muted hover:bg-elevated/80 hover:text-ink"
+              } ${i > 0 ? "border-l border-border" : ""}`}
+            >
+              {THEME_LABEL[t]}
+            </button>
+          );
+        })}
       </div>
-
-      <label className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 p-2.5">
-        <input
-          type="checkbox"
-          checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-          className="mt-0.5 accent-warn"
-        />
-        <div className="text-[11px] leading-relaxed">
-          <div className="font-semibold text-warn">Remember on this device</div>
-          <div className="text-warn/70">
-            Saved on this computer only — don't enable on a shared machine.
-          </div>
-        </div>
-      </label>
-
-      {keyStatus === "valid" && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-muted">Model</span>
-          {modelsStatus === "loading" && (
-            <span className="flex items-center gap-1.5 text-[11px] text-warn">
-              <span className="inline-block h-1.5 w-1.5 animate-pulseDot rounded-full bg-warn" />
-              loading models…
-            </span>
-          )}
-          {modelsStatus === "error" && (
-            <span className="text-[11px] text-danger">failed: {modelsError}</span>
-          )}
-          {modelsStatus === "loaded" && models.length > 0 && (
-            <div className="relative">
-              <select
-                value={selectedModel ?? ""}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                aria-label="Model"
-                className="w-full appearance-none rounded-md border border-border bg-elevated px-2.5 py-1.5 pr-7 text-xs text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted">
-                ▾
-              </span>
-            </div>
-          )}
-          {modelsStatus === "loaded" && models.length === 0 && (
-            <span className="text-[11px] text-muted">
-              This key doesn't have access to any chat models — check your OpenAI plan.
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-1.5">
-        <span id="persona-label" className="text-[11px] font-medium text-muted">
-          Experience level
-        </span>
-        <div
-          role="radiogroup"
-          aria-labelledby="persona-label"
-          aria-describedby="persona-blurb"
-          className="flex overflow-hidden rounded-md border border-border"
-        >
-          {(Object.keys(PERSONA_LABEL) as Persona[]).map((p, i) => {
-            const active = persona === p;
-            return (
-              <button
-                key={p}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => setPersona(p)}
-                className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
-                  active
-                    ? "bg-accent text-bg"
-                    : "bg-elevated text-muted hover:bg-elevated/80 hover:text-ink"
-                } ${i > 0 ? "border-l border-border" : ""}`}
-              >
-                {PERSONA_LABEL[p]}
-              </button>
-            );
-          })}
-        </div>
-        <span id="persona-blurb" className="text-[10px] leading-relaxed text-faint">
-          {PERSONA_BLURB[persona]}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-muted">Theme</span>
-        <div role="group" aria-label="Theme preference" className="flex overflow-hidden rounded-md border border-border">
-          {(Object.keys(THEME_LABEL) as ThemePref[]).map((t, i) => {
-            const active = themePref === t;
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setThemePref(t)}
-                aria-pressed={active}
-                className={`flex-1 px-2.5 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
-                  active
-                    ? "bg-accent text-bg"
-                    : "bg-elevated text-muted hover:bg-elevated/80 hover:text-ink"
-                } ${i > 0 ? "border-l border-border" : ""}`}
-              >
-                {THEME_LABEL[t]}
-              </button>
-            );
-          })}
-        </div>
-        <span className="text-[10px] leading-relaxed text-faint">
-          {themePref === "system"
-            ? "Follows your operating system's appearance setting."
-            : themePref === "light"
-              ? "Always use the light theme."
-              : "Always use the dark theme."}
-        </span>
-      </div>
-
-      <ProgressIOControls />
-
-      {apiKey && (
-        confirmForget ? (
-          <div className="flex flex-col gap-1.5 self-start rounded-md border border-danger/40 bg-danger/5 p-2">
-            <span className="text-[11px] text-danger">
-              This also clears your tutor chat — continue?
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { forgetKey(); setConfirmForget(false); }}
-                className="rounded-md bg-danger px-2.5 py-1 text-[11px] font-semibold text-bg transition hover:bg-danger/80"
-              >
-                Remove
-              </button>
-              <button
-                onClick={() => setConfirmForget(false)}
-                className="rounded-md border border-border bg-elevated px-2.5 py-1 text-[11px] text-muted transition hover:text-ink"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmForget(true)}
-            className="self-start text-[11px] text-danger transition hover:text-danger/80"
-          >
-            Remove API key
-          </button>
-        )
-      )}
-    </>;
-  }
+      <span className="text-[10px] leading-relaxed text-faint">
+        {themePref === "system"
+          ? "Follows your operating system's appearance setting."
+          : themePref === "light"
+            ? "Always use the light theme."
+            : "Always use the dark theme."}
+      </span>
+    </section>
+  );
 }

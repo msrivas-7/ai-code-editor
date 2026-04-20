@@ -3,7 +3,7 @@
 // tabs, session resilience. All network access hits the real Docker backend —
 // only AI is mocked (tutor panel renders on this page but we don't drive it).
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { getMonacoValue, setMonacoValue, waitForMonacoReady } from "../fixtures/monaco";
@@ -146,15 +146,15 @@ test.describe("editor", () => {
     await expect(page.getByText(/\b\d+\s*ms\b/).first()).toBeVisible();
   });
 
-  test("SettingsButton opens the Settings modal", async ({ page }) => {
+  test("UserMenu → Settings opens the Settings modal (AI tab shows API key)", async ({ page }) => {
     await page.goto("/editor");
     await waitForMonacoReady(page);
 
-    await S.settingsButton(page).first().click();
+    await S.openSettings(page, "ai");
     // SettingsModal has no accessible name (no aria-labelledby) so use the
     // raw role attribute instead of getByRole, which needs an accessible name.
     await expect(page.locator('[role="dialog"]')).toBeVisible();
-    await expect(page.getByText(/openai api key/i).first()).toBeVisible();
+    await expect(page.getByText(/api key/i).first()).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
   });

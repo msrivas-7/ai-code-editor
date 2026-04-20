@@ -8,7 +8,7 @@
 // exercise the not-yet-dismissed code paths. Every test here starts from a
 // profile where the relevant onboarding flags are NOT set.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { waitForMonacoReady } from "../fixtures/monaco";
@@ -32,7 +32,7 @@ test.describe("onboarding", () => {
   });
 
   test("WelcomeOverlay renders on first StartPage visit and dismiss persists", async ({ page }) => {
-    await loadProfile(page, "empty");
+    await loadProfile(page, "empty", { onboarded: false });
     await page.goto("/");
 
     // Skip button + role=button with aria-label="Skip onboarding".
@@ -45,18 +45,13 @@ test.describe("onboarding", () => {
     await skip.click();
     await expect(skip).toHaveCount(0);
 
-    // Flag persisted.
-    expect(
-      await page.evaluate(() => localStorage.getItem("onboarding:v1:welcome-done")),
-    ).toBe("1");
-
-    // Reload — overlay doesn't reappear.
+    // Reload — overlay doesn't reappear (flag persisted to the server).
     await page.reload();
     await expect(page.getByRole("button", { name: /skip onboarding/i })).toHaveCount(0);
   });
 
   test("WelcomeOverlay stepping through with 'Got it' also persists the done flag", async ({ page }) => {
-    await loadProfile(page, "empty");
+    await loadProfile(page, "empty", { onboarded: false });
     await page.goto("/");
 
     // 3 steps — click Got it three times. The advance handler has a 200ms
@@ -68,12 +63,12 @@ test.describe("onboarding", () => {
       await gotIt.click();
       await page.waitForTimeout(250);
     }
-    // Overlay unmounts on final advance — flag is written to localStorage.
-    await expect
-      .poll(() => page.evaluate(() => localStorage.getItem("onboarding:v1:welcome-done")), {
-        timeout: 3_000,
-      })
-      .toBe("1");
+    // Overlay unmounts on final advance; reload to confirm the server flag.
+    await expect(page.getByRole("button", { name: /^got it$/i })).toHaveCount(0, {
+      timeout: 3_000,
+    });
+    await page.reload();
+    await expect(page.getByRole("button", { name: /skip onboarding/i })).toHaveCount(0);
   });
 
   test("Dashboard welcome banner renders for welcomed-not-started", async ({ page }) => {
@@ -94,7 +89,7 @@ test.describe("onboarding", () => {
   });
 
   test("EditorCoach auto-opens after delay; Skip tour dismisses permanently", async ({ page }) => {
-    await loadProfile(page, "empty");
+    await loadProfile(page, "empty", { onboarded: false });
     await page.goto("/editor");
     await waitForMonacoReady(page);
 
@@ -103,14 +98,10 @@ test.describe("onboarding", () => {
     await expect(skipTour).toBeVisible({ timeout: AUTO_OPEN_MS + 5_000 });
     await expect(page.getByRole("button", { name: /^got it$/i })).toBeVisible();
 
-    // Dismiss via Skip tour.
+    // Dismiss via Skip tour, then reload to confirm server-backed flag held.
     await skipTour.click();
     await expect(skipTour).toHaveCount(0);
-    expect(
-      await page.evaluate(() => localStorage.getItem("onboarding:v1:editor-done")),
-    ).toBe("1");
 
-    // Reload — tour doesn't reappear.
     await page.reload();
     await waitForMonacoReady(page);
     await page.waitForTimeout(AUTO_OPEN_MS + 500);
@@ -118,7 +109,7 @@ test.describe("onboarding", () => {
   });
 
   test("WorkspaceCoach auto-opens on first lesson; stepping through completes the tour", async ({ page }) => {
-    await loadProfile(page, "empty");
+    await loadProfile(page, "empty", { onboarded: false });
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
 
@@ -130,9 +121,6 @@ test.describe("onboarding", () => {
     // critical one to exercise.
     await skipTour.click();
     await expect(skipTour).toHaveCount(0);
-    expect(
-      await page.evaluate(() => localStorage.getItem("onboarding:v1:workspace-done")),
-    ).toBe("1");
   });
 
   test("Coaches don't render when onboarding flags are already set", async ({ page }) => {

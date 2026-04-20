@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { getSession, pingSession } from "../services/session/sessionManager.js";
+import { requireActiveSession } from "../services/session/requireActiveSession.js";
+import { touchSession } from "../services/session/sessionManager.js";
 import type { ExecutionBackend } from "../services/execution/backends/index.js";
 
 // Per-file cap matches the Express body cap divided across the `files` array.
@@ -36,12 +37,14 @@ export function createProjectRouter(backend: ExecutionBackend): Router {
       return res.status(400).json({ error: parsed.error.message });
     }
     const { sessionId, files } = parsed.data;
-    const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "session not found" });
-    if (!session.handle) return res.status(409).json({ error: "session has no active runtime" });
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "unauthenticated" });
+    }
     try {
+      const session = requireActiveSession(sessionId, userId);
       await backend.replaceSnapshot(session.handle, files);
-      pingSession(sessionId);
+      touchSession(sessionId);
       res.json({ ok: true, fileCount: files.length });
     } catch (err) {
       next(err);

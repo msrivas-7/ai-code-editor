@@ -11,12 +11,29 @@ import type { Locator, Page } from "@playwright/test";
 
 // ─── Global chrome ────────────────────────────────────────────────────────
 
-// Exact-match on the gear-icon's aria-label ("Open settings" — lowercase s).
-// Case-insensitive regex would also match the tutor setup warning's
-// "Open Settings →" link, which is a sibling button that DOESN'T open the
-// modal directly (it goes through the parent's onOpenSettings prop chain).
-export const settingsButton = (page: Page): Locator =>
-  page.getByRole("button", { name: "Open settings", exact: true });
+// Settings is reached via the UserMenu (avatar in the top-right) → "Settings"
+// menu item — there's no standalone gear icon. `openSettings` wraps both
+// clicks so specs don't have to care about the two-step interaction, and
+// optionally clicks into a sub-tab (Account / AI / Appearance) so specs that
+// care about a specific surface don't have to re-click the side nav.
+export const userMenuTrigger = (page: Page): Locator =>
+  page.getByRole("button", { name: /user menu/i });
+
+export const openSettings = async (
+  page: Page,
+  tab?: "account" | "ai" | "appearance",
+): Promise<void> => {
+  await userMenuTrigger(page).first().click();
+  await page.getByRole("menuitem", { name: /^settings$/i }).click();
+  if (tab) {
+    const labelRegex =
+      tab === "account" ? /^account$/i : tab === "ai" ? /^ai$/i : /^appearance$/i;
+    await page
+      .locator('nav[aria-label="Settings sections"]')
+      .getByRole("button", { name: labelRegex })
+      .click();
+  }
+};
 
 export const modal = (page: Page): Locator =>
   page.locator('[role="dialog"], [role="alertdialog"]').last();

@@ -3,7 +3,7 @@ services:
   # that the backend will spawn per-session. It exits immediately; the backend
   # waits for it via service_completed_successfully.
   runner-image:
-    image: codetutor-ai-runner:latest
+    image: ${RUNNER_IMAGE:-codetutor-ai-runner:latest}
     build:
       context: ./runner-image
     command: ["true"]
@@ -32,37 +32,41 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    # 12-factor config: every value differs across dev / prod, all flowing
+    # in via env. Docker compose loads `.env` by default; for prod swap with
+    # `docker compose --env-file=.env.production up`. Required vars fail
+    # fast at backend boot (assertConfigValid) rather than silently running
+    # on dev-ish defaults — see backend/src/config.ts.
     environment:
-      PORT: "4000"
-      CORS_ORIGIN: "http://localhost:5173"
-      RUNNER_IMAGE: "codetutor-ai-runner:latest"
+      PORT: "${BACKEND_PORT:-4000}"
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:5173}"
+      RUNNER_IMAGE: "${RUNNER_IMAGE:-codetutor-ai-runner:latest}"
       # Talk to the socket proxy instead of the raw Docker socket. dockerode
       # honors DOCKER_HOST; the proxy then enforces the allowlist above.
-      DOCKER_HOST: "tcp://socket-proxy:2375"
+      DOCKER_HOST: "${DOCKER_HOST:-tcp://socket-proxy:2375}"
       # Backend-internal path for workspace I/O. Same on every host OS —
-      # the host path is discovered at startup via Docker self-inspect and
-      # used separately when spawning sibling containers. See
-      # backend/src/services/execution/backends/localDocker.ts → resolveHostWorkspaceRoot.
-      WORKSPACE_ROOT: "/workspace-root"
-      # Phase 17 rate-limits. The config.ts defaults (30 session-creates,
-      # 120 mutations, 60 AI calls per minute per IP) are the production
-      # posture. Local compose — and especially the E2E suite, which hits
-      # the backend from a single 127.0.0.1 with parallel workers — needs
-      # a lot more headroom. Bumping here keeps the middleware wired and
-      # exercised without tripping on normal learner flows. Unit tests
-      # cover the actual 429 behavior. Override in prod deploys.
-      SESSION_CREATE_RATE_LIMIT_MAX: "500"
-      MUTATION_RATE_LIMIT_MAX: "2000"
-      AI_RATE_LIMIT_MAX: "500"
+      # the host path is discovered at startup via Docker self-inspect.
+      WORKSPACE_ROOT: "${WORKSPACE_ROOT:-/workspace-root}"
+      # Rate-limits. config.ts defaults (30/120/60 per minute) are prod
+      # posture; dev headroom below because the E2E suite hits from a
+      # single 127.0.0.1 with parallel workers.
+      SESSION_CREATE_RATE_LIMIT_MAX: "${SESSION_CREATE_RATE_LIMIT_MAX:-500}"
+      MUTATION_RATE_LIMIT_MAX: "${MUTATION_RATE_LIMIT_MAX:-2000}"
+      AI_RATE_LIMIT_MAX: "${AI_RATE_LIMIT_MAX:-500}"
+      # Supabase — required. No default: failing fast beats pointing at the
+      # wrong project. Populate .env from .env.example.
+      SUPABASE_URL: "${SUPABASE_URL}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+      DATABASE_URL: "${DATABASE_URL}"
     volumes:
       # Relative path — Compose resolves it against the compose file location
       # on every host. Works in PowerShell, zsh, bash identically.
-      - ./temp/sessions:/workspace-root
+      - ${WORKSPACE_HOST_PATH:-./temp/sessions}:/workspace-root
     ports:
-      # Loopback-only bind: other machines on the LAN cannot reach the
-      # backend. Local dev only — cloud deployment puts this behind auth
-      # and a VPC (see docs/ARCHITECTURE.md).
-      - "127.0.0.1:4000:4000"
+      # Default loopback-only bind for local dev. Prod deploys override
+      # BACKEND_BIND to an interface reachable by their ingress (or drop
+      # the port publish entirely and use an overlay network).
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-4000}:${BACKEND_PORT:-4000}"
     depends_on:
       runner-image:
         condition: service_completed_successfully
@@ -73,13 +77,31 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      # `dev` (default) runs Vite's dev server for hot reload during local
+      # compose; `prod` builds a static bundle served by nginx. Prod deploys
+      # set FRONTEND_BUILD_TARGET=prod in their env file.
+      target: ${FRONTEND_BUILD_TARGET:-dev}
+      # VITE_* values are inlined into the bundle by `vite build` (prod stage
+      # only). For `dev`, Vite reads frontend/.env.development natively at
+      # runtime — no compose-level environment overrides needed, and we
+      # explicitly avoid them because empty-string overrides would crowd out
+      # the file loader. For prod, CI / `.env.production` provides real
+      # values via env-var interpolation below.
+      args:
+        VITE_BACKEND_URL: "${VITE_BACKEND_URL:-http://backend:4000}"
+        VITE_SUPABASE_URL: "${VITE_SUPABASE_URL}"
+        VITE_SUPABASE_ANON_KEY: "${VITE_SUPABASE_ANON_KEY}"
+    # VITE_* are read by vite.config.ts at dev-server startup (for vite.config
+    # itself) and injected into import.meta.env for the browser bundle. In dev
+    # mode Vite picks up any VITE_* process env var, so we surface the three
+    # required values here. They flow from the compose `.env` file, which is
+    # the single source of truth for dev — see docs/DEVELOPMENT.md.
     environment:
-      # Inside the frontend container, the vite dev server must proxy /api/*
-      # to the backend service via the compose network (not localhost).
-      VITE_BACKEND_URL: "http://backend:4000"
+      VITE_BACKEND_URL: "${VITE_BACKEND_URL:-http://backend:4000}"
+      VITE_SUPABASE_URL: "${VITE_SUPABASE_URL}"
+      VITE_SUPABASE_ANON_KEY: "${VITE_SUPABASE_ANON_KEY}"
     ports:
-      # Loopback-only. Vite HMR and the learner's browser run on this host;
-      # other LAN machines do not need to see the dev server.
-      - "127.0.0.1:5173:5173"
+      # Default loopback-only. Prod deploys override FRONTEND_BIND.
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - backend

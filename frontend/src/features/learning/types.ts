@@ -82,14 +82,6 @@ export interface Lesson extends LessonMeta {
   starterFiles: { path: string; content: string }[];
 }
 
-// ── Learner identity ───────────────────────────────────────────────
-
-export interface LearnerIdentity {
-  learnerId: string;
-  createdAt: string;
-  isAnonymous: boolean;
-}
-
 // ── Progress tracking ──────────────────────────────────────────────
 
 export type ProgressStatus = "not_started" | "in_progress" | "completed";
@@ -119,6 +111,9 @@ export interface LessonProgress {
   lastCode: Record<string, string> | null;
   lastOutput: string | null;
   practiceCompletedIds?: string[];
+  // Keyed by exerciseId → file-path → content. Distinct from `lastCode`
+  // so the main lesson buffer isn't clobbered on practice entry.
+  practiceExerciseCode?: Record<string, Record<string, string>>;
   timeSpentMs?: number;
 }
 
