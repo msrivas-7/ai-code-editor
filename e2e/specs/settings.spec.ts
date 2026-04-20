@@ -1,8 +1,7 @@
-// Settings panel specs. Covers the General tab surface the learner actually
-// touches: theme toggle, persona radio group, API-key reveal / validate /
-// model picker, and the two-step Remove API key confirm. The panel lives in a
-// portaled modal that renders from the gear-icon SettingsButton (present on
-// every page via the global chrome).
+// Settings panel specs. Covers the tabbed modal reached from the UserMenu →
+// Settings: Account (profile / sign-out / delete stub), AI (OpenAI key +
+// persona), and Appearance (theme). Each test opens directly into the tab
+// it's exercising so assertions can run without a second click.
 
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/auth";
@@ -11,8 +10,11 @@ import { mockAllAI } from "../fixtures/aiMocks";
 import { markOnboardingDone, seedApiKey } from "../fixtures/profiles";
 import * as S from "../utils/selectors";
 
-async function openSettings(page: Page): Promise<void> {
-  await S.settingsButton(page).first().click();
+async function openSettings(
+  page: Page,
+  tab?: "account" | "ai" | "appearance",
+): Promise<void> {
+  await S.openSettings(page, tab);
   await expect(page.locator('[role="dialog"]')).toBeVisible();
 }
 
@@ -24,7 +26,7 @@ test.describe("settings panel", () => {
 
   test("Theme toggle applies data-theme on <html> and persists pref", async ({ page }) => {
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "appearance");
 
     // Light — Phase 18b: theme persists through `preferences.theme` on the
     // server; the only user-visible effect we can assert here without racing
@@ -37,9 +39,10 @@ test.describe("settings panel", () => {
     await page.getByRole("button", { name: /^dark$/i }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-    // Close + reopen settings — selected button should remain aria-pressed=true.
+    // Close + reopen settings on Appearance — selected button should remain
+    // aria-pressed=true.
     await page.keyboard.press("Escape");
-    await openSettings(page);
+    await openSettings(page, "appearance");
     await expect(page.getByRole("button", { name: /^dark$/i })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -48,7 +51,7 @@ test.describe("settings panel", () => {
 
   test("Persona radio group updates aria-checked and blurb", async ({ page }) => {
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "ai");
 
     const beginner = page.getByRole("radio", { name: /^beginner$/i });
     const advanced = page.getByRole("radio", { name: /^advanced$/i });
@@ -67,7 +70,7 @@ test.describe("settings panel", () => {
   test("Show / hide API key toggle flips the input type", async ({ page }) => {
     await seedApiKey(page, { key: "sk-test-visibility" });
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "ai");
 
     const keyInput = page.locator('input[placeholder="sk-…"]');
     await expect(keyInput).toHaveAttribute("type", "password");
@@ -84,7 +87,7 @@ test.describe("settings panel", () => {
 
   test("Validate key → model picker loads → model change persists", async ({ page }) => {
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "ai");
 
     // Type a key and validate — mockAllAI's validate returns {valid:true}
     // and models returns gpt-4o-mini + gpt-4o. The validate button's
@@ -117,7 +120,7 @@ test.describe("settings panel", () => {
       });
     });
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "ai");
 
     await page.locator('input[placeholder="sk-…"]').fill("sk-nope");
     await page.getByRole("button", { name: /^validate api key$/i }).click();
@@ -131,7 +134,7 @@ test.describe("settings panel", () => {
   test("Remove API key is a two-step confirm (Cancel keeps, Remove wipes)", async ({ page }) => {
     await seedApiKey(page, { key: "sk-about-to-be-removed" });
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "ai");
 
     // First click — inline confirm pill appears with Remove + Cancel buttons.
     await page.getByRole("button", { name: /^remove api key$/i }).click();
@@ -166,13 +169,13 @@ test.describe("settings panel", () => {
   test("Escape closes the settings modal cleanly", async ({ page }) => {
     await seedApiKey(page, { key: "sk-escape-test" });
     await page.goto("/");
-    await openSettings(page);
+    await openSettings(page, "ai");
 
     await page.keyboard.press("Escape");
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
 
-    // Reopening shows the same seeded key — state survives the close.
-    await openSettings(page);
+    // Reopening on AI shows the same seeded key — state survives the close.
+    await openSettings(page, "ai");
     await expect(page.locator('input[placeholder="sk-…"]')).toHaveValue("sk-escape-test");
   });
 });

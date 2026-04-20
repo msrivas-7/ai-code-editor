@@ -89,10 +89,13 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   if (jwks) return jwks;
   const url = new URL("/auth/v1/.well-known/jwks.json", authServerUrl());
   jwks = createRemoteJWKSet(url, {
-    // jose's default is already generous; pinning it here makes the posture
-    // explicit. If the auth server is down when a token shows up, we'd
-    // rather 503 quickly than hang the request.
-    timeoutDuration: 5_000,
+    // Aggressive fetch timeout: the JWKS endpoint is tiny (a few KB) and
+    // served from Supabase's edge — 2s is plenty on a healthy link and
+    // keeps a brief auth-server hiccup from fanning out into stalled
+    // worker threads across every protected request. On expiry we surface
+    // 503 via the JWKSTimeout branch below; cooldown avoids hammering the
+    // upstream while it recovers.
+    timeoutDuration: 2_000,
     cooldownDuration: 30_000,
   });
   return jwks;

@@ -46,6 +46,8 @@ test.describe("auth flow", () => {
   test("signup with local-no-confirm flow lands user on /", async ({ page }) => {
     const email = uniqueEmail("signup");
     await page.goto("/signup");
+    await page.getByLabel(/first name/i).fill("E2E");
+    await page.getByLabel(/last name/i).fill("Tester");
     await page.getByLabel(/email/i).fill(email);
     // Two password fields on the signup page — target by exact label.
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);

@@ -38,11 +38,16 @@ interface AuthState {
   error: string | null;
 
   signInWithPassword: (email: string, password: string) => Promise<void>;
-  signUpWithPassword: (email: string, password: string) => Promise<void>;
+  signUpWithPassword: (
+    email: string,
+    password: string,
+    meta?: { firstName: string; lastName: string },
+  ) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
   signInWithOAuth: (provider: "google" | "github") => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  updateDisplayName: (firstName: string, lastName: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
 }
@@ -63,7 +68,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // onAuthStateChange will push the new user/session into the store.
   },
 
-  signUpWithPassword: async (email, password) => {
+  signUpWithPassword: async (email, password, meta) => {
     set({ error: null });
     const { error } = await supabase.auth.signUp({
       email,
@@ -72,6 +77,13 @@ export const useAuthStore = create<AuthState>((set) => ({
         // Send learners back to the app after they click the email link.
         // This is what Supabase appends `?code=...` to for the PKCE exchange.
         emailRedirectTo: `${window.location.origin}/auth/callback`,
+        // Display name lives in `auth.users.raw_user_meta_data` — Supabase
+        // stores this jsonb alongside the user row, no DB schema change
+        // needed. We read it back as `user.user_metadata.{first,last}_name`
+        // to drive the avatar initials and the menu greeting.
+        data: meta
+          ? { first_name: meta.firstName, last_name: meta.lastName }
+          : undefined,
       },
     });
     if (error) {
@@ -127,6 +139,19 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ error: error.message });
       throw error;
     }
+  },
+
+  updateDisplayName: async (firstName, lastName) => {
+    set({ error: null });
+    const { error } = await supabase.auth.updateUser({
+      data: { first_name: firstName, last_name: lastName },
+    });
+    if (error) {
+      set({ error: error.message });
+      throw error;
+    }
+    // onAuthStateChange fires USER_UPDATED with the refreshed user object;
+    // subscribers (UserMenu, SettingsPanel) re-render automatically.
   },
 
   signOut: async () => {

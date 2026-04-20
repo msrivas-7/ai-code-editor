@@ -5,7 +5,6 @@ import { listPublicCourses, loadAllLessonMetas } from "../content/courseLoader";
 import { useProgressStore, loadAllLessonProgress } from "../stores/progressStore";
 import { useAuthStore } from "../../../auth/authStore";
 import { CourseCard } from "../components/CourseCard";
-import { SettingsButton } from "../../../components/SettingsButton";
 import { UserMenu } from "../../../components/UserMenu";
 import { pickShakyLessons, formatTimeSpent } from "../utils/mastery";
 
@@ -114,7 +113,6 @@ export default function LearningDashboardPage() {
         </div>
         <h1 className="text-sm font-semibold tracking-tight">Guided Learning</h1>
         <div className="ml-auto flex items-center gap-2">
-          <SettingsButton />
           <UserMenu />
         </div>
       </header>

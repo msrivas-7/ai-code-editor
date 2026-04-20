@@ -133,7 +133,7 @@ export function PasswordField({
               {strength.level === "empty" ? "" : STRENGTH_LABEL[strength.level]}
             </span>
           </div>
-          <ul className="grid grid-cols-1 gap-0.5 sm:grid-cols-2" aria-hidden="true">
+          <ul className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
             {PASSWORD_CHECKS.map((check) => {
               const ok = check.test(value);
               return (
@@ -143,8 +143,11 @@ export function PasswordField({
                     ok ? "text-success" : "text-faint"
                   }`}
                 >
-                  <span>{ok ? "✓" : "○"}</span>
-                  {check.label}
+                  <span aria-hidden="true">{ok ? "✓" : "○"}</span>
+                  <span aria-hidden="true">{check.label}</span>
+                  <span className="sr-only">
+                    {check.label}: {ok ? "requirement met" : "requirement not met"}
+                  </span>
                 </li>
               );
             })}

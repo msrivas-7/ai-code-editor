@@ -39,7 +39,7 @@ export function AuthShell({
         </div>
       </div>
       <footer className="border-t border-border bg-panel/60 px-4 py-2 text-center text-[10px] text-faint">
-        CodeTutor AI — local-first, sandboxed, open source
+        CodeTutor AI — sandboxed, open source
       </footer>
     </div>
   );

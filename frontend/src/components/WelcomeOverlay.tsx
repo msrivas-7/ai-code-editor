@@ -116,7 +116,14 @@ export function WelcomeOverlay({ refs, onDismiss }: WelcomeOverlayProps) {
       >
         Skip
       </button>
-      <div className="z-[52]">
+      {/*
+        stopPropagation so clicks on the bubble's inner Next button don't
+        also bubble to the full-screen overlay above and double-advance the
+        step. The 200ms rate-limit inside `advance` catches it, but relying
+        on timing is fragile — swallowing the event at the boundary is the
+        real fix.
+      */}
+      <div className="z-[52]" onClick={(e) => e.stopPropagation()}>
         <CoachBubble
           title={currentStep.title}
           body={currentStep.body}

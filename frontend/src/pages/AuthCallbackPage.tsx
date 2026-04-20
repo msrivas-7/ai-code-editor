@@ -78,9 +78,10 @@ export default function AuthCallbackPage() {
           role="status"
           aria-live="polite"
           aria-busy="true"
-          className="flex justify-center"
+          className="flex items-center justify-center gap-2 text-[11px] text-muted"
         >
-          <span className="skeleton h-4 w-32 rounded" />
+          <span className="inline-block h-1.5 w-1.5 animate-pulseDot rounded-full bg-accent" />
+          <span>Verifying your link…</span>
         </div>
       )}
     </AuthShell>

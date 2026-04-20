@@ -12,6 +12,7 @@ import {
   deleteLessonProgress,
 } from "../db/lessonProgress.js";
 import { getEditorProject, saveEditorProject } from "../db/editorProject.js";
+import { HttpError } from "../middleware/errorHandler.js";
 
 // Phase 18b: /api/user/* endpoints. authMiddleware upstream guarantees
 // req.userId; every handler scopes reads/writes by that id. RLS on the tables
@@ -20,7 +21,11 @@ import { getEditorProject, saveEditorProject } from "../db/editorProject.js";
 
 function requireUser(req: Request): string {
   const u = req.userId;
-  if (!u) throw new Error("authMiddleware missing — bootstrap bug");
+  // authMiddleware guarantees req.userId on every /api/user/* route. This
+  // guard catches only the pathological misconfig where the router is
+  // mounted without authMiddleware upstream — treat it as an auth failure
+  // so the client surfaces a login prompt rather than a 500 stack trace.
+  if (!u) throw new HttpError(401, "not authenticated");
   return u;
 }
 

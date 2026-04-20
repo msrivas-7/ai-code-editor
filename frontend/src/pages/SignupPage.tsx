@@ -14,12 +14,21 @@ export default function SignupPage() {
   const signUpWithPassword = useAuthStore((s) => s.signUpWithPassword);
   const clearError = useAuthStore((s) => s.clearError);
 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+
+  // Display-name validation is intentionally permissive: names contain
+  // apostrophes (O'Neil), hyphens (Anne-Marie), spaces, and non-Latin
+  // characters. We check only length + non-emptiness; everything stricter
+  // tends to reject real people.
+  const firstNameValid = firstName.trim().length > 0 && firstName.trim().length <= 50;
+  const lastNameValid = lastName.trim().length > 0 && lastName.trim().length <= 50;
 
   // If the Supabase project has email confirmation OFF (local dev default),
   // signUp completes with a live session attached. The auth subscriber will
@@ -39,7 +48,12 @@ export default function SignupPage() {
   const confirmValid = confirm === "" || confirm === password;
   const passwordOk = isPasswordAcceptable(password);
   const canSubmit =
-    isValidEmail(email) && passwordOk && password === confirm && !submitting;
+    firstNameValid &&
+    lastNameValid &&
+    isValidEmail(email) &&
+    passwordOk &&
+    password === confirm &&
+    !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +61,10 @@ export default function SignupPage() {
     clearError();
     setSubmitting(true);
     try {
-      await signUpWithPassword(email.trim(), password);
+      await signUpWithPassword(email.trim(), password, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
       // Supabase default: email confirmation is ON. Show the check-inbox
       // panel rather than bouncing to `/` (which they can't access yet).
       // If the project has confirmations disabled, onAuthStateChange will
@@ -98,6 +115,43 @@ export default function SignupPage() {
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="firstName" className="text-[11px] font-medium text-muted">
+              First name
+            </label>
+            <input
+              id="firstName"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Ada"
+              autoComplete="given-name"
+              maxLength={50}
+              aria-invalid={firstName.length > 0 && !firstNameValid}
+              disabled={submitting}
+              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger/60"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="lastName" className="text-[11px] font-medium text-muted">
+              Last name
+            </label>
+            <input
+              id="lastName"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Lovelace"
+              autoComplete="family-name"
+              maxLength={50}
+              aria-invalid={lastName.length > 0 && !lastNameValid}
+              disabled={submitting}
+              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger/60"
+            />
+          </div>
+        </div>
+
         <div className="flex flex-col gap-1.5">
           <label htmlFor="email" className="text-[11px] font-medium text-muted">
             Email
