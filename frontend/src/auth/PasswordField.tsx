@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PASSWORD_CHECKS, passwordStrength } from "./passwordPolicy";
 
 interface Props {
@@ -45,6 +45,31 @@ export function PasswordField({
   const [reveal, setReveal] = useState(false);
   const strength = passwordStrength(value);
 
+  // Debounced accessibility summary. Announcing on every keystroke makes
+  // screen readers spam five checklist items per character — the user
+  // can't hear anything useful. We batch to a single "Password strength:
+  // fair. 3 of 5 requirements met." announcement ~500ms after the last
+  // keystroke.
+  const [announce, setAnnounce] = useState("");
+  const lastSummaryRef = useRef<string>("");
+  useEffect(() => {
+    if (!showPolicy) return;
+    if (strength.level === "empty") {
+      if (lastSummaryRef.current !== "") {
+        lastSummaryRef.current = "";
+        setAnnounce("");
+      }
+      return;
+    }
+    const summary = `Password strength ${strength.level}. ${strength.passed} of ${strength.total} requirements met.`;
+    if (summary === lastSummaryRef.current) return;
+    const t = window.setTimeout(() => {
+      lastSummaryRef.current = summary;
+      setAnnounce(summary);
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [strength.level, strength.passed, strength.total, showPolicy]);
+
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-[11px] font-medium text-muted">
@@ -85,8 +110,17 @@ export function PasswordField({
       </div>
 
       {showPolicy && (
-        <div id={describedById} className="flex flex-col gap-2" aria-live="polite">
-          <div className="flex items-center gap-2">
+        <div id={describedById} className="flex flex-col gap-2">
+          {/*
+            Visual meter + checklist carries no aria-live — the wrapper
+            would re-announce the entire block on every keystroke. The
+            debounced status region below is the canonical announcement
+            surface for screen readers.
+          */}
+          <div
+            className="flex items-center gap-2"
+            aria-hidden="true"
+          >
             <div className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-elevated">
               <div
                 className={`h-full transition-all duration-200 ${
@@ -99,7 +133,7 @@ export function PasswordField({
               {strength.level === "empty" ? "" : STRENGTH_LABEL[strength.level]}
             </span>
           </div>
-          <ul className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-0.5 sm:grid-cols-2" aria-hidden="true">
             {PASSWORD_CHECKS.map((check) => {
               const ok = check.test(value);
               return (
@@ -109,12 +143,20 @@ export function PasswordField({
                     ok ? "text-success" : "text-faint"
                   }`}
                 >
-                  <span aria-hidden="true">{ok ? "✓" : "○"}</span>
+                  <span>{ok ? "✓" : "○"}</span>
                   {check.label}
                 </li>
               );
             })}
           </ul>
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {announce}
+          </div>
         </div>
       )}
     </div>

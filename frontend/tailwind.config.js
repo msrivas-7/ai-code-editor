@@ -57,11 +57,16 @@ export default {
           "0%": { opacity: "0", transform: "translateY(4px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        "loader-shimmer": {
+          "0%": { transform: "translateX(0%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
       },
       animation: {
         shimmer: "shimmer 2.2s linear infinite",
         pulseDot: "pulseDot 1.6s ease-in-out infinite",
         fadeInUp: "fadeInUp 180ms ease-out",
+        "loader-shimmer": "loader-shimmer 1.2s ease-in-out infinite",
       },
     },
   },

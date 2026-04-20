@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "./authStore";
+import { AuthLoader } from "./AuthLoader";
 
 // Route guard. Reads auth state from the store:
-//  - `loading` (initial hydration): render a neutral skeleton so we don't
-//    flash `/login` to a user whose session is about to hydrate from
-//    localStorage.
+//  - `loading` (initial hydration): render AuthLoader so we don't flash
+//    `/login` to a user whose session is about to hydrate from
+//    localStorage. The same component is reused by HydrationGate so the
+//    two phases look like one continuous loader.
 //  - No user once loading is done: redirect to `/login` and stash the
 //    original location in router state so the login page can bounce back
 //    after a successful sign-in.
@@ -16,10 +18,15 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (loading) {
+    // Indeterminate progress here — we don't know how long Supabase's
+    // session restore will take. HydrationGate takes over with a
+    // determinate bar as soon as `loading` flips false.
     return (
-      <div className="flex h-full items-center justify-center bg-bg text-muted">
-        <span className="skeleton h-4 w-32 rounded" />
-      </div>
+      <AuthLoader
+        testId="require-auth-loader"
+        label="Welcome back"
+        detail="Restoring your session…"
+      />
     );
   }
 

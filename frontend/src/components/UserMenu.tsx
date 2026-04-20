@@ -28,6 +28,8 @@ export function UserMenu({ className }: { className?: string } = {}) {
   const [signingOut, setSigningOut] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const firstItemRef = useRef<HTMLButtonElement | null>(null);
 
   // Click-outside + Escape to close. Standard dropdown ergonomics.
   useEffect(() => {
@@ -38,7 +40,13 @@ export function UserMenu({ className }: { className?: string } = {}) {
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        // Return focus to the trigger so keyboard users aren't stranded
+        // at document-body after the menu closes — required for WAI-ARIA
+        // menu pattern compliance.
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -46,6 +54,12 @@ export function UserMenu({ className }: { className?: string } = {}) {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
+  }, [open]);
+
+  // Move focus into the menu on open so Enter/Space/arrow keys land on the
+  // first actionable item instead of the trigger button.
+  useEffect(() => {
+    if (open) firstItemRef.current?.focus();
   }, [open]);
 
   if (!user) return null;
@@ -68,11 +82,14 @@ export function UserMenu({ className }: { className?: string } = {}) {
   return (
     <div ref={rootRef} className={`relative ${className ?? ""}`}>
       <button
+        ref={triggerRef}
         type="button"
+        id="user-menu-trigger"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Open user menu"
+        aria-controls="user-menu-dropdown"
+        aria-label={email ? `User menu for ${email}` : "Open user menu"}
         title={email ?? "Account"}
         className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-elevated text-[11px] font-semibold text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
@@ -81,7 +98,9 @@ export function UserMenu({ className }: { className?: string } = {}) {
 
       {open && (
         <div
+          id="user-menu-dropdown"
           role="menu"
+          aria-labelledby="user-menu-trigger"
           className="absolute right-0 top-9 z-50 w-60 rounded-md border border-border bg-panel p-2 shadow-lg"
         >
           <div className="flex flex-col gap-0.5 px-2 py-1.5">
@@ -91,7 +110,7 @@ export function UserMenu({ className }: { className?: string } = {}) {
             <span className="break-all text-xs text-ink">{email ?? user.id}</span>
           </div>
 
-          <div className="my-1 h-px bg-border" />
+          <div className="my-1 h-px bg-border" role="separator" />
 
           {err && (
             <div
@@ -103,16 +122,21 @@ export function UserMenu({ className }: { className?: string } = {}) {
           )}
 
           <button
+            ref={firstItemRef}
+            type="button"
             role="menuitem"
             onClick={handleSignOut}
             disabled={signingOut}
+            aria-busy={signingOut}
             className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] font-semibold text-ink transition hover:bg-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
           >
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
 
           <button
+            type="button"
             role="menuitem"
+            aria-disabled="true"
             disabled
             title="Available in a future update"
             className="mt-0.5 flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] font-semibold text-faint"

@@ -125,7 +125,7 @@ test.describe("auth flow", () => {
     }
 
     // Sign out from the UserMenu (avatar in the top-right corner).
-    await page.getByRole("button", { name: /open user menu/i }).click();
+    await page.getByRole("button", { name: /user menu/i }).click();
     await page.getByRole("menuitem", { name: /^sign out$/i }).click();
     await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { AuthShell } from "../auth/AuthShell";
 import { supabase } from "../auth/supabaseClient";
 import { useAuthStore } from "../auth/authStore";
@@ -9,6 +9,12 @@ import { useAuthStore } from "../auth/authStore";
 // the PKCE exchange automatically on mount. We just wait for it to resolve
 // (or fail) and then either send the user into the app or surface the
 // error.
+//
+// Microcopy notes: the failure message needs to be actionable, not just
+// "failed". The three realistic causes (expired link, already-clicked
+// link, unknown-tenant OAuth) all share the same fix — go back and start
+// the sign-in again — so we surface that as a primary action rather than
+// forcing the user to reason about a raw Supabase error string.
 export default function AuthCallbackPage() {
   const user = useAuthStore((s) => s.user);
   const [err, setErr] = useState<string | null>(null);
@@ -23,7 +29,9 @@ export default function AuthCallbackPage() {
         if (error) {
           setErr(error.message);
         } else if (!data.session) {
-          setErr("Sign-in link couldn't be verified. Try again.");
+          setErr(
+            "That sign-in link is expired or was already used. Request a new one to continue.",
+          );
         }
         setReady(true);
       })
@@ -41,18 +49,37 @@ export default function AuthCallbackPage() {
 
   return (
     <AuthShell
-      title={err ? "Sign-in failed" : "Signing you in…"}
-      subtitle={err ?? "One moment while we verify your link."}
+      title={err ? "We couldn't finish signing you in" : "Signing you in…"}
+      subtitle={
+        err ??
+        "Verifying your link — this only takes a moment."
+      }
       footer={
         err ? (
-          <a href="/login" className="text-accent hover:underline">
+          <Link to="/login" className="text-accent hover:underline">
             Back to sign in
-          </a>
+          </Link>
         ) : undefined
       }
     >
-      {!err && (
-        <div className="flex justify-center">
+      {err ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex flex-col items-center gap-2 text-center text-xs text-muted"
+        >
+          <p>
+            If you came from a magic-link email, request a new link. Links
+            expire after an hour and can only be used once.
+          </p>
+        </div>
+      ) : (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          className="flex justify-center"
+        >
           <span className="skeleton h-4 w-32 rounded" />
         </div>
       )}

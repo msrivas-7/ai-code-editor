@@ -157,10 +157,13 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={mode === "password" ? !canSubmitPassword : !canSubmitMagic}
+          aria-busy={submitting}
           className="rounded-md bg-accent px-3 py-1.5 text-[11px] font-semibold text-bg transition hover:bg-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
         >
           {submitting
-            ? "…"
+            ? mode === "password"
+              ? "Signing in…"
+              : "Sending link…"
             : mode === "password"
               ? "Sign in"
               : "Send magic link"}

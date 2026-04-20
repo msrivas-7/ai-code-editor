@@ -158,7 +158,7 @@ rawTest.describe("cross-device persistence (Phase 18b)", () => {
       await page.waitForTimeout(500);
       await page.keyboard.press("Escape");
 
-      await page.getByRole("button", { name: /open user menu/i }).click();
+      await page.getByRole("button", { name: /user menu/i }).click();
       await page.getByRole("menuitem", { name: /^sign out$/i }).click();
       await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
 

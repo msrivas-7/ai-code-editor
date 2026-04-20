@@ -1,9 +1,41 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { useProgressStore } from "../features/learning/stores/progressStore";
 import { useProjectStore } from "../state/projectStore";
 import { useAuthStore } from "./authStore";
 import { bumpGen } from "./generation";
+import { AuthLoader } from "./AuthLoader";
+
+// Elapsed thresholds for the loading-slowly escape hatches. 3s is the
+// point where "Setting things up…" stops looking like normal latency and
+// starts looking stuck — we soften the copy. 8s is the point where we
+// treat "no hydrateError, just hanging" as effectively failed and offer
+// the same Retry + Sign-out affordance as a real error. This matters
+// most when a tab comes back from sleep with expired sockets — the
+// fetch can hang until the browser's connection-recovery timeout fires.
+const SLOW_MS = 3_000;
+const STUCK_MS = 8_000;
+
+function useLoadingElapsed(active: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!active) {
+      startRef.current = null;
+      setElapsed(0);
+      return;
+    }
+    startRef.current = Date.now();
+    setElapsed(0);
+    const id = window.setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Date.now() - startRef.current);
+      }
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return elapsed;
+}
 
 // Phase 18b: after a user signs in, their preferences + progress are pulled
 // from the server. Components that render pre-hydration would flash defaults
@@ -31,20 +63,60 @@ export function HydrationGate({ children }: { children: ReactNode }) {
   const editorHydrated = useProjectStore((s) => s.editorHydrated);
   const editorError = useProjectStore((s) => s.editorHydrateError);
 
-  const stillLoading =
-    !!user && (!prefsHydrated || !progressHydrated || !editorHydrated);
-  const firstError = prefsError ?? progressError ?? editorError;
+  // Minimum display gate. Even if the three stores land in <50ms (warm
+  // cache, test env), we hold the loader on screen for the AuthLoader's
+  // configured minimum so a fast-path render doesn't flash for one frame
+  // and read as a visual glitch.
+  const [minElapsed, setMinElapsed] = useState(false);
+  // Reset the min gate whenever the user changes — a fresh login should
+  // also honor the minimum display, not be "already elapsed" from a
+  // previous user's session.
+  const userIdKey = user?.id ?? null;
+  useEffect(() => {
+    setMinElapsed(false);
+  }, [userIdKey]);
 
-  if (stillLoading && firstError) {
-    // Hydration failed — offer Retry + Sign out. Retry re-kicks each
-    // store under a fresh generation so late in-flight responses from
-    // the previous attempt can't overwrite the retry result.
-    const retry = () => {
-      const g = bumpGen();
-      void usePreferencesStore.getState().hydrate(g);
-      void useProgressStore.getState().hydrate(g);
-      void useProjectStore.getState().hydrateEditor(g);
-    };
+  const dataReady =
+    !!user && prefsHydrated && progressHydrated && editorHydrated;
+  const stillLoading = !!user && (!dataReady || !minElapsed);
+  const firstError = prefsError ?? progressError ?? editorError;
+  const elapsed = useLoadingElapsed(stillLoading);
+
+  // Only trip the stuck branch once data is actually outstanding. If the
+  // stores are all hydrated and we're only holding on the min-display
+  // timer, don't misreport that as "server hasn't responded".
+  const showErrorBranch = stillLoading && !dataReady && (firstError || elapsed >= STUCK_MS);
+
+  // Compute a 0..1 progress number so the bar advances as each store
+  // finishes. Auth being resolved counts as the first step so the user
+  // sees immediate forward motion rather than a flat-zero bar.
+  const steps = [!!user, prefsHydrated, progressHydrated, editorHydrated];
+  const completed = steps.filter(Boolean).length;
+  const progress = completed / steps.length;
+
+  // Surface which dependency is outstanding — not mission-critical, but
+  // it makes the loader feel purposeful instead of mysterious.
+  const detail = !prefsHydrated
+    ? "Loading your preferences…"
+    : !progressHydrated
+      ? "Loading your progress…"
+      : !editorHydrated
+        ? "Loading your editor project…"
+        : "Almost done…";
+
+  const retry = () => {
+    const g = bumpGen();
+    void usePreferencesStore.getState().hydrate(g);
+    void useProgressStore.getState().hydrate(g);
+    void useProjectStore.getState().hydrateEditor(g);
+  };
+
+  if (showErrorBranch) {
+    const headline = firstError
+      ? "Couldn't load your data."
+      : "Still loading — something's taking too long.";
+    const detailMsg =
+      firstError ?? "The server hasn't responded yet. You can retry or sign out.";
     return (
       <div
         className="flex h-full items-center justify-center bg-bg text-fg"
@@ -53,8 +125,8 @@ export function HydrationGate({ children }: { children: ReactNode }) {
         data-testid="hydration-gate-error"
       >
         <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-          <p className="text-sm font-medium">Couldn't load your data.</p>
-          <p className="text-xs text-muted">{firstError}</p>
+          <p className="text-sm font-medium">{headline}</p>
+          <p className="text-xs text-muted">{detailMsg}</p>
           <div className="flex gap-2">
             <button
               type="button"
@@ -77,17 +149,27 @@ export function HydrationGate({ children }: { children: ReactNode }) {
   }
 
   if (stillLoading) {
+    const slow = elapsed >= SLOW_MS && !dataReady;
     return (
-      <div
-        className="flex h-full items-center justify-center bg-bg text-muted"
-        role="status"
-        aria-live="polite"
-        data-testid="hydration-gate"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <span className="skeleton h-4 w-32 rounded" />
-          <p className="text-xs">Setting things up…</p>
-        </div>
+      <div className="flex h-full flex-col bg-bg" data-testid="hydration-gate">
+        <AuthLoader
+          progress={progress}
+          detail={detail}
+          done={dataReady}
+          onMinDurationReached={() => setMinElapsed(true)}
+        />
+        {slow && (
+          <div className="flex justify-center pb-6">
+            <button
+              type="button"
+              onClick={retry}
+              className="text-xs text-accent underline hover:no-underline"
+              data-testid="hydration-gate-retry-soft"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     );
   }
