@@ -37,6 +37,14 @@ export interface ExecResult {
 
 export interface ExecOptions {
   stdin?: string;
+  /**
+   * Per-exec env overlay. Merged on top of the container's image + create-time
+   * env. Used by the function-test harness to hand the parent process a nonce
+   * it uses to sign the result envelope — the nonce must not be inherited by
+   * user-code subprocesses the harness spawns, so the harness scrubs it on
+   * startup before any user code runs.
+   */
+  env?: Record<string, string>;
 }
 
 export interface ExecutionBackend {

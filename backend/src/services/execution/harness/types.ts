@@ -1,6 +1,21 @@
 import type { Language } from "../commands.js";
 
-export const TEST_SENTINEL = "__CODETUTOR_TESTS_v1_da39a3ee5e6b4b0d__";
+// v2 envelope: HMAC-signed payload, subprocess-isolated harness (Phase 16).
+// v1 envelope (which user code could forge at container stdout level) is
+// incompatible with v2 on purpose — a parser that sees a v1 sentinel will not
+// find a matching v2 sentinel and reject the run.
+export const TEST_SENTINEL = "__CODETUTOR_TESTS_v2_a8f3b1c7d2e4f5a6__";
+
+// Marker pair emitted by the per-test driver around `repr(actual)` /
+// `JSON.stringify(actual)`. Not secret — it just frames the result inside a
+// subprocess's stdout so the parent harness can separate the actual return
+// value from anything the learner's code printed. User code *can* emit a
+// fake marker block with a made-up value for a visible test; the gain is
+// zero because the learner already knows what the visible test expects.
+// Hidden tests can't be forged because the parent never hands the expected
+// value to the subprocess — it's only ever in the parent's memory.
+export const RESULT_MARKER = "__CODETUTOR_RESULT_v2__";
+export const RESULT_ERR_MARKER = "__CODETUTOR_RESULT_v2_ERR__";
 
 export interface FunctionTest {
   name: string;
@@ -34,14 +49,13 @@ export interface HarnessFile {
 }
 
 // Per-language plug-in. Each implementation owns the bits that differ between
-// runtimes — which files to drop into the workspace, what shell command to
-// run, and how to parse stdout — while runHarness owns the write/exec/cleanup
-// choreography.
+// runtimes — which files to drop into the workspace and what shell command to
+// run. Envelope parsing (sentinel extraction + HMAC verify + JSON decode) is
+// language-agnostic and lives in runHarness.
 export interface HarnessBackend {
   language: Language;
   prepareFiles(tests: FunctionTest[]): HarnessFile[];
   execCommand(): string;
-  parseOutput(stdout: string, stderr: string): TestReport;
 }
 
 export interface RunTestsResult {

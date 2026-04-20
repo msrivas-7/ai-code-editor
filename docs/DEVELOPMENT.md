@@ -105,7 +105,7 @@ Reach for these before copy-pasting — each one exists because the same pattern
 | --- | --- |
 | `backend/src/services/execution/commands.ts` → `languageSchema` | The canonical `z.enum` over supported languages. Routes that accept a language parameter should import this rather than re-declaring the enum inline. |
 | `backend/src/services/session/requireActiveSession.ts` | Route helper: `const session = requireActiveSession(res, sessionId); if (!session) return;`. Handles the 404 / 409 responses and returns a narrowed `ActiveSession` type (`containerId: string`, not `string \| null`) so downstream code reads the field without re-asserting. |
-| `backend/src/services/execution/harness/registry.ts` | Per-language harness plug-in point for `function_tests`. Python and JavaScript registered today; new languages add a `HarnessBackend` implementation and register it. |
+| `backend/src/services/execution/harness/registry.ts` | Per-language harness plug-in point for `function_tests`. Python and JavaScript registered today; new languages add a `HarnessBackend` implementation and register it. The harness runs learner code as a child subprocess and returns results inside an HMAC-signed envelope verified by `runHarness.ts` — see the "Harness trust model" bullet in [ARCHITECTURE.md](./ARCHITECTURE.md#guided-learning-system). |
 
 ## Design Tokens
 

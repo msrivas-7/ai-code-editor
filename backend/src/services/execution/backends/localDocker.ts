@@ -168,6 +168,10 @@ export class LocalDockerBackend implements ExecutionBackend {
     const wrapped = `timeout --signal=KILL ${timeoutSec}s sh -c ${shellQuote(command)}`;
     const attachStdin = options.stdin !== undefined;
 
+    const envArr = options.env
+      ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`)
+      : undefined;
+
     const exec = await container.exec({
       Cmd: ["sh", "-c", wrapped],
       AttachStdin: attachStdin,
@@ -176,6 +180,7 @@ export class LocalDockerBackend implements ExecutionBackend {
       WorkingDir: "/workspace",
       User: "runner",
       Tty: false,
+      Env: envArr,
     });
 
     const started = Date.now();

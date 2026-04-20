@@ -10,8 +10,9 @@
  * required_file_contains — word-boundary-aware pattern check mirroring the
  *                         production validator.
  * function_tests        — writes the same __codetutor_tests.py harness the
- *                         backend uses, runs python3, parses the sentinel-
- *                         wrapped JSON, and asserts every test passes.
+ *                         backend uses, runs python3, and parses the
+ *                         sentinel-wrapped HMAC-signed envelope (Phase 16
+ *                         trust model), asserting every test passes.
  * custom_validator      — skipped with a warning (dead in production too).
  *
  * Requires python3 on PATH. Exits 0 clean, 1 on any failure.
@@ -22,6 +23,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import crypto from "node:crypto";
 import { lessonMetaSchema } from "../src/features/learning/content/schema";
 import {
   entryFileFor,
@@ -36,8 +38,11 @@ const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, "..");
 const COURSES_DIR = resolve(ROOT, "public/courses");
 
-// Mirror the production validator's harness constants
-const TEST_SENTINEL = "__CODETUTOR_TESTS_v1_da39a3ee5e6b4b0d__";
+// Mirror the production harness constants
+// (backend/src/services/execution/harness/types.ts).
+const TEST_SENTINEL = "__CODETUTOR_TESTS_v2_a8f3b1c7d2e4f5a6__";
+const RESULT_MARKER = "__CODETUTOR_RESULT_v2__";
+const RESULT_ERR_MARKER = "__CODETUTOR_RESULT_v2_ERR__";
 const HARNESS_PY = "__codetutor_tests.py";
 const HARNESS_JS = "__codetutor_tests.js";
 const HARNESS_JSON = "__codetutor_tests.json";
@@ -168,9 +173,6 @@ interface RunArgs {
 }
 
 interface RunSpec {
-  // How to execute the solution file in the temp dir (where it's been copied
-  // under its language's entry filename). Returns null if the language is not
-  // yet supported for `expected_stdout` verification.
   command: string;
   args: string[];
 }
@@ -190,8 +192,6 @@ function runRulesAgainstSolution(args: RunArgs) {
   const { where, language, solutionFile, stdinFile, rules } = args;
   const entry = entryFileFor(language);
 
-  // Copy solution into a private temp dir as the language's entry filename,
-  // plus any stdin file.
   const tmp = mkdtempSync(join(tmpdir(), "verify-sol-"));
   try {
     const mainPath = join(tmp, entry);
@@ -199,7 +199,6 @@ function runRulesAgainstSolution(args: RunArgs) {
     const stdinText = stdinFile ? readFileSync(stdinFile, "utf8") : "";
     const solutionSource = readFileSync(solutionFile, "utf8");
 
-    // Lazily run the entry once if we have any expected_stdout rule. Cache the result.
     const spec = runSpecFor(language, entry);
     let scriptStdout: string | null = null;
     let scriptExitCode: number | null = null;
@@ -233,7 +232,7 @@ function runRulesAgainstSolution(args: RunArgs) {
     for (const rule of rules) {
       if (rule.type === "expected_stdout") {
         ensureScriptRun();
-        if (scriptExitCode !== 0) continue; // already logged failure
+        if (scriptExitCode !== 0) continue;
         const expected = rule.expected.trim();
         const actual = (scriptStdout ?? "").trim();
         if (!actual.includes(expected)) {
@@ -243,9 +242,6 @@ function runRulesAgainstSolution(args: RunArgs) {
           });
         }
       } else if (rule.type === "required_file_contains") {
-        // file field almost always refers to the entry file — in our setup,
-        // the solution file IS the entry file. If another filename is
-        // specified, we only check against the solution source.
         if (!containsPattern(solutionSource, rule.pattern)) {
           failures.push({
             where,
@@ -298,23 +294,32 @@ function runHarness(language: Language, workspace: string, tests: unknown): Harn
   const jsonPath = join(workspace, HARNESS_JSON);
   writeFileSync(jsonPath, JSON.stringify(tests), "utf8");
 
+  const nonce = crypto.randomBytes(32).toString("hex");
+  const env = {
+    ...process.env,
+    HARNESS_NONCE: nonce,
+    HARNESS_PER_TEST_TIMEOUT_MS: "5000",
+  };
+
   if (language === "python") {
     writeFileSync(join(workspace, HARNESS_PY), harnessPython(), "utf8");
     const r = spawnSync("python3", [HARNESS_PY], {
       cwd: workspace,
       encoding: "utf8",
-      timeout: 20_000,
+      timeout: 30_000,
+      env,
     });
-    return parseHarnessOutput(r.stdout ?? "", r.stderr ?? "");
+    return parseSignedEnvelope(r.stdout ?? "", r.stderr ?? "", nonce);
   }
   if (language === "javascript") {
     writeFileSync(join(workspace, HARNESS_JS), harnessJavaScript(), "utf8");
     const r = spawnSync("node", [HARNESS_JS], {
       cwd: workspace,
       encoding: "utf8",
-      timeout: 20_000,
+      timeout: 30_000,
+      env,
     });
-    return parseHarnessOutput(r.stdout ?? "", r.stderr ?? "");
+    return parseSignedEnvelope(r.stdout ?? "", r.stderr ?? "", nonce);
   }
   return {
     results: [],
@@ -322,43 +327,156 @@ function runHarness(language: Language, workspace: string, tests: unknown): Harn
   };
 }
 
-function parseHarnessOutput(stdout: string, stderr: string): HarnessReport {
+// Mirror of backend/src/services/execution/harness/envelope.ts::parseSignedEnvelope.
+// Verifies the HMAC-SHA256 signature the harness produced over the body string
+// using the nonce we handed it, then returns the body's {results, harnessError}.
+function parseSignedEnvelope(stdout: string, stderr: string, nonce: string): HarnessReport {
   const start = stdout.indexOf(TEST_SENTINEL);
   const end = stdout.lastIndexOf(TEST_SENTINEL);
   if (start === -1 || start === end) {
     const msg = stderr.trim() || "harness did not emit sentinel block";
     return { results: [], harnessError: msg };
   }
-  const body = stdout.slice(start + TEST_SENTINEL.length, end);
+  const encoded = stdout.slice(start + TEST_SENTINEL.length, end).trim();
+  if (!/^[A-Za-z0-9+/=\s]*$/.test(encoded) || encoded.length === 0) {
+    return { results: [], harnessError: "harness envelope had non-base64 content" };
+  }
+  let parsed: { body?: unknown; sig?: unknown };
   try {
-    const parsed = JSON.parse(body) as HarnessReport;
-    return parsed;
+    const innerJson = Buffer.from(encoded, "base64").toString("utf8");
+    parsed = JSON.parse(innerJson);
   } catch (e) {
-    return { results: [], harnessError: `could not parse harness JSON: ${(e as Error).message}` };
+    return { results: [], harnessError: `could not decode harness envelope: ${(e as Error).message}` };
+  }
+  if (typeof parsed.body !== "string" || typeof parsed.sig !== "string") {
+    return { results: [], harnessError: "harness envelope missing body/sig fields" };
+  }
+  const expected = crypto.createHmac("sha256", nonce).update(parsed.body).digest("hex");
+  const sigBuf = safeHexBuffer(parsed.sig);
+  const expBuf = safeHexBuffer(expected);
+  if (!sigBuf || !expBuf || sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return { results: [], harnessError: "harness envelope signature did not verify" };
+  }
+  try {
+    const body = JSON.parse(parsed.body) as HarnessReport;
+    return {
+      results: Array.isArray(body.results) ? body.results : [],
+      harnessError: typeof body.harnessError === "string" ? body.harnessError : null,
+    };
+  } catch (e) {
+    return { results: [], harnessError: `could not parse harness body: ${(e as Error).message}` };
   }
 }
 
+function safeHexBuffer(hex: string): Buffer | null {
+  if (!/^[0-9a-f]*$/i.test(hex) || hex.length % 2 !== 0) return null;
+  try {
+    return Buffer.from(hex, "hex");
+  } catch {
+    return null;
+  }
+}
+
+// Mirror of backend/src/services/execution/harness/javascriptHarness.ts::harnessJavaScript().
+// Kept in sync by convention — a divergence would be caught by a verify-solutions
+// failure on the first golden solution that exercises function_tests.
 function harnessJavaScript(): string {
-  // Mirror of backend/src/services/execution/harness/javascriptHarness.ts::harnessJavaScript().
-  // Kept in sync by convention — both harnesses share the same TEST_SENTINEL
-  // and payload shape, so parseHarnessOutput works for either.
   return `"use strict";
 const fs = require("fs");
-const vm = require("vm");
+const crypto = require("crypto");
+const { spawnSync } = require("child_process");
 
-const SENTINEL = "${TEST_SENTINEL}";
-const TESTS = JSON.parse(fs.readFileSync("${HARNESS_JSON}", "utf8"));
-const MAIN_SRC = fs.readFileSync("main.js", "utf8");
+const SENTINEL = ${JSON.stringify(TEST_SENTINEL)};
+const RESULT_MARKER = ${JSON.stringify(RESULT_MARKER)};
+const RESULT_ERR_MARKER = ${JSON.stringify(RESULT_ERR_MARKER)};
 
-function fmt(v) {
-  if (typeof v === "string") return v;
-  if (v === undefined) return "undefined";
-  try { return JSON.stringify(v); } catch { return String(v); }
+const NONCE = process.env.HARNESS_NONCE || "";
+delete process.env.HARNESS_NONCE;
+let PER_TEST_TIMEOUT_MS = parseInt(process.env.HARNESS_PER_TEST_TIMEOUT_MS || "5000", 10);
+if (!Number.isFinite(PER_TEST_TIMEOUT_MS) || PER_TEST_TIMEOUT_MS <= 0) PER_TEST_TIMEOUT_MS = 5000;
+delete process.env.HARNESS_PER_TEST_TIMEOUT_MS;
+
+const TESTS_PATH = ${JSON.stringify(HARNESS_JSON)};
+let TESTS = [];
+let loadErr = null;
+try {
+  TESTS = JSON.parse(fs.readFileSync(TESTS_PATH, "utf8"));
+  fs.unlinkSync(TESTS_PATH);
+} catch (e) {
+  loadErr = "could not load test specs: " + (e && e.message ? e.message : String(e));
 }
-function repr(v) {
-  if (v === undefined) return "undefined";
-  try { return JSON.stringify(v); } catch { return String(v); }
+
+const DRIVER = [
+  '"use strict";',
+  'const fs = require("fs");',
+  'const vm = require("vm");',
+  'const RESULT_MARKER = ' + JSON.stringify(RESULT_MARKER) + ';',
+  'const RESULT_ERR_MARKER = ' + JSON.stringify(RESULT_ERR_MARKER) + ';',
+  'const spec = JSON.parse(process.argv[1]);',
+  'function fmt(v) { if (typeof v === "string") return v; if (v === undefined) return "undefined"; try { return JSON.stringify(v); } catch { return String(v); } }',
+  'let captured = "";',
+  'const bufConsole = {',
+  '  log: (...a) => { captured += a.map(fmt).join(" ") + "\\\\n"; },',
+  '  info: (...a) => { captured += a.map(fmt).join(" ") + "\\\\n"; },',
+  '  warn: (...a) => { captured += a.map(fmt).join(" ") + "\\\\n"; },',
+  '  error: (...a) => { captured += a.map(fmt).join(" ") + "\\\\n"; },',
+  '  debug: (...a) => { captured += a.map(fmt).join(" ") + "\\\\n"; },',
+  '};',
+  'const sandboxModule = { exports: {} };',
+  'const ctx = {',
+  '  console: bufConsole,',
+  '  Math: Math, JSON: JSON, Object: Object, Array: Array, String: String, Number: Number, Boolean: Boolean, Date: Date,',
+  '  Error: Error, TypeError: TypeError, RangeError: RangeError, ReferenceError: ReferenceError, SyntaxError: SyntaxError,',
+  '  RegExp: RegExp, Map: Map, Set: Set, Promise: Promise, Symbol: Symbol,',
+  '  parseInt: parseInt, parseFloat: parseFloat, isNaN: isNaN, isFinite: isFinite,',
+  '  Buffer: Buffer,',
+  '  process: process,',
+  '  require: require,',
+  '  module: sandboxModule,',
+  '  exports: sandboxModule.exports,',
+  '  __filename: "main.js",',
+  '  __dirname: ".",',
+  '  globalThis: undefined,',
+  '};',
+  'ctx.globalThis = ctx;',
+  'vm.createContext(ctx);',
+  'let reprStr = null;',
+  'try {',
+  '  const src = fs.readFileSync("main.js", "utf8");',
+  '  vm.runInContext(src, ctx, { filename: "main.js" });',
+  '  if (spec.setup) vm.runInContext(spec.setup, ctx, { filename: "setup" });',
+  '  const actual = vm.runInContext(spec.call || "", ctx, { filename: "call" });',
+  '  reprStr = (actual === undefined) ? "undefined" : JSON.stringify(actual);',
+  '  process.stdout.write(captured);',
+  '  process.stdout.write("\\\\n" + RESULT_MARKER + (reprStr === undefined ? "undefined" : reprStr) + RESULT_MARKER + "\\\\n");',
+  '} catch (e) {',
+  '  const msg = (e && e.name && e.message) ? (e.name + ": " + e.message) : String(e);',
+  '  process.stdout.write(captured);',
+  '  process.stdout.write("\\\\n" + RESULT_ERR_MARKER + msg + RESULT_ERR_MARKER + "\\\\n");',
+  '}',
+].join("\\n");
+
+function extractBetween(text, marker) {
+  const end = text.lastIndexOf(marker);
+  if (end === -1) return null;
+  const start = text.lastIndexOf(marker, end - 1);
+  if (start === -1 || start === end) return null;
+  return text.slice(start + marker.length, end);
 }
+
+function stripMarkers(text) {
+  for (const m of [RESULT_MARKER, RESULT_ERR_MARKER]) {
+    while (true) {
+      const a = text.indexOf(m);
+      if (a === -1) break;
+      const b = text.indexOf(m, a + m.length);
+      if (b === -1) break;
+      text = text.slice(0, a) + text.slice(b + m.length);
+    }
+  }
+  return text.replace(/^\\s+|\\s+$/g, "");
+}
+
 function deepEqual(a, b) {
   if (Object.is(a, b)) return true;
   if (typeof a !== typeof b) return false;
@@ -376,131 +494,291 @@ function deepEqual(a, b) {
   for (const k of ak) if (!deepEqual(a[k], b[k])) return false;
   return true;
 }
-function makeContext(sink) {
-  const bufConsole = {
-    log: (...args) => { sink.buf += args.map(fmt).join(" ") + "\\n"; },
-    info: (...args) => { sink.buf += args.map(fmt).join(" ") + "\\n"; },
-    warn: (...args) => { sink.buf += args.map(fmt).join(" ") + "\\n"; },
-    error: (...args) => { sink.buf += args.map(fmt).join(" ") + "\\n"; },
-    debug: (...args) => { sink.buf += args.map(fmt).join(" ") + "\\n"; },
+
+function resultShell(test) {
+  return {
+    name: test.name || "",
+    hidden: !!test.hidden,
+    category: test.category || null,
+    passed: false,
+    actualRepr: null,
+    expectedRepr: null,
+    stdoutDuring: "",
+    error: null,
   };
-  const sandboxModule = { exports: {} };
-  const ctx = {
-    console: bufConsole,
-    Math, JSON, Object, Array, String, Number, Boolean, Date,
-    Error, TypeError, RangeError, ReferenceError, SyntaxError,
-    RegExp, Map, Set, Promise, Symbol,
-    parseInt, parseFloat, isNaN, isFinite,
-    Buffer, process, require,
-    module: sandboxModule,
-    exports: sandboxModule.exports,
-    __filename: "main.js",
-    __dirname: ".",
-    globalThis: undefined,
-  };
-  ctx.globalThis = ctx;
-  vm.createContext(ctx);
-  return ctx;
 }
-let harnessError = null;
-const results = [];
-try {
-  const probeSink = { buf: "" };
-  const probeCtx = makeContext(probeSink);
-  vm.runInContext(MAIN_SRC, probeCtx, { filename: "main.js" });
-} catch (e) {
-  harnessError = e instanceof Error ? (e.name + ": " + e.message) : String(e);
-}
-if (harnessError === null) {
-  for (const t of TESTS) {
-    const sink = { buf: "" };
-    const ctx = makeContext(sink);
-    try {
-      vm.runInContext(MAIN_SRC, ctx, { filename: "main.js" });
-      if (t.setup) vm.runInContext(t.setup, ctx, { filename: "setup" });
-      const actual = vm.runInContext(t.call || "", ctx, { filename: "call" });
-      let expected;
-      try { expected = JSON.parse(t.expected); }
-      catch (parseErr) { throw new Error("invalid expected (must be JSON-literal): " + parseErr.message); }
-      results.push({
-        name: t.name, hidden: !!t.hidden, category: t.category || null,
-        passed: deepEqual(actual, expected),
-        actualRepr: repr(actual), expectedRepr: repr(expected),
-        stdoutDuring: sink.buf, error: null,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? (e.name + ": " + e.message) : String(e);
-      results.push({
-        name: t.name, hidden: !!t.hidden, category: t.category || null,
-        passed: false, actualRepr: null, expectedRepr: null,
-        stdoutDuring: sink.buf, error: msg,
-      });
-    }
+
+function probeMain() {
+  try {
+    return spawnSync(
+      process.execPath,
+      ["-e", "const vm = require('vm'); const fs = require('fs'); const ctx = { console: console, require: require, module: { exports: {} }, process: process, Buffer: Buffer }; ctx.globalThis = ctx; vm.createContext(ctx); vm.runInContext(fs.readFileSync('main.js', 'utf8'), ctx, { filename: 'main.js' });"],
+      { encoding: "utf8", timeout: PER_TEST_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+    );
+  } catch (e) {
+    return null;
   }
 }
-const payload = JSON.stringify({ results: results, harnessError: harnessError });
-process.stdout.write(SENTINEL + payload + SENTINEL + "\\n");
+
+function runOne(test) {
+  const shell = resultShell(test);
+  const payload = JSON.stringify({ setup: test.setup || "", call: test.call || "" });
+  let r;
+  try {
+    r = spawnSync(
+      process.execPath,
+      ["-e", DRIVER, payload],
+      { encoding: "utf8", timeout: PER_TEST_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+    );
+  } catch (e) {
+    shell.error = "Could not spawn test subprocess: " + (e && e.message ? e.message : String(e));
+    return shell;
+  }
+
+  if (r.error && r.error.code === "ETIMEDOUT") {
+    shell.error = "Test timed out.";
+    return shell;
+  }
+
+  const childOut = r.stdout || "";
+  const actualRepr = extractBetween(childOut, RESULT_MARKER);
+  const errBlob = extractBetween(childOut, RESULT_ERR_MARKER);
+  shell.stdoutDuring = stripMarkers(childOut);
+
+  const expectedSrc = test.expected || "";
+  if (actualRepr !== null) {
+    let expected;
+    try {
+      expected = JSON.parse(expectedSrc);
+    } catch (e) {
+      shell.error = "invalid expected (must be JSON-literal): " + expectedSrc.slice(0, 200);
+      shell.actualRepr = actualRepr;
+      return shell;
+    }
+    let actual;
+    let parsed = true;
+    try {
+      actual = actualRepr === "undefined" ? undefined : JSON.parse(actualRepr);
+    } catch {
+      parsed = false;
+    }
+    if (parsed) {
+      shell.passed = deepEqual(actual, expected);
+    } else {
+      shell.passed = actualRepr === JSON.stringify(expected);
+    }
+    shell.actualRepr = actualRepr;
+    shell.expectedRepr = expected === undefined ? "undefined" : JSON.stringify(expected);
+    return shell;
+  }
+
+  if (errBlob !== null) {
+    const tail = errBlob.trim().split("\\n").filter(Boolean).pop() || "";
+    shell.error = tail || "Test raised an exception.";
+    return shell;
+  }
+
+  let stderrTail = "";
+  if (r.stderr) {
+    const lines = r.stderr.trim().split("\\n").filter(Boolean);
+    if (lines.length) stderrTail = lines[lines.length - 1];
+  }
+  shell.error = stderrTail || "Test produced no result (the subprocess exited before finishing).";
+  return shell;
+}
+
+const results = [];
+let harnessError = loadErr;
+let cleanStdout = "";
+
+if (harnessError === null) {
+  const probe = probeMain();
+  if (!probe || probe.error) {
+    harnessError = "Your code could not be loaded (probe timed out or crashed).";
+  } else if (probe.status !== 0) {
+    const msg = (probe.stderr || "").trim() || "Your code could not be loaded.";
+    harnessError = msg;
+  } else {
+    cleanStdout = probe.stdout || "";
+    for (const t of TESTS) results.push(runOne(t));
+  }
+}
+
+const body = JSON.stringify({ results: results, harnessError: harnessError, cleanStdout: cleanStdout });
+const sig = crypto.createHmac("sha256", NONCE).update(body).digest("hex");
+const inner = JSON.stringify({ body: body, sig: sig });
+const encoded = Buffer.from(inner, "utf8").toString("base64");
+process.stdout.write(SENTINEL + encoded + SENTINEL + "\\n");
 `;
 }
 
+// Mirror of backend/src/services/execution/harness/pythonHarness.ts::harnessPython().
 function harnessPython(): string {
-  // Identical to backend/src/services/execution/testHarness.ts::harnessPython()
-  return `import json, sys, traceback, contextlib, io, runpy, ast
+  return `import base64, hashlib, hmac, json, os, subprocess, sys, traceback
 
-SENTINEL = "${TEST_SENTINEL}"
+SENTINEL = ${JSON.stringify(TEST_SENTINEL)}
+RESULT_MARKER = ${JSON.stringify(RESULT_MARKER)}
+RESULT_ERR_MARKER = ${JSON.stringify(RESULT_ERR_MARKER)}
 
-with open("${HARNESS_JSON}", "r", encoding="utf-8") as _f:
-    TESTS = json.load(_f)
-
-results = []
-harness_error = None
-
+_nonce = os.environ.get("HARNESS_NONCE", "")
+if "HARNESS_NONCE" in os.environ:
+    del os.environ["HARNESS_NONCE"]
 try:
-    mod_globals = runpy.run_path("main.py", run_name="__codetutor_main__")
-except SystemExit:
-    harness_error = "Your program called exit()."
-except BaseException:
-    harness_error = traceback.format_exc()
+    _per_test_timeout = float(os.environ.get("HARNESS_PER_TEST_TIMEOUT_MS", "5000")) / 1000.0
+except (TypeError, ValueError):
+    _per_test_timeout = 5.0
+if "HARNESS_PER_TEST_TIMEOUT_MS" in os.environ:
+    del os.environ["HARNESS_PER_TEST_TIMEOUT_MS"]
 
-if harness_error is None:
-    for t in TESTS:
-        name = t["name"]
-        call_src = t.get("call") or ""
-        setup_src = t.get("setup") or ""
-        expected_src = t["expected"]
-        out_buf = io.StringIO()
-        ns = dict(mod_globals)
+_tests_path = ${JSON.stringify(HARNESS_JSON)}
+_tests = []
+_load_err = None
+try:
+    with open(_tests_path, "r", encoding="utf-8") as _f:
+        _tests = json.load(_f)
+    os.remove(_tests_path)
+except BaseException as _e:
+    _load_err = "could not load test specs: " + repr(_e)
+
+_DRIVER = (
+    "import sys, runpy, traceback, contextlib, io, json\\n"
+    "_test = json.loads(sys.argv[1])\\n"
+    "_out = io.StringIO()\\n"
+    "try:\\n"
+    "    with contextlib.redirect_stdout(_out):\\n"
+    "        _ns = runpy.run_path('main.py', run_name='__codetutor_main__')\\n"
+    "        _setup = _test.get('setup') or ''\\n"
+    "        if _setup:\\n"
+    "            exec(_setup, _ns)\\n"
+    "        _actual = eval(_test.get('call') or '', _ns)\\n"
+    "    sys.stdout.write(_out.getvalue())\\n"
+    "    sys.stdout.write('\\\\n' + " + json.dumps(RESULT_MARKER) + " + repr(_actual) + " + json.dumps(RESULT_MARKER) + " + '\\\\n')\\n"
+    "except BaseException:\\n"
+    "    sys.stdout.write(_out.getvalue())\\n"
+    "    sys.stdout.write('\\\\n' + " + json.dumps(RESULT_ERR_MARKER) + " + traceback.format_exc(limit=2) + " + json.dumps(RESULT_ERR_MARKER) + " + '\\\\n')\\n"
+)
+
+def _extract_between(text, marker):
+    end = text.rfind(marker)
+    if end == -1:
+        return None
+    start = text.rfind(marker, 0, end)
+    if start == -1:
+        return None
+    return text[start + len(marker):end]
+
+def _strip_markers(text):
+    for m in (RESULT_MARKER, RESULT_ERR_MARKER):
+        while True:
+            a = text.find(m)
+            if a == -1:
+                break
+            b = text.find(m, a + len(m))
+            if b == -1:
+                break
+            text = text[:a] + text[b + len(m):]
+    return text.strip()
+
+def _probe_main():
+    try:
+        return subprocess.run(
+            ["python3", "-c", "import runpy; runpy.run_path('main.py', run_name='__codetutor_main__')"],
+            capture_output=True, text=True, timeout=_per_test_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    except BaseException:
+        return None
+
+def _result_shell(test):
+    return {
+        "name": test.get("name", ""),
+        "hidden": bool(test.get("hidden", False)),
+        "category": test.get("category"),
+        "passed": False,
+        "actualRepr": None,
+        "expectedRepr": None,
+        "stdoutDuring": "",
+        "error": None,
+    }
+
+def _run_one(test):
+    shell = _result_shell(test)
+    payload = json.dumps({"setup": test.get("setup") or "", "call": test.get("call") or ""})
+    try:
+        r = subprocess.run(
+            ["python3", "-c", _DRIVER, payload],
+            capture_output=True, text=True, timeout=_per_test_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        shell["error"] = "Test timed out."
+        return shell
+    except BaseException as e:
+        shell["error"] = "Could not spawn test subprocess: " + repr(e)
+        return shell
+
+    child_out = r.stdout or ""
+    actual_repr = _extract_between(child_out, RESULT_MARKER)
+    err_blob = _extract_between(child_out, RESULT_ERR_MARKER)
+    shell["stdoutDuring"] = _strip_markers(child_out)
+
+    expected_src = test.get("expected", "")
+    if actual_repr is not None:
         try:
-            if setup_src:
-                exec(setup_src, ns)
-            with contextlib.redirect_stdout(out_buf):
-                actual = eval(call_src, ns)
+            import ast
             expected = ast.literal_eval(expected_src)
-            passed = actual == expected
-            results.append({
-                "name": name,
-                "hidden": bool(t.get("hidden", False)),
-                "category": t.get("category"),
-                "passed": passed,
-                "actualRepr": repr(actual),
-                "expectedRepr": repr(expected),
-                "stdoutDuring": out_buf.getvalue(),
-                "error": None,
-            })
         except BaseException:
-            results.append({
-                "name": name,
-                "hidden": bool(t.get("hidden", False)),
-                "category": t.get("category"),
-                "passed": False,
-                "actualRepr": None,
-                "expectedRepr": None,
-                "stdoutDuring": out_buf.getvalue(),
-                "error": traceback.format_exc(limit=1),
-            })
+            shell["error"] = "invalid expected (must be a Python literal): " + expected_src[:200]
+            shell["actualRepr"] = actual_repr
+            return shell
+        try:
+            import ast as _ast
+            actual = _ast.literal_eval(actual_repr)
+            shell["passed"] = actual == expected
+        except BaseException:
+            shell["passed"] = actual_repr == repr(expected)
+        shell["actualRepr"] = actual_repr
+        shell["expectedRepr"] = repr(expected)
+        return shell
 
-payload = json.dumps({"results": results, "harnessError": harness_error})
-sys.stdout.write(SENTINEL + payload + SENTINEL + "\\n")
+    if err_blob is not None:
+        tail = (err_blob.strip().splitlines() or [""])[-1]
+        shell["error"] = tail or "Test raised an exception."
+        return shell
+
+    stderr_tail = ""
+    if r.stderr:
+        lines = r.stderr.strip().splitlines()
+        if lines:
+            stderr_tail = lines[-1]
+    shell["error"] = stderr_tail or "Test produced no result (the subprocess exited before finishing)."
+    return shell
+
+_results = []
+_harness_error = _load_err
+_clean_stdout = ""
+
+if _harness_error is None:
+    _probe = _probe_main()
+    if _probe is None:
+        _harness_error = "Your code could not be loaded (probe timed out or crashed)."
+    elif _probe.returncode != 0:
+        _msg = (_probe.stderr or "").strip() or "Your code could not be loaded."
+        _harness_error = _msg
+    else:
+        _clean_stdout = _probe.stdout or ""
+        for _t in _tests:
+            _results.append(_run_one(_t))
+
+_body = json.dumps({
+    "results": _results,
+    "harnessError": _harness_error,
+    "cleanStdout": _clean_stdout,
+})
+_sig = hmac.new(_nonce.encode("utf-8"), _body.encode("utf-8"), hashlib.sha256).hexdigest()
+_inner = json.dumps({"body": _body, "sig": _sig})
+_encoded = base64.b64encode(_inner.encode("utf-8")).decode("ascii")
+sys.stdout.write(SENTINEL + _encoded + SENTINEL + "\\n")
 `;
 }
 

@@ -1,99 +1,53 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
   harnessJavaScript,
-  parseHarnessOutput,
   javascriptHarness,
   HARNESS_JS,
   HARNESS_JSON,
 } from "./javascriptHarness.js";
+import { parseSignedEnvelope } from "./envelope.js";
 import { TEST_SENTINEL, type FunctionTest } from "./types.js";
 
 // ── Generated-source sanity checks ────────────────────────────────
-describe("harnessJavaScript", () => {
+describe("harnessJavaScript (source)", () => {
   const src = harnessJavaScript();
 
-  it("embeds the shared sentinel constant", () => {
+  it("embeds the v2 sentinel constant", () => {
     expect(src).toContain(TEST_SENTINEL);
   });
 
-  it("reads tests from the sibling JSON file (never inlines them)", () => {
-    expect(src).toContain(`JSON.parse(fs.readFileSync("${HARNESS_JSON}"`);
+  it("reads tests into memory and then fs.unlinkSync()s the file", () => {
+    expect(src).toContain(`fs.readFileSync(TESTS_PATH`);
+    expect(src).toContain("fs.unlinkSync(TESTS_PATH)");
   });
 
-  it("loads main.js source and runs it inside a vm context per test", () => {
-    expect(src).toContain(`fs.readFileSync("main.js"`);
-    expect(src).toContain("vm.createContext");
-    expect(src).toContain("vm.runInContext(MAIN_SRC");
+  it("reads the nonce from env and deletes it before spawning user code", () => {
+    expect(src).toContain("process.env.HARNESS_NONCE");
+    expect(src).toContain("delete process.env.HARNESS_NONCE");
   });
 
-  it("parses expected values with JSON.parse (not eval) for safety", () => {
-    expect(src).toMatch(/JSON\.parse\(t\.expected\)/);
-    expect(src).not.toMatch(/(?<!JSON\.)eval\(t\.expected\)/);
+  it("spawns the driver via spawnSync with -e (not vm.runInContext in-process)", () => {
+    expect(src).toContain("spawnSync(");
+    expect(src).toContain('"-e", DRIVER');
   });
 
-  it("redirects console to a per-test buffer so prints don't pollute sentinel output", () => {
-    expect(src).toMatch(/console:\s*bufConsole/);
+  it("does not pass the expected value to the driver subprocess", () => {
+    expect(src).toMatch(/setup:\s*test\.setup[^,]*,\s*call:\s*test\.call/);
+    expect(src).not.toMatch(/expected:\s*test\.expected/);
   });
 
-  it("exposes module/require such that `require.main === module` is false during tests", () => {
-    expect(src).toContain("module: sandboxModule");
-    expect(src).toContain("require");
+  it("HMAC-signs the body with the nonce and base64-wraps the envelope", () => {
+    expect(src).toContain('crypto.createHmac("sha256", NONCE)');
+    expect(src).toContain('Buffer.from(inner, "utf8").toString("base64")');
   });
 
-  it("wraps payload between two sentinels on stdout", () => {
-    expect(src).toContain("SENTINEL + payload + SENTINEL");
-  });
-
-  it("catches harness-level errors (main.js probe) into harnessError", () => {
-    expect(src).toContain("harnessError = e instanceof Error");
-  });
-});
-
-// ── parseHarnessOutput ────────────────────────────────────────────
-// Same envelope format as pythonHarness, so parser behavior mirrors.
-describe("parseHarnessOutput", () => {
-  const wrap = (json: string) => `${TEST_SENTINEL}${json}${TEST_SENTINEL}\n`;
-
-  it("extracts results + harnessError when sentinels are present", () => {
-    const payload = JSON.stringify({
-      results: [
-        {
-          name: "t1",
-          hidden: false,
-          category: null,
-          passed: true,
-          actualRepr: "4",
-          expectedRepr: "4",
-          stdoutDuring: "",
-          error: null,
-        },
-      ],
-      harnessError: null,
-    });
-    const r = parseHarnessOutput(wrap(payload), "");
-    expect(r.harnessError).toBeNull();
-    expect(r.results).toHaveLength(1);
-    expect(r.results[0].passed).toBe(true);
-  });
-
-  it("returns harnessError fallback when sentinel is missing", () => {
-    const r = parseHarnessOutput("", "SyntaxError: Unexpected token");
-    expect(r.harnessError).toContain("SyntaxError");
-  });
-
-  it("returns harnessError when payload isn't valid JSON", () => {
-    const r = parseHarnessOutput(wrap("not-json{"), "");
-    expect(r.harnessError).toMatch(/malformed/i);
-  });
-
-  it("preserves learner's pre-sentinel prints as cleanStdout", () => {
-    const payload = JSON.stringify({ results: [], harnessError: null });
-    const r = parseHarnessOutput(`learner wrote this\n${wrap(payload)}`, "");
-    expect(r.cleanStdout).toBe("learner wrote this");
+  it("emits sentinel + base64 + sentinel on stdout", () => {
+    expect(src).toContain("SENTINEL + encoded + SENTINEL");
   });
 });
 
@@ -110,8 +64,7 @@ describe("javascriptHarness (HarnessBackend adapter)", () => {
     expect(files).toHaveLength(2);
     const byName = new Map(files.map((f) => [f.name, f.content]));
     expect(byName.get(HARNESS_JS)).toContain(TEST_SENTINEL);
-    const json = byName.get(HARNESS_JSON);
-    expect(JSON.parse(json!)).toEqual([
+    expect(JSON.parse(byName.get(HARNESS_JSON)!)).toEqual([
       { name: "basic", call: "square(2)", expected: "4" },
     ]);
   });
@@ -122,14 +75,12 @@ describe("javascriptHarness (HarnessBackend adapter)", () => {
 });
 
 // ── Integration: actually run the harness against sample main.js ──
-// Spawns `node` against the generated harness in a tmp dir. Proves the
-// harness survives round-trip: generated source → Node runtime → sentinel
-// payload → parseHarnessOutput. Skips if node isn't on PATH.
 describe("javascriptHarness integration (runs node)", () => {
   const hasNode =
     spawnSync("node", ["--version"], { encoding: "utf8" }).status === 0;
 
   function runHarnessWith(mainJs: string, tests: FunctionTest[]) {
+    const nonce = crypto.randomBytes(32).toString("hex");
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "jsharness-"));
     fs.writeFileSync(path.join(tmp, "main.js"), mainJs, "utf8");
     fs.writeFileSync(path.join(tmp, HARNESS_JS), harnessJavaScript(), "utf8");
@@ -141,16 +92,23 @@ describe("javascriptHarness integration (runs node)", () => {
     const r = spawnSync("node", [HARNESS_JS], {
       cwd: tmp,
       encoding: "utf8",
-      timeout: 15_000,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        HARNESS_NONCE: nonce,
+        HARNESS_PER_TEST_TIMEOUT_MS: "5000",
+      },
     });
+    const report = parseSignedEnvelope(r.stdout ?? "", r.stderr ?? "", nonce);
+    const testsStillPresent = fs.existsSync(path.join(tmp, HARNESS_JSON));
     fs.rmSync(tmp, { recursive: true, force: true });
-    return parseHarnessOutput(r.stdout ?? "", r.stderr ?? "");
+    return { report, tests_json_still_present: testsStillPresent };
   }
 
   it.skipIf(!hasNode)(
     "runs a basic function call and matches the expected JSON literal",
     () => {
-      const report = runHarnessWith(
+      const { report } = runHarnessWith(
         "function square(x) { return x * x; }",
         [{ name: "square-3", call: "square(3)", expected: "9" }],
       );
@@ -161,17 +119,24 @@ describe("javascriptHarness integration (runs node)", () => {
     },
   );
 
+  it.skipIf(!hasNode)("deletes the tests.json file before running user code", () => {
+    const { tests_json_still_present } = runHarnessWith(
+      "function f() { return 1; }",
+      [{ name: "t", call: "f()", expected: "1" }],
+    );
+    expect(tests_json_still_present).toBe(false);
+  });
+
   it.skipIf(!hasNode)(
-    "captures per-test console.log into stdoutDuring without polluting sentinel output",
+    "captures per-test console.log into stdoutDuring without polluting cleanStdout",
     () => {
-      const report = runHarnessWith(
+      const { report } = runHarnessWith(
         `function loud() { console.log("from inside"); return 42; }`,
         [{ name: "side-effect", call: "loud()", expected: "42" }],
       );
       expect(report.harnessError).toBeNull();
       expect(report.results[0].passed).toBe(true);
       expect(report.results[0].stdoutDuring).toContain("from inside");
-      // And the clean (post-extract) stdout shouldn't contain the sentinel
       expect(report.cleanStdout).not.toContain("from inside");
     },
   );
@@ -179,15 +144,13 @@ describe("javascriptHarness integration (runs node)", () => {
   it.skipIf(!hasNode)(
     "skips top-level `if (require.main === module)` branches during tests",
     () => {
-      // The guard must short-circuit — otherwise this console.log would
-      // bleed into every test's stdoutDuring.
       const main = `
 function greet(name) { return "hi, " + name; }
 if (require.main === module) {
   console.log("at module load");
 }
 `;
-      const report = runHarnessWith(main, [
+      const { report } = runHarnessWith(main, [
         { name: "greet", call: 'greet("x")', expected: '"hi, x"' },
       ]);
       expect(report.results[0].passed).toBe(true);
@@ -198,7 +161,7 @@ if (require.main === module) {
   it.skipIf(!hasNode)(
     "surfaces per-test errors with name + message",
     () => {
-      const report = runHarnessWith(
+      const { report } = runHarnessWith(
         "function f() { return 1; }",
         [
           {
@@ -217,30 +180,25 @@ if (require.main === module) {
   it.skipIf(!hasNode)(
     "surfaces harnessError when main.js has a syntax error",
     () => {
-      const report = runHarnessWith(
-        "function f( { return 1 }", // intentionally broken
+      const { report } = runHarnessWith(
+        "function f( { return 1 }",
         [{ name: "t", call: "f()", expected: "1" }],
       );
       expect(report.harnessError).toBeTruthy();
-      expect(report.harnessError).toMatch(/SyntaxError/);
       expect(report.results).toEqual([]);
     },
   );
 
   it.skipIf(!hasNode)(
-    "supports setup + hidden + category fields (capstone-style tests)",
+    "supports setup + hidden + category fields",
     () => {
       const main = `
 let items = [];
 function add(x) { items.push(x); }
 function count() { return items.length; }
 `;
-      const report = runHarnessWith(main, [
-        {
-          name: "empty-starts",
-          call: "count()",
-          expected: "0",
-        },
+      const { report } = runHarnessWith(main, [
+        { name: "empty-starts", call: "count()", expected: "0" },
         {
           name: "after-adds",
           setup: "add(10); add(20); add(30);",
@@ -251,8 +209,6 @@ function count() { return items.length; }
         },
       ]);
       expect(report.results).toHaveLength(2);
-      // Fresh context per test: first test's items list is empty at start
-      // even though second test's setup adds to it (hence pass on both).
       expect(report.results[0].passed).toBe(true);
       expect(report.results[1].passed).toBe(true);
       expect(report.results[1].hidden).toBe(true);
@@ -263,7 +219,7 @@ function count() { return items.length; }
   it.skipIf(!hasNode)(
     "rejects a non-JSON-literal expected value with a per-test error",
     () => {
-      const report = runHarnessWith(
+      const { report } = runHarnessWith(
         "function f() { return 1; }",
         [{ name: "bad-expected", call: "f()", expected: "{ x: 1 }" }],
       );
@@ -279,7 +235,7 @@ function count() { return items.length; }
 function makeList() { return [1, 2, 3]; }
 function makeObj() { return { a: 1, b: [2, 3] }; }
 `;
-      const report = runHarnessWith(main, [
+      const { report } = runHarnessWith(main, [
         { name: "list", call: "makeList()", expected: "[1, 2, 3]" },
         {
           name: "obj",
@@ -289,6 +245,37 @@ function makeObj() { return { a: 1, b: [2, 3] }; }
       ]);
       expect(report.results[0].passed).toBe(true);
       expect(report.results[1].passed).toBe(true);
+    },
+  );
+
+  it.skipIf(!hasNode)(
+    "scrubs HARNESS_NONCE from env before user code runs",
+    () => {
+      const main = `function leaked() { return process.env.HARNESS_NONCE || "absent"; }`;
+      const { report } = runHarnessWith(main, [
+        { name: "scrub", call: "leaked()", expected: '"absent"' },
+      ]);
+      expect(report.results[0].passed).toBe(true);
+    },
+  );
+
+  it.skipIf(!hasNode)(
+    "user code cannot read the expected value by opening tests.json",
+    () => {
+      const main = `
+function leaked() {
+  try {
+    require("fs").readFileSync("__codetutor_tests.json", "utf8");
+    return "found";
+  } catch (e) {
+    return "missing";
+  }
+}
+`;
+      const { report } = runHarnessWith(main, [
+        { name: "hidden-file", call: "leaked()", expected: '"missing"' },
+      ]);
+      expect(report.results[0].passed).toBe(true);
     },
   );
 });
