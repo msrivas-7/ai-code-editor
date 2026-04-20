@@ -60,4 +60,56 @@ export const config = {
     ),
     mutationMax: num(process.env.MUTATION_RATE_LIMIT_MAX, 120),
   },
+
+  // Phase 18a: Supabase Auth. `url` points at the Supabase API root (GoTrue
+  // lives under /auth/v1). The backend does NOT use an anon/service-role
+  // key — it only verifies access tokens coming from the browser, by
+  // fetching the JWKS from the auth server. JWKS verification needs no
+  // shared secret; it's asymmetric.
+  //
+  // 12-factor: no default here on purpose. The value must come from env
+  // (docker-compose.yml provides a dev default via ${SUPABASE_URL:-...},
+  // and .env.production overrides for prod). Missing env at boot is a
+  // deployment misconfig; we fail-fast in main.ts rather than silently
+  // pointing at a dev URL.
+  supabase: {
+    url: process.env.SUPABASE_URL,
+    // Expected `iss` claim on access tokens. GoTrue mints tokens with
+    // `iss=<GOTRUE_JWT_ISSUER>` which is fixed per project and independent of
+    // the URL the backend uses to reach Supabase. In local dev the backend
+    // reaches Supabase via `host.docker.internal:54321` but tokens are signed
+    // with `iss=http://127.0.0.1:54321/auth/v1` (the host-addressable URL the
+    // browser uses). Accept an explicit override via SUPABASE_AUTH_ISSUER.
+    authIssuer: process.env.SUPABASE_AUTH_ISSUER,
+  },
+
+  // Phase 18b: Postgres for per-user state (preferences, progress, editor
+  // project). Points at the Supabase-managed Postgres in every environment:
+  // locally the CLI exposes it on 54322; in prod it's `db.<ref>.supabase.co`.
+  // No default here — assertConfigValid() enforces presence at boot.
+  databaseUrl: process.env.DATABASE_URL,
 } as const;
+
+export function assertConfigValid(): void {
+  if (!config.supabase.url || config.supabase.url.trim() === "") {
+    throw new Error(
+      "[config] SUPABASE_URL is required. " +
+        "docker-compose.yml sets a dev default; for other runs, export " +
+        "SUPABASE_URL in the shell or add it to .env. See .env.example.",
+    );
+  }
+  try {
+    new URL(config.supabase.url);
+  } catch {
+    throw new Error(
+      `[config] SUPABASE_URL is not a valid URL: ${config.supabase.url}`,
+    );
+  }
+  if (!config.databaseUrl || config.databaseUrl.trim() === "") {
+    throw new Error(
+      "[config] DATABASE_URL is required. " +
+        "docker-compose.yml sets a dev default; for other runs, export " +
+        "DATABASE_URL in the shell or add it to .env. See .env.example.",
+    );
+  }
+}

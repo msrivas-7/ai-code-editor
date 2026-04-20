@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CoachBubble } from "../features/learning/components/CoachBubble";
-
-const LS_KEY = "onboarding:v1:welcome-done";
+import {
+  markOnboardingDone,
+  usePreferencesStore,
+} from "../state/preferencesStore";
 
 export function isWelcomeDone(): boolean {
-  try { return localStorage.getItem(LS_KEY) === "1"; } catch { return false; }
+  return usePreferencesStore.getState().welcomeDone;
 }
 
 export function markWelcomeDone(): void {
-  try { localStorage.setItem(LS_KEY, "1"); } catch { /* */ }
+  markOnboardingDone("welcomeDone");
 }
 
 interface WelcomeStep {

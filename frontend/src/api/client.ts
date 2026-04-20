@@ -5,19 +5,100 @@
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const CSRF_HEADER = { "X-Requested-With": "codetutor" };
 
+import { supabase } from "../auth/supabaseClient";
+
+// Phase 18a: attach the Supabase access token to every backend request so
+// the `authMiddleware` on the server side can identify the user. We fetch
+// the session lazily per-request — the SDK caches and auto-refreshes, so
+// `getSession()` returns synchronously from cache in the common path.
+//
+// `signOutOn401` centralises the "token is invalid" response: we clear the
+// Supabase session (which triggers onAuthStateChange → RequireAuth → /login)
+// and propagate the error up. This keeps stale-session handling out of every
+// call site. The /api/health and /api/ai/validate-key routes are still
+// callable pre-auth; they simply don't include the Authorization header if
+// no session is present.
+async function authHeaders(): Promise<Record<string, string>> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function handle401(res: Response): Promise<void> {
+  if (res.status !== 401) return;
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    /* best-effort — the state listener will flush anyway */
+  }
+}
+
 async function post<T>(path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
+  const auth = await authHeaders();
   const res = await fetch(path, {
     method: "POST",
-    headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...(extraHeaders ?? {}) },
+    headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth, ...(extraHeaders ?? {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    await handle401(res);
+    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const auth = await authHeaders();
+  const res = await fetch(path, {
+    method: "PATCH",
+    headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    await handle401(res);
+    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const auth = await authHeaders();
+  const res = await fetch(path, {
+    method: "PUT",
+    headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    await handle401(res);
+    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function del<T>(path: string): Promise<T> {
+  const auth = await authHeaders();
+  const res = await fetch(path, {
+    method: "DELETE",
+    headers: { ...CSRF_HEADER, ...auth },
+  });
+  if (!res.ok) {
+    await handle401(res);
+    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  }
   return res.json() as Promise<T>;
 }
 
 async function get<T>(path: string, extraHeaders?: Record<string, string>): Promise<T> {
-  const res = await fetch(path, { headers: extraHeaders });
-  if (!res.ok) throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  const auth = await authHeaders();
+  const res = await fetch(path, { headers: { ...auth, ...(extraHeaders ?? {}) } });
+  if (!res.ok) {
+    await handle401(res);
+    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -40,6 +121,93 @@ export interface ExecuteTestsResponse {
   exitCode: number;
   timedOut: boolean;
   durationMs: number;
+}
+
+// Phase 18b: per-user data API surface. Every shape here mirrors the
+// backend's db/*.ts types; mismatches surface as runtime shape errors
+// rather than type errors, so keep the two in sync when the schema moves.
+
+export interface UserPreferences {
+  persona: "beginner" | "intermediate" | "advanced";
+  openaiModel: string | null;
+  theme: "system" | "light" | "dark";
+  welcomeDone: boolean;
+  workspaceCoachDone: boolean;
+  editorCoachDone: boolean;
+  uiLayout: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export interface UserPreferencesPatch {
+  persona?: UserPreferences["persona"];
+  openaiModel?: string | null;
+  theme?: UserPreferences["theme"];
+  welcomeDone?: boolean;
+  workspaceCoachDone?: boolean;
+  editorCoachDone?: boolean;
+  uiLayout?: Record<string, unknown>;
+}
+
+export interface ServerCourseProgress {
+  courseId: string;
+  status: "not_started" | "in_progress" | "completed";
+  startedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+  lastLessonId: string | null;
+  completedLessonIds: string[];
+}
+
+export interface ServerCoursePatch {
+  status?: ServerCourseProgress["status"];
+  startedAt?: string | null;
+  completedAt?: string | null;
+  lastLessonId?: string | null;
+  completedLessonIds?: string[];
+}
+
+export interface ServerLessonProgress {
+  courseId: string;
+  lessonId: string;
+  status: "not_started" | "in_progress" | "completed";
+  startedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+  attemptCount: number;
+  runCount: number;
+  hintCount: number;
+  timeSpentMs: number;
+  lastCode: Record<string, string> | null;
+  lastOutput: string | null;
+  practiceCompletedIds: string[];
+  practiceExerciseCode: Record<string, Record<string, string>>;
+}
+
+export interface ServerLessonPatch {
+  status?: ServerLessonProgress["status"];
+  startedAt?: string | null;
+  completedAt?: string | null;
+  attemptCount?: number;
+  runCount?: number;
+  hintCount?: number;
+  timeSpentMs?: number;
+  lastCode?: Record<string, string> | null;
+  lastOutput?: string | null;
+  practiceCompletedIds?: string[];
+  practiceExerciseCode?: Record<string, Record<string, string>>;
+}
+
+export interface EditorProjectPayload {
+  language: string;
+  files: Record<string, string>;
+  activeFile: string | null;
+  openTabs: string[];
+  fileOrder: string[];
+  stdin: string;
+}
+
+export interface EditorProjectResponse extends EditorProjectPayload {
+  updatedAt: string;
 }
 
 export interface AskStreamRequest {
@@ -90,12 +258,14 @@ export const api = {
     sessionId: string
   ): Promise<{ ok: true } | { ok: false; status: number; error: string }> => {
     try {
+      const auth = await authHeaders();
       const res = await fetch("/api/session/ping", {
         method: "POST",
-        headers: { ...JSON_HEADERS, ...CSRF_HEADER },
+        headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
         body: JSON.stringify({ sessionId }),
       });
       if (res.ok) return { ok: true };
+      await handle401(res);
       const text = await res.text().catch(() => "");
       return { ok: false, status: res.status, error: text || `HTTP ${res.status}` };
     } catch (err) {
@@ -115,6 +285,38 @@ export const api = {
   executeTests: (sessionId: string, language: Language, tests: FunctionTest[]) =>
     post<ExecuteTestsResponse>("/api/execute/tests", { sessionId, language, tests }),
 
+  // ── Phase 18b user-data endpoints ─────────────────────────────────
+  getPreferences: () => get<UserPreferences>("/api/user/preferences"),
+  patchPreferences: (body: UserPreferencesPatch) =>
+    patch<UserPreferences>("/api/user/preferences", body),
+  listCourseProgress: () =>
+    get<{ courses: ServerCourseProgress[] }>("/api/user/courses"),
+  patchCourseProgress: (courseId: string, body: ServerCoursePatch) =>
+    patch<ServerCourseProgress>(
+      `/api/user/courses/${encodeURIComponent(courseId)}`,
+      body,
+    ),
+  deleteCourseProgress: (courseId: string) =>
+    del<{ course: boolean; lessons: number }>(
+      `/api/user/courses/${encodeURIComponent(courseId)}`,
+    ),
+  listLessonProgress: (courseId?: string) => {
+    const q = courseId ? `?courseId=${encodeURIComponent(courseId)}` : "";
+    return get<{ lessons: ServerLessonProgress[] }>(`/api/user/lessons${q}`);
+  },
+  patchLessonProgress: (
+    courseId: string,
+    lessonId: string,
+    body: ServerLessonPatch,
+  ) =>
+    patch<ServerLessonProgress>(
+      `/api/user/lessons/${encodeURIComponent(courseId)}/${encodeURIComponent(lessonId)}`,
+      body,
+    ),
+  getEditorProject: () => get<EditorProjectResponse>("/api/user/editor-project"),
+  saveEditorProject: (body: EditorProjectPayload) =>
+    put<EditorProjectResponse>("/api/user/editor-project", body),
+
   validateOpenAIKey: (key: string) =>
     post<{ valid: boolean; error?: string }>("/api/ai/validate-key", { key }),
   summarizeHistory: (
@@ -130,9 +332,10 @@ export const api = {
   ): Promise<void> => {
     let res: Response;
     try {
+      const auth = await authHeaders();
       res = await fetch("/api/ai/ask/stream", {
         method: "POST",
-        headers: { ...JSON_HEADERS, ...CSRF_HEADER, "X-OpenAI-Key": key },
+        headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth, "X-OpenAI-Key": key },
         body: JSON.stringify(body),
         signal: handlers.signal,
       });
@@ -142,6 +345,7 @@ export const api = {
     }
 
     if (!res.ok || !res.body) {
+      await handle401(res);
       const text = await res.text().catch(() => "");
       handlers.onError(text || `HTTP ${res.status}`);
       return;

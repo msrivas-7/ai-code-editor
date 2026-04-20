@@ -4,7 +4,7 @@
 // mocking: the Docker backend runs pythonHarness for real, so these tests
 // assert that the frontend parser and backend harness agree on wire format.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import {

@@ -1,33 +1,33 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const storage = new Map<string, string>();
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() { return storage.size; },
-  key: () => null as string | null,
-});
+const state = { workspaceCoachDone: false };
+
+vi.mock("../../../state/preferencesStore", () => ({
+  usePreferencesStore: Object.assign(
+    (selector: (s: typeof state) => unknown) => selector(state),
+    {
+      getState: () => state,
+      subscribe: () => () => {},
+    },
+  ),
+  markOnboardingDone: (flag: string) => {
+    if (flag === "workspaceCoachDone") state.workspaceCoachDone = true;
+  },
+}));
 
 import { isOnboardingDone } from "./WorkspaceCoach";
 
 beforeEach(() => {
-  storage.clear();
+  state.workspaceCoachDone = false;
 });
 
 describe("isOnboardingDone", () => {
-  it("returns false when no key set", () => {
+  it("returns false when the flag is unset in preferencesStore", () => {
     expect(isOnboardingDone()).toBe(false);
   });
 
-  it("returns true when key is '1'", () => {
-    storage.set("onboarding:v1:workspace-done", "1");
+  it("returns true when the flag flips to true", () => {
+    state.workspaceCoachDone = true;
     expect(isOnboardingDone()).toBe(true);
-  });
-
-  it("returns false for other values", () => {
-    storage.set("onboarding:v1:workspace-done", "0");
-    expect(isOnboardingDone()).toBe(false);
   });
 });

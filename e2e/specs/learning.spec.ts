@@ -4,7 +4,7 @@
 // lesson navigation. AI is mocked; the Docker backend runs for real so
 // validation rules (expected_stdout, function_tests) execute authentic code.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import {
@@ -152,13 +152,9 @@ test.describe("learning", () => {
     expect(after).not.toContain("hello from dev profile");
     expect(after.length).toBeGreaterThan(0);
 
-    // Progress should be cleared: reload and the lesson status should no
-    // longer be "in_progress" — the lesson row hasn't been started.
-    await page.evaluate(() =>
-      Object.keys(localStorage)
-        .filter((k) => k.includes("lesson:python-fundamentals:hello-world"))
-        .map((k) => localStorage.getItem(k)),
-    );
+    // Progress cleared server-side; the lesson-reset API zeroes the row.
+    // The restored starter in Monaco is the user-visible proof; full
+    // server-state verification is covered by cross-device.spec.ts.
   });
 
   test("reset lesson cancel leaves progress intact", async ({ page }) => {

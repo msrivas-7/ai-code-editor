@@ -14,6 +14,7 @@ import { EditorTabs } from "../../../components/EditorTabs";
 import { OutputPanel } from "../../../components/OutputPanel";
 import { Splitter } from "../../../components/Splitter";
 import { SettingsModal } from "../../../components/SettingsModal";
+import { UserMenu } from "../../../components/UserMenu";
 import { SessionErrorBanner } from "../../../components/SessionErrorBanner";
 import { Modal } from "../../../components/Modal";
 import { useSessionLifecycle } from "../../../hooks/useSessionLifecycle";
@@ -24,7 +25,8 @@ import { useAIStore } from "../../../state/aiStore";
 import { api } from "../../../api/client";
 import { validateLesson, pickFirstFailure } from "../utils/validator";
 import { LessonCompletePanel } from "../components/LessonCompletePanel";
-import { WorkspaceCoach, isOnboardingDone } from "../components/WorkspaceCoach";
+import { WorkspaceCoach } from "../components/WorkspaceCoach";
+import { usePreferencesStore } from "../../../state/preferencesStore";
 import { computeMastery, formatTimeSpent } from "../utils/mastery";
 import { FailedTestCallout } from "../components/FailedTestCallout";
 import type { FunctionTest, TestReport, ValidationResult } from "../types";
@@ -61,6 +63,7 @@ export default function LessonPage() {
   const saveOutput = useProgressStore((s) => s.saveOutput);
   const resetLessonProgress = useProgressStore((s) => s.resetLessonProgress);
   const completePracticeExercise = useProgressStore((s) => s.completePracticeExercise);
+  const savePracticeCode = useProgressStore((s) => s.savePracticeCode);
   const resetPracticeProgress = useProgressStore((s) => s.resetPracticeProgress);
   const incrementLessonTime = useProgressStore((s) => s.incrementLessonTime);
   const lessonProgressMap = useProgressStore((s) => s.lessonProgress);
@@ -242,13 +245,14 @@ export default function LessonPage() {
     });
   }, [lesson, courseId, lessonId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const workspaceCoachDone = usePreferencesStore((s) => s.workspaceCoachDone);
   useEffect(() => {
     if (!lesson || loading) return;
-    if (!isOnboardingDone()) {
+    if (!workspaceCoachDone) {
       const timer = setTimeout(() => setShowCoach(true), COACH_AUTO_OPEN_MS);
       return () => clearTimeout(timer);
     }
-  }, [lesson, loading]);
+  }, [lesson, loading, workspaceCoachDone]);
 
   const handleRun = useCallback(async () => {
     if (!sessionId || sessionPhase !== "active" || running || !courseId || !lessonId || !lesson) return;
@@ -278,21 +282,29 @@ export default function LessonPage() {
   }, [sessionId, sessionPhase, running, courseId, lessonId, lesson, setRunning, setRunError, setResult, incrementRun, saveOutput, saveCode, practiceMode]);
 
   const applyPracticeStarter = useCallback((exerciseIndex: number) => {
-    if (!lesson?.practiceExercises) return;
+    if (!lesson?.practiceExercises || !courseId || !lessonId) return;
     const exercise = lesson.practiceExercises[exerciseIndex];
     if (!exercise) return;
-    const starter = exercise.starterCode ?? "# Write your code here\n";
     const entry = LANGUAGE_ENTRYPOINT[lesson.language];
+    // Prefer the learner's persisted WIP for this specific exercise. Falls
+    // back to the authored starter only on first visit or after an explicit
+    // practice reset (which clears the persisted map).
+    const lp = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
+    const persisted = lp?.practiceExerciseCode?.[exercise.id];
+    const files = persisted && Object.keys(persisted).length > 0
+      ? persisted
+      : { [entry]: exercise.starterCode ?? "# Write your code here\n" };
+    const order = Object.keys(files);
     useProjectStore.setState({
-      files: { [entry]: starter },
-      order: [entry],
-      activeFile: entry,
-      openTabs: [entry],
+      files,
+      order,
+      activeFile: order[0] ?? entry,
+      openTabs: [order[0] ?? entry],
     });
     useRunStore.getState().setResult(null);
     useRunStore.getState().setError(null);
     setPracticeValidation(null);
-  }, [lesson]);
+  }, [lesson, courseId, lessonId]);
 
   const handleReset = useCallback(() => {
     if (!lesson || !courseId || !lessonId) return;
@@ -555,18 +567,25 @@ export default function LessonPage() {
     if (initialized.current) setTestReport(null);
   }, [projectFiles]);
 
-  // Auto-save code to localStorage on edits (debounced, lesson mode only)
+  // Auto-save code on edits (debounced). Lesson-mode writes to `lastCode`;
+  // practice-mode writes to `practiceExerciseCode[exerciseId]` so switching
+  // between exercises doesn't clobber the main lesson buffer.
   useEffect(() => {
-    if (!courseId || !lessonId || !initialized.current || practiceMode) return;
+    if (!courseId || !lessonId || !initialized.current) return;
     const timer = setTimeout(() => {
       const snap = useProjectStore.getState().snapshot();
       if (snap.length === 0) return;
       const codeMap: Record<string, string> = {};
       for (const f of snap) codeMap[f.path] = f.content;
-      saveCode(courseId, lessonId, codeMap);
+      if (practiceMode) {
+        const exercise = lesson?.practiceExercises?.[practiceIndex];
+        if (exercise) savePracticeCode(courseId, lessonId, exercise.id, codeMap);
+      } else {
+        saveCode(courseId, lessonId, codeMap);
+      }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [projectFiles, courseId, lessonId, saveCode, practiceMode]);
+  }, [projectFiles, courseId, lessonId, saveCode, savePracticeCode, practiceMode, practiceIndex, lesson]);
 
   // Time-spent tracking — tick only while the document is visible and the
   // lesson isn't yet complete. Uses a lastTick ref so we credit real elapsed
@@ -788,6 +807,7 @@ export default function LessonPage() {
               <path d="M13.87 9.4l1.09.64a.5.5 0 01.17.68l-1.5 2.6a.5.5 0 01-.68.18l-1.08-.63a5.44 5.44 0 01-1.78 1.03l-.17 1.25a.5.5 0 01-.5.44h-3a.5.5 0 01-.5-.44L5.75 13.9a5.44 5.44 0 01-1.78-1.03l-1.08.63a.5.5 0 01-.68-.17l-1.5-2.6a.5.5 0 01.17-.68l1.09-.64a5.38 5.38 0 010-2l-1.09-.65a.5.5 0 01-.17-.68l1.5-2.6a.5.5 0 01.68-.17l1.08.63A5.44 5.44 0 015.75 2.1l.17-1.25A.5.5 0 016.42.4h3a.5.5 0 01.5.44l.17 1.26c.67.25 1.28.6 1.78 1.03l1.08-.63a.5.5 0 01.68.17l1.5 2.6a.5.5 0 01-.17.68l-1.09.65a5.38 5.38 0 010 2z" />
             </svg>
           </button>
+          <UserMenu />
         </div>
       </header>
 

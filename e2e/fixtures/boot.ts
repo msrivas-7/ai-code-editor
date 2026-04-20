@@ -7,6 +7,8 @@ import { request } from "@playwright/test";
 
 const FRONTEND = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 const BACKEND = process.env.E2E_API_URL ?? "http://localhost:4000";
+// Defaults to the local-CLI URL; override via env for staging / CI.
+const SUPABASE = process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321";
 const MAX_ATTEMPTS = 20;
 const ATTEMPT_DELAY_MS = 500;
 
@@ -38,7 +40,18 @@ export default async function globalSetup() {
     ping(FRONTEND, "frontend"),
     ping(`${BACKEND}/api/ai/validate-key`, "backend"),
     // validate-key with no body → 400 is expected + means the route is mounted.
+    // Supabase GoTrue health. Same pattern: if `supabase start` isn't running,
+    // every spec would 401 at login — far cheaper to fail loudly here.
+    ping(`${SUPABASE}/auth/v1/health`, "supabase"),
   ]);
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "E2E globalSetup: SUPABASE_SERVICE_ROLE_KEY is required. " +
+        "Put it in ../.env.local (run `npx supabase status` to find the " +
+        "local secret) or inject via CI secret. See e2e/fixtures/auth.ts.",
+    );
+  }
 
   if (process.env.E2E_REAL_OPENAI === "1" && !process.env.OPENAI_API_KEY) {
     throw new Error(

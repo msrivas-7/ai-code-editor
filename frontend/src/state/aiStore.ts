@@ -7,11 +7,25 @@ import type {
   TokenUsage,
   TutorSections,
 } from "../types";
+import {
+  usePreferencesStore,
+  setPersona as setPersonaInPrefs,
+  setOpenAIModel as setOpenAIModelInPrefs,
+} from "./preferencesStore";
+
+// Phase 18b: `persona` and `selectedModel` are mirrored here from
+// preferencesStore (which is the authoritative server-backed source). We
+// keep a local copy so every existing aiStore selector (~40 call sites) stays
+// synchronous — the subscribe hook below re-mirrors after hydrate() finishes
+// or after the user flips a preference. Writes go through the prefs store's
+// `patch()` which handles the optimistic update + PATCH round-trip.
+//
+// `apiKey` + `remember` stay in localStorage: the OpenAI key is
+// explicitly per-device in 18b (see the Phase 18a/b plan — per-user BYOK is
+// a 19 concern).
 
 const LS_KEY = "codetutor:openai-key";
-const LS_MODEL = "codetutor:openai-model";
 const LS_REMEMBER = "codetutor:openai-remember";
-const LS_PERSONA = "codetutor:openai-persona";
 
 export type KeyStatus = "none" | "validating" | "valid" | "invalid";
 export type ModelsStatus = "idle" | "loading" | "loaded" | "error";
@@ -114,27 +128,13 @@ interface AIState {
   switchChatContext: (contextKey: string) => void;
 }
 
-function loadInitial(): {
-  apiKey: string;
-  remember: boolean;
-  selectedModel: string | null;
-  persona: Persona;
-} {
-  const personaDefault: Persona = "beginner";
+function loadInitial(): { apiKey: string; remember: boolean } {
   try {
     const remember = localStorage.getItem(LS_REMEMBER) === "1";
     const apiKey = remember ? (localStorage.getItem(LS_KEY) ?? "") : "";
-    const selectedModel = localStorage.getItem(LS_MODEL);
-    const storedPersona = localStorage.getItem(LS_PERSONA);
-    const persona: Persona =
-      storedPersona === "beginner" ||
-      storedPersona === "intermediate" ||
-      storedPersona === "advanced"
-        ? storedPersona
-        : personaDefault;
-    return { apiKey, remember, selectedModel, persona };
+    return { apiKey, remember };
   } catch {
-    return { apiKey: "", remember: false, selectedModel: null, persona: personaDefault };
+    return { apiKey: "", remember: false };
   }
 }
 
@@ -163,7 +163,7 @@ export const useAIStore = create<AIState>((set, get) => ({
   models: [],
   modelsStatus: "idle",
   modelsError: null,
-  selectedModel: initial.selectedModel,
+  selectedModel: usePreferencesStore.getState().openaiModel,
 
   remember: initial.remember,
 
@@ -179,7 +179,7 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   pendingAsk: null,
 
-  persona: initial.persona,
+  persona: usePreferencesStore.getState().persona,
   conversationSummary: null,
   summarizedThrough: 0,
   summarizing: false,
@@ -208,8 +208,8 @@ export const useAIStore = create<AIState>((set, get) => ({
     // pick the first one so the UI is ready to use immediately.
     const selectedModel = current && models.some((m) => m.id === current) ? current : (models[0]?.id ?? null);
     set({ models, selectedModel });
-    if (selectedModel) {
-      try { localStorage.setItem(LS_MODEL, selectedModel); } catch {}
+    if (selectedModel !== usePreferencesStore.getState().openaiModel) {
+      void setOpenAIModelInPrefs(selectedModel).catch(() => { /* logged in prefs */ });
     }
   },
 
@@ -217,17 +217,14 @@ export const useAIStore = create<AIState>((set, get) => ({
 
   setSelectedModel: (id) => {
     set({ selectedModel: id });
-    try {
-      if (id) localStorage.setItem(LS_MODEL, id);
-      else localStorage.removeItem(LS_MODEL);
-    } catch {}
+    void setOpenAIModelInPrefs(id).catch(() => { /* logged in prefs */ });
   },
 
   setPendingAsk: (s) => set({ pendingAsk: s }),
 
   setPersona: (p) => {
     set({ persona: p });
-    try { localStorage.setItem(LS_PERSONA, p); } catch {}
+    void setPersonaInPrefs(p).catch(() => { /* logged in prefs */ });
   },
 
   commitSummary: (summary, throughIndex) =>
@@ -315,8 +312,8 @@ export const useAIStore = create<AIState>((set, get) => ({
     });
     try {
       localStorage.removeItem(LS_KEY);
-      localStorage.removeItem(LS_MODEL);
     } catch {}
+    void setOpenAIModelInPrefs(null).catch(() => { /* logged in prefs */ });
   },
 
   switchChatContext: (contextKey) => {
@@ -350,3 +347,14 @@ export const useAIStore = create<AIState>((set, get) => ({
     });
   },
 }));
+
+// Mirror preferencesStore.{persona, openaiModel} into aiStore so existing
+// selectors stay synchronous. Fires once on module load (to pick up the
+// initial hydrated value when the auth bootstrap resolves) and again on
+// every subsequent change.
+usePreferencesStore.subscribe((state, prev) => {
+  const patch: Partial<{ persona: Persona; selectedModel: string | null }> = {};
+  if (state.persona !== prev.persona) patch.persona = state.persona;
+  if (state.openaiModel !== prev.openaiModel) patch.selectedModel = state.openaiModel;
+  if (Object.keys(patch).length > 0) useAIStore.setState(patch);
+});

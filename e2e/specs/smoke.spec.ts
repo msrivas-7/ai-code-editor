@@ -7,7 +7,7 @@
 //  - No uncaught page errors fire during a cold boot
 //  - localStorage is empty after clearAppStorage — proves the helper works
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { clearAppStorage } from "../fixtures/profiles";
 import { mockAllAI } from "../fixtures/aiMocks";
@@ -33,9 +33,11 @@ test.describe("smoke", () => {
 
   test("/learn route mounts the dashboard", async ({ page }) => {
     await page.goto("/learn");
-    // Dashboard has either the welcome banner (first visit) or a continue card.
+    // The "Guided Learning" header renders in every dashboard state (fresh
+    // visit, in-progress, completed) — match on it rather than the body copy
+    // which varies with progress bled in from earlier tests in the worker.
     await expect(
-      page.getByText(/dashboard|continue learning|ready to start|your learning/i).first()
+      page.getByRole("heading", { name: /guided learning/i })
     ).toBeVisible({ timeout: 15_000 });
   });
 

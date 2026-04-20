@@ -119,6 +119,9 @@ export interface LessonProgress {
   lastCode: Record<string, string> | null;
   lastOutput: string | null;
   practiceCompletedIds?: string[];
+  // Keyed by exerciseId → file-path → content. Distinct from `lastCode`
+  // so the main lesson buffer isn't clobbered on practice entry.
+  practiceExerciseCode?: Record<string, Record<string, string>>;
   timeSpentMs?: number;
 }
 

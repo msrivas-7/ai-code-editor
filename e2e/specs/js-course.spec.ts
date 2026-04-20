@@ -7,7 +7,7 @@
 // that the language-agnostic plumbing (runner, harness registry, validator
 // hints, authoring scripts) actually holds up in production.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import {

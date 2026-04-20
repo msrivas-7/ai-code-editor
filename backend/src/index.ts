@@ -1,14 +1,15 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { config } from "./config.js";
+import { assertConfigValid, config } from "./config.js";
 import { sessionRouter } from "./routes/session.js";
 import { createProjectRouter } from "./routes/project.js";
 import { createExecutionRouter } from "./routes/execution.js";
 import { createExecuteTestsRouter } from "./routes/executeTests.js";
 import { aiRouter } from "./routes/ai.js";
-import { aiRateLimit } from "./middleware/aiRateLimit.js";
+import { userDataRouter } from "./routes/userData.js";
 import { csrfGuard } from "./middleware/csrfGuard.js";
+import { authMiddleware } from "./middleware/authMiddleware.js";
 import {
   mutationLimit,
   sessionCreateLimit,
@@ -22,6 +23,10 @@ import {
 } from "./services/session/sessionManager.js";
 
 async function main() {
+  // Validate env-sourced config before any wiring. Prefer a loud, fast failure
+  // at boot over silent fallbacks that show up as 401/500 on the first request.
+  assertConfigValid();
+
   const app = express();
 
   app.use(cors({ origin: config.corsOrigin }));
@@ -58,10 +63,14 @@ async function main() {
     const isExec = req.path === "/api/execute" || req.path === "/api/execute/tests";
     const isSnapshot = req.path === "/api/project/snapshot";
     const isAi = req.path.startsWith("/api/ai");
-    if (!isSession && !isExec && !isSnapshot && !isAi) return next();
+    const isUser = req.path.startsWith("/api/user");
+    if (!isSession && !isExec && !isSnapshot && !isAi && !isUser) return next();
     let body = "";
     if (req.path === "/api/session/ping" || isAi) {
       body = "(redacted)";
+    } else if (isUser) {
+      // Shape-only: never log learner code or openai keys stored in prefs.
+      body = req.method === "GET" ? "(get)" : `(${req.method.toLowerCase()})`;
     } else if (isSnapshot) {
       const files = (req.body?.files as unknown[] | undefined) ?? [];
       body = JSON.stringify({
@@ -95,15 +104,34 @@ async function main() {
 
   const executionBackend = makeExecutionBackend();
 
-  // Phase 17: CSRF + per-IP rate limits on every mutating API surface.
-  // Session creation gets its own tighter bucket because spawning a runner
-  // container is the expensive op. csrfGuard blocks simple cross-origin
-  // POSTs from a malicious page the learner happens to visit while the
-  // backend is listening on localhost. See middleware/{csrfGuard,mutationRateLimit}.ts.
-  app.use("/api/session", csrfGuard, sessionCreateLimit, sessionRouter);
+  // Middleware chain per route group (Phase 18a):
+  //
+  //   csrfGuard       — cheap header check; rejects cross-origin POSTs
+  //                     missing X-Requested-With (Phase 17).
+  //   authMiddleware  — verifies the Supabase JWT, attaches req.userId.
+  //                     Runs BEFORE any rate limit so (a) unauthenticated
+  //                     garbage can't eat the IP bucket for real users and
+  //                     (b) user-keyed buckets downstream see req.userId.
+  //   sessionCreateLimit — floor on /api/session container spawns. Keyed
+  //                     off userId when present (set by authMiddleware);
+  //                     falls back to IP for the unauthenticated edge case
+  //                     that shouldn't actually reach here.
+  //   mutationLimit   — user-keyed throttle on non-session-create writes.
+  //
+  // `/api/health` stays public (no csrf/auth). `/api/ai/validate-key` is
+  // a special public carve-out handled inside aiRouter — a learner can
+  // test their OpenAI key before finishing signup; see routes/ai.ts.
+  app.use(
+    "/api/session",
+    csrfGuard,
+    authMiddleware,
+    sessionCreateLimit,
+    sessionRouter,
+  );
   app.use(
     "/api/project",
     csrfGuard,
+    authMiddleware,
     mutationLimit,
     createProjectRouter(executionBackend),
   );
@@ -112,19 +140,32 @@ async function main() {
   app.use(
     "/api/execute/tests",
     csrfGuard,
+    authMiddleware,
     mutationLimit,
     createExecuteTestsRouter(executionBackend),
   );
   app.use(
     "/api/execute",
     csrfGuard,
+    authMiddleware,
     mutationLimit,
     createExecutionRouter(executionBackend),
   );
-  // AI routes get both the per-session throttle (AI-specific budget) AND
-  // the CSRF guard. Phase 18 will swap the sid bucket for an authenticated
-  // user id.
-  app.use("/api/ai", csrfGuard, aiRateLimit, aiRouter);
+  // AI routes mount their own auth + rate-limit per-route because
+  // `/api/ai/validate-key` is public while `/ask`, `/models`, `/summarize`
+  // are authenticated. See routes/ai.ts.
+  app.use("/api/ai", csrfGuard, aiRouter);
+
+  // Phase 18b: per-user state in Supabase Postgres (preferences, progress,
+  // editor project). Auth + rate-limit gated; all DB writes scope by
+  // req.userId, RLS enforces the same as defense-in-depth.
+  app.use(
+    "/api/user",
+    csrfGuard,
+    authMiddleware,
+    mutationLimit,
+    userDataRouter,
+  );
 
   app.use(errorHandler);
 

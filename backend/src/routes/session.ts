@@ -12,9 +12,17 @@ export const sessionRouter = Router();
 
 const idBody = z.object({ sessionId: z.string().min(1) });
 
-sessionRouter.post("/", async (_req, res, next) => {
+// Every handler below assumes `req.userId` is set — authMiddleware is mounted
+// before this router in index.ts.
+function requireUser(req: import("express").Request): string {
+  const u = req.userId;
+  if (!u) throw new Error("authMiddleware missing — bootstrap bug");
+  return u;
+}
+
+sessionRouter.post("/", async (req, res, next) => {
   try {
-    const s = await startSession();
+    const s = await startSession(requireUser(req));
     res.json({ sessionId: s.id, createdAt: s.createdAt });
   } catch (err) {
     next(err);
@@ -24,7 +32,9 @@ sessionRouter.post("/", async (_req, res, next) => {
 sessionRouter.post("/ping", (req, res) => {
   const parsed = idBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "sessionId required" });
-  const ok = pingSession(parsed.data.sessionId);
+  // pingSession quietly returns false for both "not found" and "not yours"
+  // so that a stale UI re-ping doesn't leak that another user owns the id.
+  const ok = pingSession(parsed.data.sessionId, requireUser(req));
   if (!ok) return res.status(404).json({ error: "session not found" });
   res.json({ ok: true });
 });
@@ -33,7 +43,10 @@ sessionRouter.post("/rebind", async (req, res, next) => {
   const parsed = idBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "sessionId required" });
   try {
-    const { record, reused } = await rebindSession(parsed.data.sessionId);
+    const { record, reused } = await rebindSession(
+      parsed.data.sessionId,
+      requireUser(req),
+    );
     res.json({ sessionId: record.id, reused });
   } catch (err) {
     next(err);
@@ -44,7 +57,7 @@ sessionRouter.post("/end", async (req, res, next) => {
   const parsed = idBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "sessionId required" });
   try {
-    const ok = await endSession(parsed.data.sessionId);
+    const ok = await endSession(parsed.data.sessionId, requireUser(req));
     res.json({ ok });
   } catch (err) {
     next(err);
@@ -53,7 +66,7 @@ sessionRouter.post("/end", async (req, res, next) => {
 
 sessionRouter.get("/:id/status", async (req, res, next) => {
   try {
-    const status = await getSessionStatus(req.params.id);
+    const status = await getSessionStatus(req.params.id, requireUser(req));
     res.json(status);
   } catch (err) {
     next(err);

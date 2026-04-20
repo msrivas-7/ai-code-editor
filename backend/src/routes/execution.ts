@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { pingSession } from "../services/session/sessionManager.js";
+import { touchSession } from "../services/session/sessionManager.js";
 import { requireActiveSession } from "../services/session/requireActiveSession.js";
 import { runProject } from "../services/execution/router.js";
 import { languageSchema } from "../services/execution/commands.js";
@@ -21,8 +21,12 @@ export function createExecutionRouter(backend: ExecutionBackend): Router {
     const parsed = body.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     const { sessionId, language, stdin } = parsed.data;
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "unauthenticated" });
+    }
 
-    const session = requireActiveSession(res, sessionId);
+    const session = requireActiveSession(res, sessionId, userId);
     if (!session) return;
 
     try {
@@ -31,7 +35,7 @@ export function createExecutionRouter(backend: ExecutionBackend): Router {
         language,
         stdin,
       });
-      pingSession(sessionId);
+      touchSession(sessionId);
       res.json(result);
     } catch (err) {
       next(err);

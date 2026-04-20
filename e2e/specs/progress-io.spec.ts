@@ -5,7 +5,8 @@
 // and invalid-JSON rejection — both surface via the inline [role="status"]
 // error pill, not a browser alert.
 
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -22,7 +23,13 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.locator('[role="dialog"]')).toBeVisible();
 }
 
-test.describe("progress I/O", () => {
+// Phase 18b: progress now lives in Supabase Postgres, so cross-device sync
+// happens automatically on sign-in and the local Export/Import flow is
+// effectively obsolete. The ProgressIOControls UI is still mounted (still
+// exports whatever's in the owned localStorage prefix) but drives no real
+// data post-18b. The spec is skipped here until the feature is either
+// reworked against the server API or removed from the Settings panel.
+test.describe.skip("progress I/O", () => {
   // The file-upload flow (setInputFiles → React onChange → confirm modal)
   // was intermittently racy under 4-worker parallelism — the change event
   // would land but the modal render wouldn't make it before the next

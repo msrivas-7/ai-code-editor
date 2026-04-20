@@ -4,7 +4,8 @@
 // portaled modal that renders from the gear-icon SettingsButton (present on
 // every page via the global chrome).
 
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { markOnboardingDone, seedApiKey } from "../fixtures/profiles";
@@ -25,15 +26,16 @@ test.describe("settings panel", () => {
     await page.goto("/");
     await openSettings(page);
 
-    // Light
+    // Light — Phase 18b: theme persists through `preferences.theme` on the
+    // server; the only user-visible effect we can assert here without racing
+    // the PATCH is the <html data-theme> attribute. A later reload-persists
+    // case is covered by cross-device.spec.ts.
     await page.getByRole("button", { name: /^light$/i }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    expect(await page.evaluate(() => localStorage.getItem("ui:theme-pref"))).toBe("light");
 
     // Dark
     await page.getByRole("button", { name: /^dark$/i }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    expect(await page.evaluate(() => localStorage.getItem("ui:theme-pref"))).toBe("dark");
 
     // Close + reopen settings — selected button should remain aria-pressed=true.
     await page.keyboard.press("Escape");
@@ -44,7 +46,7 @@ test.describe("settings panel", () => {
     );
   });
 
-  test("Persona radio group updates aria-checked, blurb, and localStorage", async ({ page }) => {
+  test("Persona radio group updates aria-checked and blurb", async ({ page }) => {
     await page.goto("/");
     await openSettings(page);
 
@@ -54,17 +56,11 @@ test.describe("settings panel", () => {
     await beginner.click();
     await expect(beginner).toHaveAttribute("aria-checked", "true");
     await expect(advanced).toHaveAttribute("aria-checked", "false");
-    expect(await page.evaluate(() => localStorage.getItem("codetutor:openai-persona"))).toBe(
-      "beginner",
-    );
     // Descriptive blurb flips with the selection.
     await expect(page.getByText(/assumes little prior knowledge/i)).toBeVisible();
 
     await advanced.click();
     await expect(advanced).toHaveAttribute("aria-checked", "true");
-    expect(await page.evaluate(() => localStorage.getItem("codetutor:openai-persona"))).toBe(
-      "advanced",
-    );
     await expect(page.getByText(/dense and technical/i)).toBeVisible();
   });
 
@@ -104,11 +100,10 @@ test.describe("settings panel", () => {
     // Both mocked options should be there.
     await expect(modelSelect.locator("option")).toHaveCount(2);
 
-    // Change selection → persists to localStorage.
+    // Change selection — the <select> reflects the new value synchronously;
+    // cross-device persistence is covered in cross-device.spec.ts.
     await modelSelect.selectOption("gpt-4o");
-    await expect
-      .poll(() => page.evaluate(() => localStorage.getItem("codetutor:openai-model")))
-      .toBe("gpt-4o");
+    await expect(modelSelect).toHaveValue("gpt-4o");
   });
 
   test("Invalid key surfaces the error and hides the Model picker", async ({ page }) => {

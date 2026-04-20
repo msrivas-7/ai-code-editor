@@ -3,7 +3,7 @@
 // tabs, session resilience. All network access hits the real Docker backend —
 // only AI is mocked (tutor panel renders on this page but we don't drive it).
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { getMonacoValue, setMonacoValue, waitForMonacoReady } from "../fixtures/monaco";

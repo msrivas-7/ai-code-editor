@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 import * as path from "node:path";
+import * as dotenv from "dotenv";
+
+// Source ../.env.local so SUPABASE_SERVICE_ROLE_KEY + OPENAI_API_KEY are
+// available to fixtures/boot.ts and fixtures/auth.ts. CI provides these via
+// workflow secrets; the dotenv call is a no-op if the file is absent.
+dotenv.config({ path: path.resolve(__dirname, "..", ".env.local") });
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 const API_URL = process.env.E2E_API_URL ?? "http://localhost:4000";
@@ -15,7 +21,12 @@ export default defineConfig({
   // parallel load (setInputFiles → modal render, store-update re-renders
   // detaching buttons mid-click). CI keeps 2 retries.
   retries: IS_CI ? 2 : 1,
-  workers: IS_CI ? 2 : undefined,
+  // Local: 4 workers. Eight workers × (Docker container create + Supabase auth
+  // round-trip) saturates the docker-socket-proxy under parallel load and
+  // tests race to 30s session-start timeouts. Four is the sweet spot on an
+  // M1 Pro — plenty of CPU headroom, stable under parallel container churn.
+  // CI stays at 2 so we don't starve the runner.
+  workers: IS_CI ? 2 : 4,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: IS_CI
@@ -23,6 +34,7 @@ export default defineConfig({
     : [["html", { open: "never" }], ["list"]],
 
   globalSetup: path.resolve(__dirname, "fixtures/boot.ts"),
+  globalTeardown: path.resolve(__dirname, "fixtures/teardown.ts"),
 
   use: {
     baseURL: BASE_URL,

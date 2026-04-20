@@ -11,12 +11,15 @@ import { StatusBar } from "../components/StatusBar";
 import { Splitter } from "../components/Splitter";
 import { useSessionLifecycle } from "../hooks/useSessionLifecycle";
 import { useGlobalShortcuts } from "../hooks/useGlobalShortcuts";
+import { useEditorProjectPersistence } from "../hooks/useEditorProjectPersistence";
 import { useAIStore } from "../state/aiStore";
-import { useProjectStore } from "../state/projectStore";
+import { useProjectStore, consumePendingEditorStdin } from "../state/projectStore";
 import { useRunStore } from "../state/runStore";
 import { SettingsModal } from "../components/SettingsModal";
+import { UserMenu } from "../components/UserMenu";
 import { SessionErrorBanner } from "../components/SessionErrorBanner";
-import { EditorCoach, isEditorOnboardingDone } from "../components/EditorCoach";
+import { EditorCoach } from "../components/EditorCoach";
+import { usePreferencesStore } from "../state/preferencesStore";
 import { clamp, clampSide, usePersistedNumber, usePersistedFlag } from "../util/layoutPrefs";
 import { COACH_AUTO_OPEN_MS } from "../util/timings";
 
@@ -40,11 +43,16 @@ export default function EditorPage() {
   const switchRunContext = useRunStore((s) => s.switchRunContext);
   useSessionLifecycle();
   useGlobalShortcuts();
+  useEditorProjectPersistence();
 
   useEffect(() => {
     switchChatContext("editor");
     switchProjectContext("editor");
-    switchRunContext("editor", { stdin: "" });
+    // Persisted stdin (if any) was captured during auth-time editor-project
+    // hydration; consume it here so the first Editor visit after sign-in
+    // seeds it. Null falls back to the starter stdin for the current lang.
+    const pendingStdin = consumePendingEditorStdin();
+    switchRunContext("editor", pendingStdin !== null ? { stdin: pendingStdin } : undefined);
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const [leftW, setLeftW] = usePersistedNumber(LS_LEFT, DEFAULTS.left);
@@ -62,12 +70,13 @@ export default function EditorPage() {
   const outputRef = useRef<HTMLDivElement>(null);
   const tutorRef = useRef<HTMLElement>(null);
 
+  const editorCoachDone = usePreferencesStore((s) => s.editorCoachDone);
   useEffect(() => {
-    if (!isEditorOnboardingDone()) {
+    if (!editorCoachDone) {
       const t = setTimeout(() => setShowCoach(true), COACH_AUTO_OPEN_MS);
       return () => clearTimeout(t);
     }
-  }, []);
+  }, [editorCoachDone]);
 
   return (
     <div className="flex h-full flex-col bg-bg text-ink">
@@ -116,6 +125,7 @@ export default function EditorPage() {
               <path d="M13.87 9.4l1.09.64a.5.5 0 01.17.68l-1.5 2.6a.5.5 0 01-.68.18l-1.08-.63a5.44 5.44 0 01-1.78 1.03l-.17 1.25a.5.5 0 01-.5.44h-3a.5.5 0 01-.5-.44L5.75 13.9a5.44 5.44 0 01-1.78-1.03l-1.08.63a.5.5 0 01-.68-.17l-1.5-2.6a.5.5 0 01.17-.68l1.09-.64a5.38 5.38 0 010-2l-1.09-.65a.5.5 0 01-.17-.68l1.5-2.6a.5.5 0 01.68-.17l1.08.63A5.44 5.44 0 015.75 2.1l.17-1.25A.5.5 0 016.42.4h3a.5.5 0 01.5.44l.17 1.26c.67.25 1.28.6 1.78 1.03l1.08-.63a.5.5 0 01.68.17l1.5 2.6a.5.5 0 01-.17.68l-1.09.65a5.38 5.38 0 010 2z" />
             </svg>
           </button>
+          <UserMenu />
         </div>
       </header>
 

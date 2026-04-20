@@ -6,6 +6,7 @@ import { useProgressStore } from "../stores/progressStore";
 import { useLearnerStore } from "../stores/learnerStore";
 import { LessonList } from "../components/LessonList";
 import { SettingsButton } from "../../../components/SettingsButton";
+import { UserMenu } from "../../../components/UserMenu";
 import { Modal } from "../../../components/Modal";
 import type { ProgressStatus } from "../types";
 
@@ -85,8 +86,9 @@ export default function CourseOverviewPage() {
         <h1 className="text-sm font-semibold tracking-tight">
           {course?.title ?? "Course"}
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <SettingsButton />
+          <UserMenu />
         </div>
       </header>
 

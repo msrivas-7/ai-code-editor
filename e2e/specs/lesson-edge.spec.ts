@@ -2,11 +2,11 @@
 // overview, and the resume toast (saved code restoration). Each test exercises
 // a narrow surface that's easy to regress during UI refactors.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { setMonacoValue, waitForMonacoReady } from "../fixtures/monaco";
-import { loadProfile, markOnboardingDone } from "../fixtures/profiles";
+import { loadProfile, markOnboardingDone, seedLessonProgress } from "../fixtures/profiles";
 import { readLessonSolution } from "../fixtures/solutions";
 import * as S from "../utils/selectors";
 
@@ -15,7 +15,6 @@ const COURSE_ID = "python-fundamentals";
 test.describe("lesson edge cases", () => {
   test.beforeEach(async ({ page }) => {
     await mockAllAI(page);
-    await markOnboardingDone(page);
   });
 
   test("input-output lesson: stdin tab text feeds input() at runtime", async ({ page }) => {
@@ -64,25 +63,13 @@ test.describe("lesson edge cases", () => {
     const SAVED_CODE = "print('resumed from a previous session')\n";
     await loadProfile(page, "empty");
 
-    // Seed a lesson progress record with lastCode BEFORE navigation so the
-    // LessonPage loader effect sees it on first paint.
-    await page.addInitScript(
-      ({ courseId, lessonId, code }) => {
-        const key = `learner:v1:lesson:${courseId}:${lessonId}`;
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            courseId,
-            lessonId,
-            status: "in_progress",
-            attemptCount: 1,
-            lastCode: { "main.py": code },
-            startedAt: new Date().toISOString(),
-          }),
-        );
-      },
-      { courseId: COURSE_ID, lessonId: "hello-world", code: SAVED_CODE },
-    );
+    // Seed a lesson progress row with lastCode on the server so the
+    // LessonPage loader effect sees it on first hydrate.
+    await seedLessonProgress(page, COURSE_ID, "hello-world", {
+      status: "in_progress",
+      attemptCount: 1,
+      lastCode: { "main.py": SAVED_CODE },
+    });
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
@@ -106,23 +93,11 @@ test.describe("lesson edge cases", () => {
 
   test("resume toast auto-dismisses after RESUME_TOAST_MS (3s)", async ({ page }) => {
     await loadProfile(page, "empty");
-    await page.addInitScript(
-      ({ courseId, lessonId }) => {
-        const key = `learner:v1:lesson:${courseId}:${lessonId}`;
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            courseId,
-            lessonId,
-            status: "in_progress",
-            attemptCount: 1,
-            lastCode: { "main.py": "print('x')\n" },
-            startedAt: new Date().toISOString(),
-          }),
-        );
-      },
-      { courseId: COURSE_ID, lessonId: "hello-world" },
-    );
+    await seedLessonProgress(page, COURSE_ID, "hello-world", {
+      status: "in_progress",
+      attemptCount: 1,
+      lastCode: { "main.py": "print('x')\n" },
+    });
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);

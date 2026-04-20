@@ -1,11 +1,8 @@
-// Allow-list-based localStorage snapshot/restore primitives. Used both by
-// the end-user Export/Import Progress feature in Settings and by the
-// (dev-only) profile switcher. Lives outside __dev__/ so the prod bundle
-// keeps the user-facing import/export path.
-//
-// The allow-list is the safety contract: only keys under these prefixes are
-// ever read or written, so a pasted/imported snapshot can't tamper with API
-// keys, theme preference, UI size prefs, or the dev-mode flags.
+// Allow-list-based localStorage snapshot/restore primitives. Used by the
+// end-user Export/Import Progress feature in Settings. The allow-list is
+// the safety contract: only keys under these prefixes are ever read or
+// written, so a pasted/imported snapshot can't tamper with API keys, theme
+// preference, or UI size prefs.
 
 const OWNED_PREFIXES = [
   "learner:v1:",

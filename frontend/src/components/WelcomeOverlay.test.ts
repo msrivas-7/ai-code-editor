@@ -1,19 +1,27 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const storage = new Map<string, string>();
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-  get length() { return storage.size; },
-  key: () => null as string | null,
-});
+const state = { welcomeDone: false };
+const marked: string[] = [];
+
+vi.mock("../state/preferencesStore", () => ({
+  usePreferencesStore: Object.assign(
+    (selector: (s: typeof state) => unknown) => selector(state),
+    {
+      getState: () => state,
+      subscribe: () => () => {},
+    },
+  ),
+  markOnboardingDone: (flag: string) => {
+    marked.push(flag);
+    if (flag === "welcomeDone") state.welcomeDone = true;
+  },
+}));
 
 import { isWelcomeDone, markWelcomeDone } from "./WelcomeOverlay";
 
 beforeEach(() => {
-  storage.clear();
+  state.welcomeDone = false;
+  marked.length = 0;
 });
 
 describe("WelcomeOverlay logic", () => {
@@ -26,8 +34,8 @@ describe("WelcomeOverlay logic", () => {
     expect(isWelcomeDone()).toBe(true);
   });
 
-  it("uses correct localStorage key", () => {
+  it("markWelcomeDone delegates to preferencesStore with the welcomeDone flag", () => {
     markWelcomeDone();
-    expect(storage.get("onboarding:v1:welcome-done")).toBe("1");
+    expect(marked).toEqual(["welcomeDone"]);
   });
 });

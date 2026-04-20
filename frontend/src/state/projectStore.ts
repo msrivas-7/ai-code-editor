@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { Language, ProjectFile } from "../types";
 import { useAIStore } from "./aiStore";
+import { api } from "../api/client";
+import { currentGen } from "../auth/generation";
 
 interface Starter {
   files: ProjectFile[];
@@ -589,6 +591,14 @@ interface ProjectState {
   openTabs: string[];
   pendingReveal: RevealTarget | null;
   projectContext: string | null;
+  // Phase 18b: tracks whether the editor-mode project has been pulled from
+  // the server for the current user. The auth flow calls `hydrateEditor()`
+  // on SIGNED_IN / initial session recovery so MonacoPane mounts with the
+  // persisted content already in `files` rather than flashing the starter.
+  editorHydrated: boolean;
+  editorHydrateError: string | null;
+  hydrateEditor: (gen?: number) => Promise<void>;
+  resetEditorHydration: () => void;
   setLanguage: (lang: Language) => void;
   setActive: (path: string) => void;
   openFile: (path: string) => void;
@@ -625,11 +635,78 @@ function seedFor(lang: Language) {
 
 let revealTicket = 0;
 
+// Side channel for editor-mode stdin pulled during hydrateEditor(). runStore
+// reads this (via `consumePendingEditorStdin()`) when Editor mode first
+// activates. Using a module-level slot keeps projectStore from importing
+// runStore (which imports starterStdin from here — cycle).
+let pendingEditorStdin: string | null = null;
+export function consumePendingEditorStdin(): string | null {
+  const v = pendingEditorStdin;
+  pendingEditorStdin = null;
+  return v;
+}
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   language: "python",
   ...seedFor("python"),
   pendingReveal: null,
   projectContext: null,
+  editorHydrated: false,
+  editorHydrateError: null,
+  hydrateEditor: async (gen) => {
+    set({ editorHydrateError: null });
+    try {
+      const remote = await api.getEditorProject();
+      if (gen !== undefined && gen !== currentGen()) return;
+      const hasFiles = Object.keys(remote.files ?? {}).length > 0;
+      if (hasFiles) {
+        // Server has a persisted project — overwrite the in-memory starter
+        // so MonacoPane's first render sees the user's code. We also push
+        // the snapshot into `projectCache` under the "editor" key so a
+        // later `switchProjectContext("editor")` from a lesson page picks
+        // it up instead of falling back to defaults.
+        const snapshot: ProjectSnapshot = {
+          language: remote.language as Language,
+          files: remote.files,
+          order: remote.fileOrder,
+          activeFile: remote.activeFile,
+          openTabs: remote.openTabs,
+        };
+        projectCache.set("editor", snapshot);
+        // Only apply to the live store if we're not already inside a lesson
+        // (projectContext !== "editor" and !== null means lesson); on the
+        // StartPage the context is null so it's safe to pre-seed.
+        const state = get();
+        if (state.projectContext === null || state.projectContext === "editor") {
+          set({
+            language: snapshot.language,
+            files: snapshot.files,
+            order: snapshot.order,
+            activeFile: snapshot.activeFile,
+            openTabs: snapshot.openTabs,
+            pendingReveal: null,
+          });
+        }
+        // Stash stdin on the store under a side channel — runStore reads it
+        // when it picks up the editor context. We don't call useRunStore
+        // directly here to avoid a projectStore → runStore circular import;
+        // useRunStore already imports from this module.
+        pendingEditorStdin = remote.stdin;
+      }
+      set({ editorHydrated: true });
+    } catch (err) {
+      if (gen !== undefined && gen !== currentGen()) return;
+      const msg = (err as Error).message;
+      console.error("[editorProject] hydrate failed:", msg);
+      // Leave `editorHydrated: false` — see HydrationGate rationale.
+      set({ editorHydrateError: msg });
+    }
+  },
+  resetEditorHydration: () => {
+    projectCache.delete("editor");
+    pendingEditorStdin = null;
+    set({ editorHydrated: false, editorHydrateError: null });
+  },
   setLanguage: (lang) => set({ language: lang }),
   setActive: (path) => set({ activeFile: path }),
   openFile: (path) =>
