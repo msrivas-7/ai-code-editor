@@ -73,6 +73,10 @@ All optional — defaults work for local use. See [.env.example](../.env.example
 | `RUNNER_MEMORY_BYTES` | `536870912` | Per-container memory (512 MB) |
 | `RUNNER_NANO_CPUS` | `1000000000` | Per-container CPU (1 CPU) |
 | `CORS_ORIGIN` | `http://localhost:5173` | Frontend origin |
+| `EXECUTION_BACKEND` | `local-docker` | Execution backend impl (future: cloud variants) |
+| `DOCKER_HOST` | `tcp://socket-proxy:2375` | Docker endpoint — set by compose so dockerode talks to the allowlisted socket proxy, not the raw socket |
+| `AI_RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window for `/api/ai/*` |
+| `AI_RATE_LIMIT_MAX` | `60` | Max AI requests per window per session |
 
 ## Direct Docker Compose
 

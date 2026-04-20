@@ -12,6 +12,10 @@ export function truncate(s: string, max: number): string {
   return s.slice(0, max) + `\n… [truncated, ${s.length - max} more chars]`;
 }
 
+// Untrusted-data framing: file content may contain prompt-like text ("ignore
+// previous instructions…"). Wrap every file in a <user_file> tag so the model
+// can treat it as *data* to analyse, never as instructions to follow. The
+// partner rule lives in coreRules.ts ("Untrusted data" clause).
 export function renderFiles(files: ProjectFile[], activeFile?: string): string {
   const sorted = [...files].sort((a, b) => {
     if (a.path === activeFile) return -1;
@@ -20,9 +24,9 @@ export function renderFiles(files: ProjectFile[], activeFile?: string): string {
   });
   return sorted
     .map((f) => {
-      const marker = f.path === activeFile ? " (ACTIVE)" : "";
+      const active = f.path === activeFile ? " active=\"true\"" : "";
       const body = truncate(f.content, MAX_FILE_CHARS);
-      return `--- ${f.path}${marker} ---\n${body}`;
+      return `<user_file path=${JSON.stringify(f.path)}${active}>\n${body}\n</user_file>`;
     })
     .join("\n\n");
 }
@@ -64,5 +68,5 @@ export function renderSelection(sel: EditorSelection | null | undefined): string
     sel.startLine === sel.endLine
       ? `line ${sel.startLine}`
       : `lines ${sel.startLine}-${sel.endLine}`;
-  return `--- ${sel.path} (${span}) ---\n${truncate(sel.text, MAX_SELECTION_CHARS)}`;
+  return `<user_selection path=${JSON.stringify(sel.path)} span=${JSON.stringify(span)}>\n${truncate(sel.text, MAX_SELECTION_CHARS)}\n</user_selection>`;
 }

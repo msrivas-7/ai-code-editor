@@ -170,22 +170,23 @@ describe("buildUserTurn", () => {
       activeFile: "main.py",
       history: [],
     });
-    const mainIdx = body.indexOf("--- main.py (ACTIVE) ---");
-    const aIdx = body.indexOf("--- a.py ---");
-    const zIdx = body.indexOf("--- z.py ---");
+    const mainIdx = body.indexOf('<user_file path="main.py" active="true">');
+    const aIdx = body.indexOf('<user_file path="a.py">');
+    const zIdx = body.indexOf('<user_file path="z.py">');
     expect(mainIdx).toBeGreaterThan(-1);
     expect(aIdx).toBeGreaterThan(mainIdx);
     expect(zIdx).toBeGreaterThan(aIdx);
   });
 
-  it("marks only the active file with (ACTIVE)", () => {
+  it("marks only the active file with active=\"true\"", () => {
     const files: ProjectFile[] = [
       { path: "a.py", content: "a" },
       { path: "b.py", content: "b" },
     ];
     const body = buildUserTurn({ question: "?", files, activeFile: "a.py", history: [] });
-    expect(body).toMatch(/--- a\.py \(ACTIVE\) ---/);
-    expect(body).not.toMatch(/--- b\.py \(ACTIVE\) ---/);
+    expect(body).toContain('<user_file path="a.py" active="true">');
+    expect(body).toContain('<user_file path="b.py">');
+    expect(body).not.toContain('<user_file path="b.py" active="true">');
   });
 
   it("truncates long file contents with a marker", () => {
@@ -318,7 +319,8 @@ describe("buildUserTurn", () => {
       },
     });
     expect(body).toMatch(/STUDENT SELECTION \(focus answer here when relevant\):/);
-    expect(body).toMatch(/--- main\.py \(line 7\) ---\nreturn mean\(xs\)/);
+    expect(body).toContain('<user_selection path="main.py" span="line 7">');
+    expect(body).toContain("return mean(xs)");
   });
 
   it("renders a multi-line selection with 'lines A-B' and places it before the question", () => {
@@ -337,7 +339,7 @@ describe("buildUserTurn", () => {
     const qIdx = body.indexOf("STUDENT QUESTION:");
     expect(selIdx).toBeGreaterThan(-1);
     expect(qIdx).toBeGreaterThan(selIdx);
-    expect(body).toMatch(/--- stats\.py \(lines 4-8\) ---/);
+    expect(body).toContain('<user_selection path="stats.py" span="lines 4-8">');
     expect(body).toMatch(/def median\(xs\):/);
   });
 

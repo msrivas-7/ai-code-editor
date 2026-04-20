@@ -1,11 +1,13 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { config } from "./config.js";
 import { sessionRouter } from "./routes/session.js";
 import { createProjectRouter } from "./routes/project.js";
 import { createExecutionRouter } from "./routes/execution.js";
 import { createExecuteTestsRouter } from "./routes/executeTests.js";
 import { aiRouter } from "./routes/ai.js";
+import { aiRateLimit } from "./middleware/aiRateLimit.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { makeExecutionBackend } from "./services/execution/backends/index.js";
 import {
@@ -18,6 +20,28 @@ async function main() {
   const app = express();
 
   app.use(cors({ origin: config.corsOrigin }));
+  // Defense-in-depth security headers: X-Content-Type-Options, Referrer-Policy,
+  // X-Frame-Options, no-store on sensitive responses, etc. CSP is a strict
+  // default-src 'self' + an explicit allowance for the OpenAI endpoint that
+  // the backend proxies to (helmet applies CSP only to HTML responses, but
+  // if any accidental HTML ever leaks, the browser will refuse third-party
+  // script/style/frame loads). Inline styles are permitted because Monaco's
+  // themed color tokens are injected via <style> tags at runtime.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          connectSrc: ["'self'", "https://api.openai.com"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+    }),
+  );
   app.use(express.json({ limit: "5mb" }));
 
   // Lightweight request log for session + AI routes so we can trace lifecycle.
@@ -49,7 +73,10 @@ async function main() {
   // /api/execute router (which handles the base path POST /).
   app.use("/api/execute/tests", createExecuteTestsRouter(executionBackend));
   app.use("/api/execute", createExecutionRouter(executionBackend));
-  app.use("/api/ai", aiRouter);
+  // Rate-limit applies only to AI calls (the expensive, OpenAI-backed ones).
+  // Per-session bucket key inside aiRateLimit; Phase 17 will swap to
+  // authenticated user id with a one-line change.
+  app.use("/api/ai", aiRateLimit, aiRouter);
 
   app.use(errorHandler);
 

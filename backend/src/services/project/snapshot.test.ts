@@ -60,6 +60,18 @@ describe("safeResolve", () => {
     it("rejects .. after backslash normalisation", () => {
       expect(() => safeResolve(ws, "a\\..\\..\\outside")).toThrow(/invalid path/);
     });
+
+    it("rejects a basename starting with '-' (compiler-glob injection)", () => {
+      expect(() => safeResolve(ws, "-O3.c")).toThrow(/invalid path/);
+    });
+
+    it("rejects a '-'-prefixed segment anywhere in the path", () => {
+      expect(() => safeResolve(ws, "src/-Wall.c")).toThrow(/invalid path/);
+    });
+
+    it("rejects a '-'-prefixed segment after backslash normalisation", () => {
+      expect(() => safeResolve(ws, "src\\-flag.c")).toThrow(/invalid path/);
+    });
   });
 
   describe("cross-platform sanity", () => {

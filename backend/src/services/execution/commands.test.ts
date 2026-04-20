@@ -55,7 +55,11 @@ describe("commandFor", () => {
     it("uses main.c and compiles with gcc", () => {
       expect(cmd.entrypoint).toBe("main.c");
       expect(cmd.compile?.shell).toMatch(/^gcc /);
-      expect(cmd.compile?.shell).toMatch(/\*\.c\b/);
+      expect(cmd.compile?.shell).toMatch(/\.\/\*\.c\b/);
+    });
+    it("prefixes the .c glob with ./ so no filename can be parsed as a flag", () => {
+      expect(cmd.compile?.shell).toContain("./*.c");
+      expect(cmd.compile?.shell).not.toMatch(/\s\*\.c\b/);
     });
     it("runs the compiled binary at /tmp/out", () => {
       expect(cmd.run.shell).toBe("/tmp/out");
@@ -71,7 +75,11 @@ describe("commandFor", () => {
     it("uses main.cpp and compiles with g++", () => {
       expect(cmd.entrypoint).toBe("main.cpp");
       expect(cmd.compile?.shell).toMatch(/^g\+\+ /);
-      expect(cmd.compile?.shell).toMatch(/\*\.cpp\b/);
+      expect(cmd.compile?.shell).toMatch(/\.\/\*\.cpp\b/);
+    });
+    it("prefixes the .cpp glob with ./ so no filename can be parsed as a flag", () => {
+      expect(cmd.compile?.shell).toContain("./*.cpp");
+      expect(cmd.compile?.shell).not.toMatch(/\s\*\.cpp\b/);
     });
     it("compiles with c++17", () => {
       expect(cmd.compile?.shell).toMatch(/-std=c\+\+17/);
@@ -86,8 +94,8 @@ describe("commandFor", () => {
     it("uses Main.java as entrypoint", () => {
       expect(cmd.entrypoint).toBe("Main.java");
     });
-    it("compiles with javac over every .java file", () => {
-      expect(cmd.compile?.shell).toBe("javac *.java");
+    it("compiles with javac over every .java file, prefixed with ./", () => {
+      expect(cmd.compile?.shell).toBe("javac ./*.java");
     });
     it("runs the Main class", () => {
       expect(cmd.run.shell).toBe("java Main");
@@ -110,7 +118,11 @@ describe("commandFor", () => {
     it("uses main.go and compiles every .go file", () => {
       expect(cmd.entrypoint).toBe("main.go");
       expect(cmd.compile?.shell).toMatch(/^go build /);
-      expect(cmd.compile?.shell).toMatch(/\*\.go\b/);
+      expect(cmd.compile?.shell).toMatch(/\.\/\*\.go\b/);
+    });
+    it("prefixes the .go glob with ./ so no filename can be parsed as a flag", () => {
+      expect(cmd.compile?.shell).toContain("./*.go");
+      expect(cmd.compile?.shell).not.toMatch(/\s\*\.go\b/);
     });
     it("runs the compiled binary at /tmp/out", () => {
       expect(cmd.run.shell).toBe("/tmp/out");

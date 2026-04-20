@@ -128,7 +128,7 @@ describe("buildGuidedUserTurn", () => {
       history: [],
       language: "python",
     });
-    expect(body).toMatch(/--- main\.py \(ACTIVE\) ---/);
+    expect(body).toContain('<user_file path="main.py" active="true">');
     expect(body).toMatch(/print\('hi'\)/);
   });
 
@@ -141,7 +141,7 @@ describe("buildGuidedUserTurn", () => {
       selection: { path: "main.py", startLine: 3, endLine: 5, text: "for i in range(10):" },
     });
     expect(body).toMatch(/STUDENT SELECTION/);
-    expect(body).toMatch(/main\.py \(lines 3-5\)/);
+    expect(body).toContain('<user_selection path="main.py" span="lines 3-5">');
     expect(body).toMatch(/for i in range\(10\):/);
   });
 

@@ -49,7 +49,10 @@ services:
       # on every host. Works in PowerShell, zsh, bash identically.
       - ./temp/sessions:/workspace-root
     ports:
-      - "4000:4000"
+      # Loopback-only bind: other machines on the LAN cannot reach the
+      # backend. Local dev only — cloud deployment puts this behind auth
+      # and a VPC (see docs/ARCHITECTURE.md).
+      - "127.0.0.1:4000:4000"
     depends_on:
       runner-image:
         condition: service_completed_successfully
@@ -65,6 +68,8 @@ services:
       # to the backend service via the compose network (not localhost).
       VITE_BACKEND_URL: "http://backend:4000"
     ports:
-      - "5173:5173"
+      # Loopback-only. Vite HMR and the learner's browser run on this host;
+      # other LAN machines do not need to see the dev server.
+      - "127.0.0.1:5173:5173"
     depends_on:
       - backend

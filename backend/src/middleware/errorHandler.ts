@@ -23,7 +23,10 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     res.status(err.status).json({ error: err.message });
     return;
   }
+  // 500 is the path for *unexpected* errors — the message often contains
+  // internal details (file paths, SQL, stack fragments) that should not leak
+  // to the client. Log the full error server-side; return a generic string.
   const message = err instanceof Error ? err.message : String(err);
-  console.error("[error] 500", message);
-  res.status(500).json({ error: message });
+  console.error("[error] 500", message, err instanceof Error ? err.stack : "");
+  res.status(500).json({ error: "Internal error" });
 };

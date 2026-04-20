@@ -34,4 +34,12 @@ export const config = {
     nanoCpus: num(process.env.RUNNER_NANO_CPUS, 1_000_000_000),
     execTimeoutMs: num(process.env.RUN_TIMEOUT_MS, 10_000),
   },
+
+  // AI-route throttle. Applied per session id, IP-fallback for pre-session
+  // endpoints. Defaults: 60 requests per rolling minute — plenty for
+  // interactive learner use, tight enough that an abusive script is capped.
+  aiRateLimit: {
+    windowMs: num(process.env.AI_RATE_LIMIT_WINDOW_MS, 60_000),
+    max: num(process.env.AI_RATE_LIMIT_MAX, 60),
+  },
 } as const;

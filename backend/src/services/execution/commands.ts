@@ -57,7 +57,12 @@ export function commandFor(language: Language): LanguageCommand {
     case "c":
       return {
         entrypoint: "main.c",
-        compile: { label: "compile", shell: "gcc -O0 -Wall -o /tmp/out *.c" },
+        // `./*.c` (not `*.c`) so shell expansion never yields a filename that
+        // looks like a flag to gcc — defense against a user dropping e.g.
+        // `-O3.c` into the workspace to inject compiler flags. Same rule for
+        // every compiled language below. The snapshot writer also rejects
+        // dash-prefixed basenames, but defense in depth.
+        compile: { label: "compile", shell: "gcc -O0 -Wall -o /tmp/out ./*.c" },
         run: { label: "run", shell: "/tmp/out" },
       };
     case "cpp":
@@ -65,14 +70,14 @@ export function commandFor(language: Language): LanguageCommand {
         entrypoint: "main.cpp",
         compile: {
           label: "compile",
-          shell: "g++ -std=c++17 -O0 -Wall -o /tmp/out *.cpp",
+          shell: "g++ -std=c++17 -O0 -Wall -o /tmp/out ./*.cpp",
         },
         run: { label: "run", shell: "/tmp/out" },
       };
     case "java":
       return {
         entrypoint: "Main.java",
-        compile: { label: "compile", shell: "javac *.java" },
+        compile: { label: "compile", shell: "javac ./*.java" },
         run: { label: "run", shell: "java Main" },
       };
     case "typescript":
@@ -84,7 +89,7 @@ export function commandFor(language: Language): LanguageCommand {
     case "go":
       return {
         entrypoint: "main.go",
-        compile: { label: "compile", shell: "go build -o /tmp/out *.go" },
+        compile: { label: "compile", shell: "go build -o /tmp/out ./*.go" },
         run: { label: "run", shell: "/tmp/out" },
       };
     case "rust":

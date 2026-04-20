@@ -3,13 +3,17 @@ import { z } from "zod";
 import { getSession, pingSession } from "../services/session/sessionManager.js";
 import type { ExecutionBackend } from "../services/execution/backends/index.js";
 
+// Per-file cap matches the Express body cap divided across the `files` array.
+// express.json({ limit: "5mb" }) already bounds the whole request; this
+// per-file cap keeps a single file from consuming the entire budget and
+// matches the runner-side practical file size (no learner lesson is 200 kB).
 const snapshotBody = z.object({
   sessionId: z.string().min(1),
   files: z
     .array(
       z.object({
         path: z.string().min(1).max(256),
-        content: z.string().max(1_000_000),
+        content: z.string().max(200_000),
       })
     )
     .max(50),

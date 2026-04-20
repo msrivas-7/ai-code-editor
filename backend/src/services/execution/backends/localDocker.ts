@@ -81,6 +81,18 @@ export class LocalDockerBackend implements ExecutionBackend {
       AttachStdout: false,
       AttachStderr: false,
       NetworkDisabled: true,
+      // ReadonlyRootfs leaves /home/runner unwritable, so compile toolchains
+      // with a HOME-rooted cache would fail. Redirect all known caches into
+      // the tmpfs-backed /tmp. Keeping HOME itself outside /tmp avoids
+      // surprising shell globs with the sticky-bit-mode directory.
+      Env: [
+        "GOCACHE=/tmp/.cache/go-build",
+        "GOMODCACHE=/tmp/.cache/go-mod",
+        "GOTMPDIR=/tmp",
+        "XDG_CACHE_HOME=/tmp/.cache",
+        "CARGO_HOME=/tmp/.cargo",
+        "NPM_CONFIG_CACHE=/tmp/.npm",
+      ],
       HostConfig: {
         AutoRemove: true,
         NetworkMode: "none",
@@ -88,6 +100,24 @@ export class LocalDockerBackend implements ExecutionBackend {
         NanoCpus: this.opts.runner.nanoCpus,
         PidsLimit: 256,
         Binds: [`${hostWorkspacePath}:/workspace`],
+        // Kernel-capability + filesystem hardening. These flags map 1:1 to
+        // K8s SecurityContext / ECS task-definition / ACI container-group
+        // fields, so the cloud impls inherit the same posture for free.
+        //  - CapDrop ALL: drop every capability including CAP_CHOWN, CAP_KILL.
+        //  - ReadonlyRootfs: user code can't mutate the image contents
+        //    (e.g. writing into /etc or /usr/local).
+        //  - Tmpfs /tmp: compiler toolchains need a writable /tmp for object
+        //    files; tmpfs is in-memory, size-capped, and vanishes on stop.
+        //  - Ulimits (nofile): cap open FDs at 256 per process. We rely on
+        //    PidsLimit (above) for fork-bomb protection rather than a nproc
+        //    ulimit — RLIMIT_NPROC is per-uid on the host and would be
+        //    shared across every session container running as `runner`,
+        //    causing EAGAIN exec failures under concurrent load. PidsLimit
+        //    uses cgroups and is correctly scoped to a single container.
+        CapDrop: ["ALL"],
+        ReadonlyRootfs: true,
+        Tmpfs: { "/tmp": "size=64m,mode=1777" },
+        Ulimits: [{ Name: "nofile", Soft: 256, Hard: 256 }],
         SecurityOpt: ["no-new-privileges"],
       },
     });
