@@ -387,6 +387,38 @@ export async function seedApiKey(
   }
 }
 
+// Seed `completedLessonIds` on the course row so useLessonLoader's prereq
+// guard lets a spec deep-link into a mid-course lesson without cascading
+// through every prior lesson's completion flow. Pair with `loadProfile`'s
+// "empty" baseline: empty clears state, this helper layers the specific
+// prereqs back in.
+export async function seedCompletedLessons(
+  _page: Page,
+  courseId: string,
+  completedLessonIds: string[],
+): Promise<void> {
+  const workerIndex = test.info().workerIndex;
+  const user = await getWorkerUser(workerIndex);
+  const token = user.session.access_token;
+  const ctx = await newBackendContext();
+  try {
+    await ctx.patch(`${BACKEND}/api/user/courses/${courseId}`, {
+      headers: {
+        "X-Requested-With": "codetutor",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        status: "in_progress",
+        startedAt: new Date().toISOString(),
+        completedLessonIds,
+      },
+    });
+  } finally {
+    await ctx.dispose();
+  }
+}
+
 // Seed a single lesson's server row so the SPA's next hydrate finds saved
 // lastCode / status / attemptCount. Callers pass the fields they care about;
 // all others default to the backend's zero state.

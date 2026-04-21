@@ -57,6 +57,29 @@ test.describe("lesson edge cases", () => {
     await expect(lockedVariables).toBeDisabled();
   });
 
+  test("locked lesson: direct URL to a prereq-blocked lesson bounces to course page", async ({
+    page,
+  }) => {
+    // The LessonList gate only covers click paths; a learner who pastes or
+    // bookmarks a lesson URL would otherwise unlock it. useLessonLoader has
+    // a matching prereq check that redirects to the course page when
+    // prereqs are unmet AND the lesson has no prior progress.
+    await loadProfile(page, "empty");
+    await page.goto(`/learn/course/${COURSE_ID}/lesson/variables`);
+
+    // URL must land on the course overview, not stay on the lesson.
+    await expect(page).toHaveURL(new RegExp(`/learn/course/${COURSE_ID}$`), {
+      timeout: 10_000,
+    });
+    // And the locked lesson button should be visible + disabled — same
+    // state as if the learner had opened the course page directly.
+    await expect(
+      page.getByRole("button", {
+        name: /variables.*locked.*complete prerequisites first/i,
+      }),
+    ).toBeDisabled();
+  });
+
   test("resume toast: seeded lastCode triggers 'Your code was restored' banner", async ({
     page,
   }) => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Lesson } from "../types";
 import { loadAllLessonMetas, loadCourse, loadFullLesson } from "../content/courseLoader";
 import { conceptsAvailableBefore } from "../content/conceptGraph";
@@ -33,6 +34,7 @@ export function useLessonLoader({
   practiceIndex,
   onResetPerLessonState,
 }: UseLessonLoaderArgs) {
+  const navigate = useNavigate();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [totalLessons, setTotalLessons] = useState(10);
   const [lessonOrder, setLessonOrder] = useState<string[]>([]);
@@ -79,6 +81,23 @@ export function useLessonLoader({
     ])
       .then(([l, course, metas]) => {
         if (cancelled) return;
+        // Prereq guard: a direct URL to a locked lesson must not unlock it.
+        // Mirrors LessonList.tsx's gate — prereqs unmet + no prior progress
+        // means bounce to the course page, which shows the lock icon and
+        // the learner's actual next-up lesson. We check BEFORE startLesson
+        // so an unauthorized visit doesn't create an in_progress record
+        // that would then self-unlock the lesson on refresh.
+        const progressState = useProgressStore.getState();
+        const completedIds = progressState.courseProgress[courseId]?.completedLessonIds ?? [];
+        const existingStatus =
+          progressState.lessonProgress[`${courseId}/${lessonId}`]?.status ?? "not_started";
+        const prereqsMet =
+          l.prerequisiteLessonIds.length === 0 ||
+          l.prerequisiteLessonIds.every((id) => completedIds.includes(id));
+        if (!prereqsMet && existingStatus === "not_started") {
+          navigate(`/learn/course/${courseId}`, { replace: true });
+          return;
+        }
         setLesson(l);
         setTotalLessons(course.lessonOrder.length);
         setLessonOrder(course.lessonOrder);

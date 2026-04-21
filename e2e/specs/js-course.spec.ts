@@ -15,7 +15,7 @@ import {
   setMonacoValue,
   waitForMonacoReady,
 } from "../fixtures/monaco";
-import { loadProfile, markOnboardingDone } from "../fixtures/profiles";
+import { loadProfile, markOnboardingDone, seedCompletedLessons } from "../fixtures/profiles";
 import { readLessonSolution, readPracticeSolution } from "../fixtures/solutions";
 import * as S from "../utils/selectors";
 import { expectLessonComplete, expectStdoutContains } from "../utils/assertions";
@@ -62,6 +62,10 @@ test.describe("javascript-fundamentals course", () => {
 
   test("lesson 5 (functions-basics) — function_tests harness end-to-end", async ({ page }) => {
     await loadProfile(page, "empty");
+    // useLessonLoader now gates direct URLs on prereq completion. The spec
+    // deep-links into lesson 5; seed its direct prereq (`loops`) so the
+    // guard lets us through without cascading through lessons 1–4.
+    await seedCompletedLessons(page, COURSE_ID, ["loops"]);
     await page.goto(`/learn/course/${COURSE_ID}/lesson/functions-basics`);
     await waitForMonacoReady(page);
     await expect(S.lessonRunButton(page)).toBeEnabled({ timeout: 30_000 });
@@ -87,6 +91,7 @@ test.describe("javascript-fundamentals course", () => {
 
   test("lesson 8 (mini-project) — mixed rules all complete on golden code", async ({ page }) => {
     await loadProfile(page, "empty");
+    await seedCompletedLessons(page, COURSE_ID, ["objects-basics"]);
     await page.goto(`/learn/course/${COURSE_ID}/lesson/mini-project`);
     await waitForMonacoReady(page);
     await expect(S.lessonRunButton(page)).toBeEnabled({ timeout: 30_000 });
@@ -127,6 +132,7 @@ test.describe("javascript-fundamentals course", () => {
 
   test("arrays-basics practice exercise runs against the JS harness", async ({ page }) => {
     await loadProfile(page, "empty");
+    await seedCompletedLessons(page, COURSE_ID, ["functions-basics"]);
     await page.goto(`/learn/course/${COURSE_ID}/lesson/arrays-basics`);
     await waitForMonacoReady(page);
     await expect(S.lessonRunButton(page)).toBeEnabled({ timeout: 30_000 });
