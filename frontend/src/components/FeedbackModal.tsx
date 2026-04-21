@@ -50,13 +50,23 @@ export function buildDiagnostics(pathname: string): Diagnostics {
 
 interface FeedbackModalProps {
   onClose: () => void;
+  // Optional pre-seeding for contextual entry points (e.g. the lesson-end
+  // chip). Only the initial mount honours these — once the learner edits
+  // the field, controlled state takes over.
+  initialCategory?: Category;
+  initialBody?: string;
+  // Fires once when the backend confirms the insert. Distinct from onClose
+  // because a learner can cancel with X or Escape mid-send; callers that
+  // care about "actually submitted this session" (see LessonFeedbackChip)
+  // need the submitted signal, not just any close.
+  onSubmitted?: () => void;
 }
 
-export function FeedbackModal({ onClose }: FeedbackModalProps) {
+export function FeedbackModal({ onClose, initialCategory, initialBody, onSubmitted }: FeedbackModalProps) {
   const headingId = useId();
   const location = useLocation();
-  const [body, setBody] = useState("");
-  const [category, setCategory] = useState<Category>("other");
+  const [body, setBody] = useState(initialBody ?? "");
+  const [category, setCategory] = useState<Category>(initialCategory ?? "other");
   const [attach, setAttach] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
@@ -86,6 +96,7 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
       });
       setSubmittedId(res.id);
       setStatus("sent");
+      onSubmitted?.();
     } catch (e) {
       const msg =
         e instanceof ApiError

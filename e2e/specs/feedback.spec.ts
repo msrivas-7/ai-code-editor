@@ -10,12 +10,17 @@
 //      honest across the stack.
 
 import { expect, test } from "../fixtures/auth";
-import { markOnboardingDone } from "../fixtures/profiles";
+import { loadProfile, markOnboardingDone } from "../fixtures/profiles";
 import { request } from "@playwright/test";
 import { getWorkerUser } from "../fixtures/auth";
+import { setMonacoValue, waitForMonacoReady } from "../fixtures/monaco";
+import { readLessonSolution } from "../fixtures/solutions";
+import * as S from "../utils/selectors";
+import { expectLessonComplete } from "../utils/assertions";
 
 const BACKEND = process.env.E2E_API_URL ?? "http://localhost:4000";
 const ORIGIN = process.env.E2E_APP_ORIGIN ?? "http://localhost:5173";
+const COURSE_ID = "python-fundamentals";
 
 test.describe("feedback modal", () => {
   test.beforeEach(async ({ page }) => {
@@ -141,5 +146,72 @@ test.describe("feedback modal", () => {
     } finally {
       await ctx.dispose();
     }
+  });
+});
+
+// Phase 20-P1 follow-up: the lesson-end feedback chip. Complements the
+// persistent FeedbackButton by harvesting signal at peak context (the moment
+// a learner finishes a lesson). Two invariants only e2e can prove:
+//   1. The chip renders inside LessonCompletePanel and each mood opens the
+//      modal with the documented category / body prefix — mis-mapping here
+//      would silently drown "confusing" signal inside generic traffic.
+//   2. The persistent FeedbackButton restyle still has the stable testid
+//      after the copy/class churn, so the rest of this file doesn't go
+//      stale on the next prominence tweak.
+
+test.describe("lesson-end feedback chip", () => {
+  test.beforeEach(async ({ page }) => {
+    await markOnboardingDone(page);
+    await loadProfile(page, "empty");
+  });
+
+  async function completeHelloWorld(page: Parameters<typeof waitForMonacoReady>[0]) {
+    await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
+    await waitForMonacoReady(page);
+    await expect(S.lessonRunButton(page)).toBeEnabled({ timeout: 30_000 });
+    await setMonacoValue(page, readLessonSolution(COURSE_ID, "hello-world"));
+    await S.lessonRunButton(page).click();
+    await expect(S.outputPanel(page)).toContainText(/Hello, World!/, { timeout: 20_000 });
+    await S.checkMyWorkButton(page).click();
+    await expectLessonComplete(page);
+  }
+
+  test("chip renders on LessonCompletePanel with three mood buttons", async ({ page }) => {
+    await completeHelloWorld(page);
+    const chip = page.getByTestId("lesson-feedback-chip");
+    await expect(chip).toBeVisible();
+    await expect(chip.getByText(/how was this lesson\?/i)).toBeVisible();
+    for (const mood of ["good", "okay", "bad"] as const) {
+      await expect(page.getByTestId(`lesson-feedback-${mood}`)).toBeVisible();
+    }
+  });
+
+  test("😕 opens the modal pre-selecting Bug and seeding the body with the lesson title", async ({
+    page,
+  }) => {
+    await completeHelloWorld(page);
+    await page.getByTestId("lesson-feedback-bad").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    // The Bug radio should be the active one — radio buttons in the modal
+    // are <button role=radio aria-checked>, so assert aria-checked directly.
+    await expect(dialog.getByRole("radio", { name: /bug/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // Body should be pre-seeded with "Lesson: Hello, World" so the learner
+    // starts writing from context rather than staring at a blank textarea.
+    const textarea = dialog.getByLabel(/feedback message/i);
+    await expect(textarea).toHaveValue(/^Lesson: Hello, World/);
+  });
+
+  test("😊 opens the modal pre-selecting Other (positive ≠ bug)", async ({ page }) => {
+    await completeHelloWorld(page);
+    await page.getByTestId("lesson-feedback-good").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("radio", { name: /other/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 });

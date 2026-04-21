@@ -1,6 +1,7 @@
 import type { LessonMeta } from "../types";
 import { formatTimeSpent, type MasteryLevel } from "../utils/mastery";
 import { Modal } from "../../../components/Modal";
+import { LessonFeedbackChip } from "./LessonFeedbackChip";
 
 interface LessonCompletePanelProps {
   lesson: LessonMeta;
@@ -197,6 +198,8 @@ export function LessonCompletePanel({
             </>
           )}
         </div>
+
+        <LessonFeedbackChip lessonTitle={lesson.title} />
       </div>
     </Modal>
   );

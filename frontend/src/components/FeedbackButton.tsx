@@ -24,16 +24,16 @@ export function FeedbackButton() {
         onClick={() => setOpen(true)}
         aria-label="Give feedback"
         data-testid="feedback-button"
-        className="fixed bottom-3 left-3 z-40 inline-flex items-center gap-1.5 rounded-full border border-border bg-panel/90 px-3 py-1.5 text-[11px] font-medium text-muted shadow-lg backdrop-blur transition hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="fixed bottom-3 left-3 z-40 inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-panel/95 px-3.5 py-1.5 text-xs font-medium text-accent shadow-lg backdrop-blur transition hover:bg-accent/10 hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <svg
-          width="12"
-          height="12"
+          width="14"
+          height="14"
           viewBox="0 0 16 16"
           fill="currentColor"
           aria-hidden="true"
         >
-          <path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7A1.5 1.5 0 0112.5 12H7.7l-2.9 2.3a.5.5 0 01-.8-.4V12h-.5A1.5 1.5 0 012 10.5v-7z" />
+          <path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v7A1.5 1.5 0 0112.5 12H7.7l-2.9 2.3a.5.5 0 01-.8-.4V12h-.5A1.5 1.5 0 012 10.5v-7zM5 6a.75.75 0 000 1.5h6A.75.75 0 0011 6H5zm0 2.5a.75.75 0 000 1.5h4a.75.75 0 000-1.5H5z" />
         </svg>
         Feedback
       </button>
