@@ -17,6 +17,8 @@ import {
   deleteLessonProgress,
 } from "../db/lessonProgress.js";
 import { getEditorProject, saveEditorProject } from "../db/editorProject.js";
+import { adminDeleteUser, isAdminAvailable } from "../db/supabaseAdmin.js";
+import { destroyUserSessions } from "../services/session/sessionManager.js";
 import { HttpError } from "../middleware/errorHandler.js";
 
 // Phase 18b: /api/user/* endpoints. authMiddleware upstream guarantees
@@ -338,6 +340,56 @@ userDataRouter.put("/editor-project", async (req, res, next) => {
   try {
     const project = await saveEditorProject(requireUser(req), parsed.data);
     res.json(project);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- account deletion (Phase 20-P0 #9) ----------
+//
+// Self-service deletion. Flow:
+//   1. UI posts `{confirmEmail}`; we match it (case-insensitive) against the
+//      email claim on the user's current access token. Belt-and-suspenders
+//      against a confused-click from an accidentally-shared laptop.
+//   2. Tear down any live runner containers owned by this user (the session
+//      map is per-process in-memory; without this step the container keeps
+//      running after the owning row is gone, billing us CPU until the idle
+//      sweeper reaps it).
+//   3. Call supabase.auth.admin.deleteUser. The public.* tables all have
+//      `ON DELETE CASCADE` on their auth.users(id) FK (see 20260420000000_
+//      phase18b_user_data.sql), so user_preferences, course_progress,
+//      lesson_progress, editor_project all drop with the auth row. No need
+//      to enumerate tables here — the FK graph is the source of truth.
+//
+// `SUPABASE_SERVICE_ROLE_KEY` is required for step 3. If it's missing we
+// 501 rather than pretend to succeed; Phase 20-P1 contemplates dropping
+// the key from the VM, at which point this route either flips to an Edge
+// Function or stays 501'd.
+const deleteAccountSchema = z.object({
+  confirmEmail: z.string().min(3).max(320),
+}).strict();
+
+userDataRouter.delete("/account", async (req, res, next) => {
+  const userId = requireUser(req);
+  const parsed = deleteAccountSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "confirmEmail required" });
+  }
+  const claimEmail = (req.authClaims?.email as string | undefined)?.trim().toLowerCase();
+  const submitted = parsed.data.confirmEmail.trim().toLowerCase();
+  if (!claimEmail || claimEmail !== submitted) {
+    return res.status(400).json({ error: "EMAIL_MISMATCH" });
+  }
+  if (!isAdminAvailable()) {
+    return res.status(501).json({ error: "account deletion is not configured" });
+  }
+  try {
+    const killed = await destroyUserSessions(userId);
+    if (killed.length) {
+      console.log(`[account-delete] reaped ${killed.length} session(s) for ${userId}`);
+    }
+    await adminDeleteUser(userId);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

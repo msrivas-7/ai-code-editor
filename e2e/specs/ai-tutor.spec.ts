@@ -76,9 +76,9 @@ test.describe("AI tutor", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
 
-    // Warning copy lives in TutorSetupWarning.tsx:68 + the "More settings →"
+    // Warning copy lives in TutorSetupWarning.tsx + the "More settings →"
     // link (only present when onOpenSettings prop is passed — LessonPage does).
-    await expect(page.getByText(/let's connect your ai tutor/i)).toBeVisible();
+    await expect(page.getByText(/connect your ai tutor/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /more settings →/i })).toBeVisible();
 
     // Tutor input is disabled until a key is configured.

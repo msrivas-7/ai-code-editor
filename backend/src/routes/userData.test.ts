@@ -6,13 +6,22 @@
 // schema applied; skips cleanly when DATABASE_URL is unreachable.
 
 import express from "express";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 
+// The DELETE /account path calls out to Supabase's admin REST API. Stub the
+// wrapper so these tests exercise only the route's validation + ownership
+// logic — the live HTTP shape is covered in supabaseAdmin.test.ts.
+vi.mock("../db/supabaseAdmin.js", () => ({
+  isAdminAvailable: vi.fn(() => true),
+  adminDeleteUser: vi.fn(async () => {}),
+}));
+
 const { db, closeDb } = await import("../db/client.js");
 const { userDataRouter } = await import("./userData.js");
+const supabaseAdmin = await import("../db/supabaseAdmin.js");
 
 let srv: Server;
 let base: string;
@@ -29,10 +38,16 @@ async function mkUser(): Promise<string> {
   return id;
 }
 
-function req(userId: string, path: string, init: RequestInit = {}) {
+function req(
+  userId: string,
+  path: string,
+  init: RequestInit = {},
+  extraHeaders: Record<string, string> = {},
+) {
   const headers = new Headers(init.headers);
   headers.set("x-test-user", userId);
   headers.set("content-type", "application/json");
+  for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v);
   return fetch(`${base}${path}`, { ...init, headers });
 }
 
@@ -49,6 +64,8 @@ beforeAll(async () => {
   app.use((req, _res, next) => {
     const u = req.header("x-test-user");
     if (u) req.userId = u;
+    const email = req.header("x-test-email");
+    if (email) req.authClaims = { email } as typeof req.authClaims;
     next();
   });
   app.use("/api/user", userDataRouter);
@@ -214,5 +231,78 @@ describe("editor project routes", () => {
       body: JSON.stringify({ language: "python" }),
     });
     expect(put.status).toBe(400);
+  });
+});
+
+describe("DELETE /api/user/account (Phase 20-P0 #9)", () => {
+  it("rejects when confirmEmail is missing (400)", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(
+      userId,
+      "/api/user/account",
+      { method: "DELETE", body: JSON.stringify({}) },
+      { "x-test-email": `u-${userId}@test.local` },
+    );
+    expect(res.status).toBe(400);
+    // Admin wasn't invoked — we bailed on validation.
+    expect(supabaseAdmin.adminDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects with EMAIL_MISMATCH when confirmEmail doesn't match the JWT claim", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    vi.mocked(supabaseAdmin.adminDeleteUser).mockClear();
+    const res = await req(
+      userId,
+      "/api/user/account",
+      {
+        method: "DELETE",
+        body: JSON.stringify({ confirmEmail: "wrong@test.local" }),
+      },
+      { "x-test-email": `u-${userId}@test.local` },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("EMAIL_MISMATCH");
+    expect(supabaseAdmin.adminDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it("returns 501 when the service-role key is not configured", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    vi.mocked(supabaseAdmin.isAdminAvailable).mockReturnValueOnce(false);
+    vi.mocked(supabaseAdmin.adminDeleteUser).mockClear();
+    const res = await req(
+      userId,
+      "/api/user/account",
+      {
+        method: "DELETE",
+        body: JSON.stringify({ confirmEmail: `u-${userId}@test.local` }),
+      },
+      { "x-test-email": `u-${userId}@test.local` },
+    );
+    expect(res.status).toBe(501);
+    expect(supabaseAdmin.adminDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it("calls adminDeleteUser with the JWT userId on match (case-insensitive email)", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    vi.mocked(supabaseAdmin.isAdminAvailable).mockReturnValue(true);
+    vi.mocked(supabaseAdmin.adminDeleteUser).mockClear();
+    const res = await req(
+      userId,
+      "/api/user/account",
+      {
+        method: "DELETE",
+        // Uppercase the submitted confirmation to prove we compare case-insensitively.
+        body: JSON.stringify({ confirmEmail: `U-${userId}@TEST.local` }),
+      },
+      { "x-test-email": `u-${userId}@test.local` },
+    );
+    expect(res.status).toBe(200);
+    expect(supabaseAdmin.adminDeleteUser).toHaveBeenCalledWith(userId);
+    expect(supabaseAdmin.adminDeleteUser).toHaveBeenCalledOnce();
   });
 });

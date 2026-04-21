@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AuthShell } from "../auth/AuthShell";
 import { OAuthButtons } from "../auth/OAuthButtons";
 import { PasswordField } from "../auth/PasswordField";
@@ -9,6 +9,12 @@ import { useAuthStore } from "../auth/authStore";
 
 export default function SignupPage() {
   const nav = useNavigate();
+  // Phase 20-P0 #9: when account-deletion finishes we redirect here with
+  // `?deleted=1` so the user gets a gentle confirmation rather than a
+  // silent bounce. The banner auto-hides if they start typing — it's not
+  // a blocker, just a closure signal.
+  const [searchParams] = useSearchParams();
+  const justDeleted = searchParams.get("deleted") === "1";
   const user = useAuthStore((s) => s.user);
   const loading = useAuthStore((s) => s.loading);
   const signUpWithPassword = useAuthStore((s) => s.signUpWithPassword);
@@ -114,6 +120,14 @@ export default function SignupPage() {
         </>
       }
     >
+      {justDeleted && (
+        <div
+          role="status"
+          className="mb-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[11px] text-success"
+        >
+          Your account has been deleted.
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1.5">

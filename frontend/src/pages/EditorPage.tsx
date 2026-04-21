@@ -18,6 +18,7 @@ import { useRunStore } from "../state/runStore";
 import { SettingsModal } from "../components/SettingsModal";
 import { UserMenu } from "../components/UserMenu";
 import { SessionErrorBanner } from "../components/SessionErrorBanner";
+import { SessionRestartBanner } from "../components/SessionRestartBanner";
 import { EditorCoach } from "../components/EditorCoach";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { clamp, clampSide, usePersistedNumber, usePersistedFlag } from "../util/layoutPrefs";
@@ -123,6 +124,7 @@ export default function EditorPage() {
       </header>
 
       <SessionErrorBanner />
+      <SessionRestartBanner />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
         {filesCollapsed ? (

@@ -77,6 +77,12 @@ export const config = {
   // fast rather than silently pointing at a wrong URL.
   supabase: {
     url: process.env.SUPABASE_URL,
+    // Phase 20-P0 #9: service-role key is only used by the delete-account
+    // path to call supabase.auth.admin.deleteUser (the CASCADE FKs take
+    // care of public.* rows). It is OPTIONAL — if unset, the delete-account
+    // route 501s and the UI disables the button. This keeps the VM
+    // install that has dropped this secret (Phase 20-P1) still bootable.
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
 
   // Phase 18b: Postgres for per-user state (preferences, progress, editor

@@ -11,6 +11,16 @@ const CSRF_HEADER = { "X-Requested-With": "codetutor" };
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 import { supabase } from "../auth/supabaseClient";
+import { ApiError } from "./ApiError";
+
+// Read the response body once for an error path, then wrap it in ApiError.
+// We also `console.error` the raw so the detail survives in devtools even
+// though the user-facing alert shows only the friendly message.
+async function throwApiError(res: Response, path: string): Promise<never> {
+  const body = await res.text().catch(() => "");
+  console.error(`[api] ${path} failed: ${res.status} ${body}`);
+  throw new ApiError(res.status, body, path);
+}
 
 // Phase 18a: attach the Supabase access token to every backend request so
 // the `authMiddleware` on the server side can identify the user. We fetch
@@ -51,7 +61,7 @@ async function post<T>(path: string, body?: unknown, extraHeaders?: Record<strin
   });
   if (!res.ok) {
     await handle401(res);
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+    await throwApiError(res, path);
   }
   return res.json() as Promise<T>;
 }
@@ -65,7 +75,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   });
   if (!res.ok) {
     await handle401(res);
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+    await throwApiError(res, path);
   }
   return res.json() as Promise<T>;
 }
@@ -79,7 +89,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   });
   if (!res.ok) {
     await handle401(res);
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+    await throwApiError(res, path);
   }
   return res.json() as Promise<T>;
 }
@@ -92,7 +102,7 @@ async function del<T>(path: string): Promise<T> {
   });
   if (!res.ok) {
     await handle401(res);
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+    await throwApiError(res, path);
   }
   return res.json() as Promise<T>;
 }
@@ -102,7 +112,7 @@ async function get<T>(path: string, extraHeaders?: Record<string, string>): Prom
   const res = await fetch(`${API_BASE}${path}`, { headers: { ...auth, ...(extraHeaders ?? {}) } });
   if (!res.ok) {
     await handle401(res);
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+    await throwApiError(res, path);
   }
   return res.json() as Promise<T>;
 }
@@ -326,6 +336,23 @@ export const api = {
   saveEditorProject: (body: EditorProjectPayload) =>
     put<EditorProjectResponse>("/api/user/editor-project", body),
 
+  // Phase 20-P0 #9: DELETE with a body for the confirm-email guard. The
+  // generic `del<T>` helper doesn't send a body; inline the fetch so we
+  // don't complicate the helper surface for a single callsite.
+  deleteAccount: async (confirmEmail: string): Promise<{ ok: boolean }> => {
+    const path = "/api/user/account";
+    const auth = await authHeaders();
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "DELETE",
+      headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
+      body: JSON.stringify({ confirmEmail }),
+    });
+    if (!res.ok) {
+      await handle401(res);
+      await throwApiError(res, path);
+    }
+    return res.json();
+  },
   validateOpenAIKey: (key: string) =>
     post<{ valid: boolean; error?: string }>("/api/ai/validate-key", { key }),
   saveOpenAIKey: (key: string) =>

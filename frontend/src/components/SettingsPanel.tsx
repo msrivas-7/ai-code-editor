@@ -6,6 +6,7 @@ import { usePreferencesStore } from "../state/preferencesStore";
 import { useAuthStore } from "../auth/authStore";
 import type { Persona } from "../types";
 import { useThemePref, type ThemePref } from "../util/theme";
+import { DeleteAccountModal } from "./DeleteAccountModal";
 
 type Tab = "account" | "ai" | "appearance";
 
@@ -112,6 +113,7 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
   const [saveMsg, setSaveMsg] = useState<{ kind: "saved" | "error"; text: string } | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutErr, setSignOutErr] = useState<string | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
 
   // Auto-dismiss the save status after ~2.5s. Using a timer (not CSS) so the
   // message can also be cleared early on next save. The effect's cleanup
@@ -258,16 +260,19 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
         <h3 className="text-xs font-semibold text-ink">Danger zone</h3>
         <button
           type="button"
-          disabled
-          title="Available in a future update"
-          className="cursor-not-allowed self-start rounded-md border border-danger/30 bg-elevated px-3 py-1 text-[11px] font-semibold text-faint"
+          onClick={() => setShowDelete(true)}
+          className="self-start rounded-md border border-danger/40 bg-elevated px-3 py-1 text-[11px] font-semibold text-danger transition hover:bg-danger/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger"
         >
           Delete account
         </button>
         <p className="text-[10px] leading-relaxed text-faint">
-          Permanently removes your account and all progress. Not yet available.
+          Permanently removes your account, progress, saved projects, and
+          encrypted OpenAI key. This cannot be undone.
         </p>
       </section>
+      {showDelete && (
+        <DeleteAccountModal onClose={() => setShowDelete(false)} />
+      )}
     </>
   );
 }

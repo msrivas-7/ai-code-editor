@@ -196,6 +196,31 @@ export function startSweeper(): void {
   }, config.session.sweepIntervalMs);
 }
 
+// Phase 20-P0 #9: destroy every live session owned by a single user. Called
+// from the delete-account path before we tell Supabase to remove the user,
+// so there are no zombie runner containers charging us CPU minutes after
+// the owning account is gone. Returns the list of destroyed session ids
+// purely for logging.
+export async function destroyUserSessions(userId: string): Promise<string[]> {
+  const owned = [...sessions.values()].filter((s) => s.userId === userId);
+  await Promise.all(
+    owned.map(async (s) => {
+      sessions.delete(s.id);
+      if (s.handle) {
+        try {
+          await requireBackend().destroy(s.handle);
+        } catch (err) {
+          // Individual teardown failures shouldn't block account deletion —
+          // the sweeper will reap any stragglers, and the row going away
+          // from auth.users cascades the user's data regardless.
+          console.error(`[session] destroy ${s.id} failed`, err);
+        }
+      }
+    }),
+  );
+  return owned.map((s) => s.id);
+}
+
 export async function shutdownAllSessions(): Promise<void> {
   if (sweeper) clearInterval(sweeper);
   sweeper = null;

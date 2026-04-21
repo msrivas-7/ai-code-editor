@@ -5,6 +5,7 @@ import { usePreferencesStore } from "../state/preferencesStore";
 
 interface TutorSetupWarningProps {
   onOpenSettings?: () => void;
+  onDismiss?: () => void;
 }
 
 // Inline-first API key setup. Configuring the tutor shouldn't require
@@ -20,7 +21,7 @@ type ConnectStatus =
   | { kind: "validating" }
   | { kind: "invalid"; error: string };
 
-export function TutorSetupWarning({ onOpenSettings }: TutorSetupWarningProps) {
+export function TutorSetupWarning({ onOpenSettings, onDismiss }: TutorSetupWarningProps) {
   const saveOpenaiKey = usePreferencesStore((s) => s.saveOpenaiKey);
   const { setModels, setModelsStatus } = useAIStore();
 
@@ -64,10 +65,24 @@ export function TutorSetupWarning({ onOpenSettings }: TutorSetupWarningProps) {
 
   return (
     <div className="rounded-md border border-warn/30 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
-      <div className="mb-1 font-semibold">Let's connect your AI tutor</div>
+      <div className="mb-1 font-semibold">Connect your AI tutor</div>
       <p className="text-warn/90">
-        Paste your OpenAI API key to unlock hints, code explanations, and
-        lesson-aware guidance. Stored encrypted on our server.
+        The tutor uses your own OpenAI account to answer questions about your
+        code and the current lesson — we never see the key in plaintext (it's
+        encrypted on our server).
+      </p>
+      <p className="mt-1.5 text-[11px] text-warn/80">
+        You'll need an API key from{" "}
+        <a
+          href="https://platform.openai.com/api-keys"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 transition hover:text-warn"
+        >
+          platform.openai.com/api-keys
+        </a>
+        . OpenAI bills you directly — typical tutor usage is fractions of a
+        cent per question.
       </p>
 
       <div className="mt-2.5 flex items-center gap-1.5">
@@ -118,14 +133,24 @@ export function TutorSetupWarning({ onOpenSettings }: TutorSetupWarningProps) {
         <p className="mt-1.5 text-[11px] text-danger">× {status.error}</p>
       )}
 
-      {onOpenSettings && (
-        <button
-          onClick={onOpenSettings}
-          className="mt-2 text-[11px] text-warn/80 underline underline-offset-2 transition hover:text-warn focus:outline-none focus-visible:ring-2 focus-visible:ring-warn"
-        >
-          More settings →
-        </button>
-      )}
+      <div className="mt-2 flex items-center gap-3">
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="text-[11px] text-warn/80 underline underline-offset-2 transition hover:text-warn focus:outline-none focus-visible:ring-2 focus-visible:ring-warn"
+          >
+            More settings →
+          </button>
+        )}
+        {onDismiss && (
+          <button
+            onClick={onDismiss}
+            className="ml-auto text-[11px] text-warn/70 underline underline-offset-2 transition hover:text-warn focus:outline-none focus-visible:ring-2 focus-visible:ring-warn"
+          >
+            Explore without tutor
+          </button>
+        )}
+      </div>
     </div>
   );
 }

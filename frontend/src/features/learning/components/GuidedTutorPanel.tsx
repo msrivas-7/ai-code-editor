@@ -182,7 +182,12 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
       </header>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {!configured && <TutorSetupWarning onOpenSettings={onOpenSettings} />}
+        {!configured && (
+          <TutorSetupWarning
+            onOpenSettings={onOpenSettings}
+            onDismiss={onCollapse}
+          />
+        )}
 
         {history.length === 0 && !asking && configured && (
           <div className="rounded-md border border-border bg-elevated/60 p-3 text-xs leading-relaxed text-muted">

@@ -5,6 +5,7 @@
 
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/auth";
+import { getWorkerUser } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { markOnboardingDone, seedApiKey } from "../fixtures/profiles";
@@ -170,6 +171,67 @@ test.describe("settings panel", () => {
     // saved" and the Remove affordance is hidden.
     await expect(page.getByText(/no key saved/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /^remove api key$/i })).toHaveCount(0);
+  });
+
+  test("Danger zone → Delete account modal gates the button on email match", async ({ page }, testInfo) => {
+    // Phase 20-P0 #9: the Danger Zone button opens a destructive confirm
+    // modal. The Delete button only enables when the typed email matches the
+    // logged-in user's email — we intercept the DELETE request and assert
+    // the request body carries the confirm email, without ever letting the
+    // delete hit the server (that would invalidate the worker's cached
+    // session for the rest of the run).
+    const user = await getWorkerUser(testInfo.workerIndex);
+    let deleteHit = false;
+    let capturedBody: unknown = null;
+    await page.route("**/api/user/account", async (route) => {
+      if (route.request().method() === "DELETE") {
+        deleteHit = true;
+        capturedBody = route.request().postDataJSON();
+        // Fulfill without 200 so signOut doesn't actually run; we assert the
+        // request shape but leave the client on the settings page.
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "blocked in test" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/");
+    await openSettings(page, "account");
+
+    const openDelete = page.getByRole("button", { name: /^delete account$/i });
+    await openDelete.click();
+
+    // Modal opens as an alertdialog.
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toBeVisible();
+
+    const confirmInput = dialog.getByRole("textbox", { name: /confirm email/i });
+    const submit = dialog.getByRole("button", { name: /^delete account$/i });
+    await expect(submit).toBeDisabled();
+
+    // Wrong email keeps the destructive button disabled.
+    await confirmInput.fill("wrong@codetutor.test");
+    await expect(submit).toBeDisabled();
+
+    // Correct email (case-insensitive per handleDelete + server) enables it.
+    await confirmInput.fill(user.email.toUpperCase());
+    await expect(submit).toBeEnabled();
+
+    // Cancel closes the modal without touching the API.
+    await dialog.getByRole("button", { name: /^cancel$/i }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(deleteHit).toBe(false);
+
+    // Re-open and actually submit to verify the request body.
+    await openDelete.click();
+    const dialog2 = page.getByRole("alertdialog");
+    await dialog2.getByRole("textbox", { name: /confirm email/i }).fill(user.email);
+    await dialog2.getByRole("button", { name: /^delete account$/i }).click();
+    await expect.poll(() => deleteHit).toBe(true);
+    expect((capturedBody as { confirmEmail: string }).confirmEmail).toBe(user.email);
   });
 
   test("Escape closes the settings modal cleanly", async ({ page }) => {

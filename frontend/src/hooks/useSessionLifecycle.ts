@@ -10,7 +10,7 @@ const HEARTBEAT_MS = 25_000;
 const MAX_FAILURES = 3;
 
 export function useSessionLifecycle() {
-  const { sessionId, setSession, setPhase, setError, clear } = useSessionStore();
+  const { sessionId, setSession, setPhase, setError, setSessionRestarted, clear } = useSessionStore();
   // Phase 18a: don't start a session until Supabase has hydrated — the first
   // render sees `loading: true`, and `startSession` would otherwise fire
   // without an Authorization header and 401. Gate on `user` presence too so
@@ -66,6 +66,13 @@ export function useSessionLifecycle() {
         try {
           const rebound = await api.rebindSession(sessionId);
           setSession(rebound.sessionId);
+          // `reused=false` means the backend had no live record for this id
+          // (backend restart or sweeper reap) and spun up a fresh container.
+          // Flip the one-shot flag so the UI can surface a dismissible
+          // notice — otherwise the runner reset is invisible to the learner
+          // until they hit Run and wonder why their prior stdin/artifacts
+          // are gone.
+          if (!rebound.reused) setSessionRestarted(true);
         } catch (err) {
           setError(`session expired; reconnect failed: ${(err as Error).message}`);
         } finally {
@@ -82,7 +89,7 @@ export function useSessionLifecycle() {
     };
     const timer = setInterval(tick, HEARTBEAT_MS);
     return () => clearInterval(timer);
-  }, [sessionId, setSession, setPhase, setError]);
+  }, [sessionId, setSession, setPhase, setError, setSessionRestarted]);
 
   useEffect(() => {
     if (!sessionId) return;

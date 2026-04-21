@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  destroyUserSessions,
   endSession,
   getSession,
   getSessionStatus,
   initSessionManager,
+  listSessions,
   pingSession,
   rebindSession,
   requireOwnedSession,
@@ -152,5 +154,49 @@ describe("sessionManager ownership", () => {
   it("getSessionStatus reports { alive: false } for an unknown id without throwing", async () => {
     const status = await getSessionStatus("nonexistent", "user-a");
     expect(status).toEqual({ alive: false, containerAlive: false, lastSeen: 0 });
+  });
+});
+
+describe("destroyUserSessions (Phase 20-P0 #9)", () => {
+  it("tears down every session owned by the given user and leaves other users' sessions alone", async () => {
+    const a1 = await startSession("user-a");
+    const a2 = await startSession("user-a");
+    const b1 = await startSession("user-b");
+
+    const killed = await destroyUserSessions("user-a");
+    expect(killed.sort()).toEqual([a1.id, a2.id].sort());
+
+    expect(getSession(a1.id)).toBeUndefined();
+    expect(getSession(a2.id)).toBeUndefined();
+    expect(getSession(b1.id)).toBeDefined();
+
+    const remaining = listSessions().map((s) => s.userId);
+    expect(remaining).toEqual(["user-b"]);
+  });
+
+  it("is a no-op (empty return) for a user with no live sessions", async () => {
+    await startSession("user-a");
+    const killed = await destroyUserSessions("user-with-none");
+    expect(killed).toEqual([]);
+  });
+
+  it("still removes the session map entry even if the backend destroy throws", async () => {
+    // Rewire the backend so destroy() rejects. The map removal is what
+    // keeps the delete-account path idempotent against Docker hiccups —
+    // the sweeper would catch any orphan handle anyway, but we must not
+    // leave a ghost entry in the in-memory map that future routes would
+    // hit as "live".
+    const flaky: ExecutionBackend = {
+      ...makeFakeBackend(),
+      async destroy() {
+        throw new Error("simulated docker hiccup");
+      },
+    };
+    initSessionManager(flaky);
+
+    const s = await startSession("user-flaky");
+    const killed = await destroyUserSessions("user-flaky");
+    expect(killed).toEqual([s.id]);
+    expect(getSession(s.id)).toBeUndefined();
   });
 });
