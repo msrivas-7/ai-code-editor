@@ -19,6 +19,7 @@ See [the roadmap plan](../../docs/) for the full Phase 19 context.
 | `modules/vm-health-alert.bicep` | Activity log alert on VM ResourceHealth. |
 | `modules/vm-kv-access.bicep` | Grants VM MI "Key Vault Secrets User" on the KV. |
 | `modules/swa.bicep` | Azure Static Web App (Free), unlinked. |
+| `modules/backup.bicep` | Recovery Services Vault + weekly backup policy (4-week retention). |
 
 ## One-time setup
 
@@ -74,6 +75,37 @@ az keyvault secret set --vault-name "$KV" --name VITE-SUPABASE-ANON-KEY    --val
 Secret names use hyphens (KV disallows underscores); 19b's `refresh-env`
 script maps them back to `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` /
 etc. when writing the VM's `.env`.
+
+## Enable VM backup (one-time, post-deploy)
+
+The `backup.bicep` module creates the Recovery Services Vault + weekly
+policy, but enrolling the VM as a protected item is a separate step —
+Bicep's protected-item resource name format is finicky enough that it's
+cleaner as a CLI call:
+
+```bash
+VAULT=$(az deployment group show -g codetutor-ai-prod-rg -n main --query properties.outputs.backupVaultName.value -o tsv)
+POLICY=$(az deployment group show -g codetutor-ai-prod-rg -n main --query properties.outputs.backupPolicyName.value -o tsv)
+
+az backup protection enable-for-vm \
+  --resource-group codetutor-ai-prod-rg \
+  --vault-name "$VAULT" \
+  --vm codetutor-ai-vm \
+  --policy-name "$POLICY"
+```
+
+Idempotent in the sense that re-running when protection is already enabled
+fails with a clear error. To change the policy on a VM that's already
+protected, use `az backup protection update-for-vm` instead.
+
+To verify the first backup fires as expected, check after the next Sunday
+02:00 UTC:
+```bash
+az backup job list \
+  --resource-group codetutor-ai-prod-rg \
+  --vault-name "$VAULT" \
+  --query "[?properties.entityFriendlyName=='codetutor-ai-vm']"
+```
 
 ## Tight SSH source
 

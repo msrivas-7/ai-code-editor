@@ -161,9 +161,25 @@ module vmKvAccess 'modules/vm-kv-access.bicep' = {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Azure Backup (Phase 20-P0 #2): weekly OS-disk snapshot, 4-week retention.
+// Vault + policy are declared here; enrolling the VM as a protected item is
+// a one-time `az backup protection enable-for-vm` step (see README.md). LRS
+// storage, ~$0.50–1/mo for a 32 GB disk.
+// ---------------------------------------------------------------------------
+module backup 'modules/backup.bicep' = {
+  name: 'backup'
+  params: {
+    location: location
+    tags: tags
+  }
+}
+
 output vmFqdn string = network.outputs.fqdn
 output vmPublicIp string = network.outputs.publicIp
 output keyVaultName string = keyvault.outputs.name
 output swaHostname string = swa.outputs.defaultHostname
 output swaName string = swa.outputs.name
 output logAnalyticsWorkspaceName string = monitoring.outputs.workspaceName
+output backupVaultName string = backup.outputs.vaultName
+output backupPolicyName string = backup.outputs.policyName

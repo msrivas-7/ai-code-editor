@@ -19,6 +19,7 @@ on:
       - 'runner-image/**'
       - 'docker-compose.yml'
       - 'docker-compose.prod.yml'
+      - 'infra/scripts/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
@@ -64,6 +65,7 @@ jobs:
               - 'backend/**'
               - 'docker-compose.yml'
               - 'docker-compose.prod.yml'
+              - 'infra/scripts/**'
             runner:
               - 'runner-image/**'
 
@@ -108,19 +110,23 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sync repo, pull image, restart service
-        # az vm run-command reports "Succeeded" on invocation even if the inner
-        # script fails, so we grep for a sentinel at the end of the script.
-        # `git fetch + reset --hard` keeps compose/Caddyfile/scripts in lockstep
-        # with main — image pull alone would leave compose overrides stale.
+      - name: Sync repo, pull image, deploy with rollback
+        # az vm run-command reports "Succeeded" on invocation even if the
+        # inner script fails, so we grep for a sentinel at the end. The VM-
+        # side script (infra/scripts/vm-deploy-backend.sh) does a targeted
+        # `docker compose up -d backend` instead of systemctl restart — Caddy
+        # stays up so TLS connections aren't dropped — and rolls back to the
+        # prior SHA + prior :latest image if /api/health doesn't come green.
+        # PREV_SHA is captured BEFORE the forward reset so the script can
+        # reverse-reset to it on failure.
         run: |
           out=$(az vm run-command invoke \
             -g "$AZURE_RG" -n "$AZURE_VM" \
             --command-id RunShellScript \
-            --scripts 'set -e; cd /opt/codetutor && sudo -u codetutor git fetch origin main && sudo -u codetutor git reset --hard origin/main && sudo -u codetutor docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env pull backend && systemctl restart codetutor-ai.service && sleep 10 && systemctl is-active codetutor-ai.service && echo DEPLOY_OK' \
+            --scripts 'set -e; cd /opt/codetutor && sudo -u codetutor git fetch origin main && PREV_SHA=$(sudo -u codetutor git rev-parse HEAD) && sudo -u codetutor git reset --hard origin/main && bash infra/scripts/vm-deploy-backend.sh "$PREV_SHA"' \
             --query "value[0].message" -o tsv)
           echo "$out"
-          echo "$out" | grep -q DEPLOY_OK || { echo "::error::deploy sentinel missing - deploy failed on VM"; exit 1; }
+          echo "$out" | grep -q DEPLOY_OK || { echo "::error::deploy sentinel missing - deploy failed or rolled back"; exit 1; }
 
   build-runner:
     name: Build runner-image + push
