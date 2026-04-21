@@ -187,8 +187,44 @@ test.describe("auth flow", () => {
     await expect(page.getByRole("heading", { name: /sign in|welcome/i })).toBeVisible();
   });
 
-  test("signup with local-no-confirm flow lands user on /", async ({ page }) => {
+  test("signup shows 'Check your email' panel with a resend option", async ({ page }) => {
+    // Prod + dev both have email-confirmation ON, so submitting signup parks
+    // the user on the "Check your email" panel (SignupPage.tsx `sent` state)
+    // until they click the verification link — the no-confirm "lands on /"
+    // path only exists in theory post-18d. We intercept the Supabase
+    // `/auth/v1/signup` endpoint so this test (a) doesn't burn the dev
+    // sandbox SMTP budget (2 emails/hr) and (b) runs deterministically in CI
+    // regardless of previous signup traffic. Response shape matches what
+    // GoTrue returns when confirmation is enabled: user object, no session.
     const email = uniqueEmail("signup");
+    await page.route("**/auth/v1/signup**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "00000000-0000-0000-0000-000000000001",
+          email,
+          role: "",
+          aud: "authenticated",
+          confirmation_sent_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          identities: [],
+          app_metadata: { provider: "email", providers: ["email"] },
+          user_metadata: {},
+        }),
+      });
+    });
+    let resendCalls = 0;
+    await page.route("**/auth/v1/resend**", async (route) => {
+      resendCalls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {}, error: null }),
+      });
+    });
+
     await page.goto("/signup");
     await page.getByLabel(/first name/i).fill("E2E");
     await page.getByLabel(/last name/i).fill("Tester");
@@ -198,18 +234,25 @@ test.describe("auth flow", () => {
     await page.getByLabel(/confirm password/i).fill(PASSWORD);
     await page.getByRole("button", { name: /create account/i }).click();
 
-    await expect(page).toHaveURL("/", { timeout: 15_000 });
+    // Lands on the "Check your email" panel, not /. The panel echoes the
+    // email so users can confirm they typed it correctly.
+    await expect(page.getByRole("heading", { name: /check your email/i })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText(email)).toBeVisible();
 
-    // Supabase session persisted under the app-owned storage key.
+    // Resend wiring is the recovery path if the email never arrives.
+    const resend = page.getByRole("button", { name: /resend confirmation email/i });
+    await expect(resend).toBeVisible();
+    await resend.click();
+    await expect.poll(() => resendCalls).toBe(1);
+
+    // No session should have been created — signup returned a user without
+    // a session, so the app-owned auth storage key stays empty.
     const authBlob = await page.evaluate(() =>
       localStorage.getItem("codetutor-auth"),
     );
-    expect(authBlob, "Supabase session should be in localStorage").toBeTruthy();
-    // The user id in that blob is the identity — downstream stores read it
-    // directly from useAuthStore rather than mirroring it into a separate
-    // localStorage key.
-    const parsed = JSON.parse(authBlob!) as { user?: { id?: string } };
-    expect(parsed.user?.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(authBlob, "no session until email verified").toBeFalsy();
   });
 
   test("login persists across reload; signout clears it", async ({ page }) => {

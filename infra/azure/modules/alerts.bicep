@@ -9,6 +9,9 @@ param workspaceId string
 param actionGroupId string
 param tags object
 
+@description('ACS Communication Service resource ID. Optional — when empty, the DeliveryStatusUpdate alert is skipped. Populated by main.bicep from acsEmail.outputs.communicationServiceId.')
+param communicationServiceId string = ''
+
 var actions = {
   actionGroups: [ actionGroupId ]
 }
@@ -143,5 +146,55 @@ resource oomAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
     }
     autoMitigate: true
     actions: actions
+  }
+}
+
+// Phase 20-P2: ACS Email delivery failures. `DeliveryStatusUpdate` fires once
+// per outbound message with a `MessageStatus` dimension (Delivered / Failed /
+// Expanded / Quarantined / Suppressed / OutForDelivery). A single Failed is
+// usually a downstream-mailbox bounce (recipient issue, not ours) and doesn't
+// warrant a page — but a cluster means the ACS ↔ DNS ↔ domain path is broken
+// (SPF/DKIM drift, domain suspended, quota exhausted). Threshold 5 over 15m
+// trades one-off false pages for outage coverage before users start hitting
+// signup / reset dead-ends. Metric alerts live at `global` location
+// regardless of the scoped resource's region. Gated by communicationServiceId
+// so this module still deploys cleanly in environments without ACS.
+resource acsDeliveryFailedAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = if (!empty(communicationServiceId)) {
+  name: 'codetutor-acs-email-delivery-failed'
+  location: 'global'
+  tags: tags
+  properties: {
+    enabled: true
+    severity: 2
+    scopes: [ communicationServiceId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'FailedDeliveries'
+          metricNamespace: 'Microsoft.Communication/CommunicationServices'
+          metricName: 'DeliveryStatusUpdate'
+          operator: 'GreaterThan'
+          threshold: 5
+          timeAggregation: 'Count'
+          criterionType: 'StaticThresholdCriterion'
+          dimensions: [
+            {
+              name: 'MessageStatus'
+              operator: 'Include'
+              values: [ 'Failed' ]
+            }
+          ]
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: [
+      {
+        actionGroupId: actionGroupId
+      }
+    ]
   }
 }

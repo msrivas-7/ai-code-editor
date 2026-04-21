@@ -50,6 +50,17 @@ var domainResourceName = mailDomain
 //      (`az communication email domain initiate-verification`).
 //   3. Once DNS verifies, re-run this deploy with `linkDomain=true` to
 //      patch the CS resource and attach the domain for SMTP.
+//
+// SECRET RENEWAL — Entra app `codetutor-ai-smtp` (appId
+// 53311134-22f5-4fc9-b3fe-c0b9fa6a3784) holds the client secret used as
+// the SMTP password. Current secret expires **2028-04-21**; rotate it by
+// **2028-03-21** to keep the auth path live:
+//   az ad app credential reset --id 53311134-22f5-4fc9-b3fe-c0b9fa6a3784
+//   az keyvault secret set --vault-name codetutor-ai-kv-ma4jdfos \
+//     --name smtp-password --value <new-secret>
+//   Paste the new password into Supabase Dashboard → Auth → SMTP → Password.
+// If this secret expires unrotated, every verification / magic-link /
+// password-reset email will fail at SMTP auth.
 param linkDomain bool = false
 
 resource communicationService 'Microsoft.Communication/communicationServices@2023-06-01-preview' = {

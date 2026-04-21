@@ -11,6 +11,17 @@ export class HttpError extends Error {
   }
 }
 
+// Defense-in-depth: unknown-error paths (500s) serialize `err.message` and
+// `err.stack` straight into the log line. Some upstream SDK errors echo
+// request metadata that can include the OpenAI bearer token — e.g. a fetch
+// failure that formats the request headers. The error body returned to the
+// client is already generic ("Internal error" + requestId), so this only
+// guards logs. Pattern matches `sk-…` and `sk_…` (OpenAI uses both).
+const OPENAI_KEY_PATTERN = /sk[-_][A-Za-z0-9_-]{20,}/g;
+function scrubOpenAIKey(s: string): string {
+  return s.replace(OPENAI_KEY_PATTERN, "sk-<redacted>");
+}
+
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   if (err instanceof ZodError) {
     const detail = err.issues.map((i) => i.message).join("; ");
@@ -72,8 +83,8 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
       t: new Date().toISOString(),
       id: req.id,
       status: 500,
-      err: message,
-      stack,
+      err: scrubOpenAIKey(message),
+      stack: stack ? scrubOpenAIKey(stack) : stack,
     }),
   );
   res.status(500).json({ error: "Internal error", requestId: req.id });

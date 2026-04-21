@@ -28,6 +28,7 @@ import { SettingsModal } from "../../../components/SettingsModal";
 import { UserMenu } from "../../../components/UserMenu";
 import { SessionErrorBanner } from "../../../components/SessionErrorBanner";
 import { SessionRestartBanner } from "../../../components/SessionRestartBanner";
+import { NarrowViewportGate } from "../../../components/NarrowViewportGate";
 import { Modal } from "../../../components/Modal";
 import { useSessionLifecycle } from "../../../hooks/useSessionLifecycle";
 import { useProjectStore } from "../../../state/projectStore";
@@ -1200,6 +1201,7 @@ export default function LessonPage() {
           </div>
         </Modal>
       )}
+      <NarrowViewportGate />
     </div>
   );
 }

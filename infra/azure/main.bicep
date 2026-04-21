@@ -152,10 +152,12 @@ module vmHealthAlert 'modules/vm-health-alert.bicep' = {
   }
 }
 
-// Guest-level metric/log alerts (memory, CPU, disk, OOM killer). Scheduled
-// against the LA workspace — the AMA DCR in vm.bicep forwards the counters
-// + syslog, so the data lands there without a separate platform-metrics
-// destination.
+// Guest-level metric/log alerts (memory, CPU, disk, OOM killer) + ACS Email
+// delivery-failed alert. The guest-level rules run scheduled queries against
+// the LA workspace — the AMA DCR in vm.bicep forwards the counters + syslog,
+// so the data lands there without a separate platform-metrics destination.
+// The ACS rule is a platform metric alert on the CS resource; the CS id flows
+// in from the acsEmail module below.
 module alerts 'modules/alerts.bicep' = {
   name: 'alerts'
   params: {
@@ -163,6 +165,7 @@ module alerts 'modules/alerts.bicep' = {
     workspaceId: monitoring.outputs.workspaceId
     actionGroupId: monitoring.outputs.actionGroupId
     tags: tags
+    communicationServiceId: acsEmail.outputs.communicationServiceId
   }
 }
 

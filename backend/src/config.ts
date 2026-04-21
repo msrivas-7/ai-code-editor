@@ -97,6 +97,15 @@ export const config = {
   byokEncryptionKey: process.env.BYOK_ENCRYPTION_KEY,
 } as const;
 
+// Phase 20-P2 hygiene: once the sensitive env vars have been copied into the
+// frozen `config` object, drop them from `process.env` so a later reader
+// (e.g. a library that scans env, an accidental `console.log(process.env)`,
+// a future RCE that echoes env) finds nothing. The backend reads these only
+// through `config.*` from this point forward.
+delete process.env.BYOK_ENCRYPTION_KEY;
+delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+delete process.env.DATABASE_URL;
+
 export function assertConfigValid(): void {
   if (!config.supabase.url || config.supabase.url.trim() === "") {
     throw new Error(

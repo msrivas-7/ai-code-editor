@@ -19,6 +19,7 @@ import { SettingsModal } from "../components/SettingsModal";
 import { UserMenu } from "../components/UserMenu";
 import { SessionErrorBanner } from "../components/SessionErrorBanner";
 import { SessionRestartBanner } from "../components/SessionRestartBanner";
+import { NarrowViewportGate } from "../components/NarrowViewportGate";
 import { EditorCoach } from "../components/EditorCoach";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { clamp, clampSide, usePersistedNumber, usePersistedFlag } from "../util/layoutPrefs";
@@ -226,6 +227,7 @@ export default function EditorPage() {
           onComplete={() => setShowCoach(false)}
         />
       )}
+      <NarrowViewportGate />
     </div>
   );
 }
