@@ -136,6 +136,8 @@ export function LessonFeedbackChip({ lessonId, lessonTitle }: LessonFeedbackChip
             onSubmitted={handleSubmitted}
             initialCategory={selected.category}
             initialBody={`Lesson: ${lessonTitle}\n\n`}
+            mood={selected.mood}
+            lessonId={lessonId}
           />
         </Suspense>
       )}

@@ -18,7 +18,14 @@ import { ApiError } from "../api/ApiError";
 // ghosted (user_id SET NULL) so the signal survives; see migration.
 
 type Category = "bug" | "idea" | "other";
+type Mood = "good" | "okay" | "bad";
 type Status = "idle" | "sending" | "sent" | "error";
+
+const MOOD_BADGE: Record<Mood, { emoji: string; label: string }> = {
+  good: { emoji: "😊", label: "Good" },
+  okay: { emoji: "😐", label: "Okay" },
+  bad: { emoji: "😕", label: "Confusing" },
+};
 
 interface Diagnostics {
   route: string;
@@ -55,6 +62,12 @@ interface FeedbackModalProps {
   // the field, controlled state takes over.
   initialCategory?: Category;
   initialBody?: string;
+  // When the modal is opened from the lesson-end chip, the learner's mood
+  // tag + lessonId travel with the submit so the "note" row carries the
+  // same context as the mood-only chip POST. Also drives the "You rated
+  // this lesson" badge so the learner sees their selection persisted.
+  mood?: Mood;
+  lessonId?: string;
   // Fires once when the backend confirms the insert. Distinct from onClose
   // because a learner can cancel with X or Escape mid-send; callers that
   // care about "actually submitted this session" (see LessonFeedbackChip)
@@ -62,7 +75,7 @@ interface FeedbackModalProps {
   onSubmitted?: () => void;
 }
 
-export function FeedbackModal({ onClose, initialCategory, initialBody, onSubmitted }: FeedbackModalProps) {
+export function FeedbackModal({ onClose, initialCategory, initialBody, mood, lessonId, onSubmitted }: FeedbackModalProps) {
   const headingId = useId();
   const location = useLocation();
   const [body, setBody] = useState(initialBody ?? "");
@@ -93,6 +106,8 @@ export function FeedbackModal({ onClose, initialCategory, initialBody, onSubmitt
         body: body.trim(),
         category,
         diagnostics: attach ? (diagnostics as unknown as Record<string, string>) : {},
+        mood: mood ?? null,
+        lessonId: lessonId ?? null,
       });
       setSubmittedId(res.id);
       setStatus("sent");
@@ -157,6 +172,21 @@ export function FeedbackModal({ onClose, initialCategory, initialBody, onSubmitt
             </p>
           </div>
         </div>
+
+        {mood && (
+          <div
+            data-testid="feedback-mood-badge"
+            className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent/5 px-2.5 py-1.5"
+          >
+            <span className="text-base" aria-hidden="true">
+              {MOOD_BADGE[mood].emoji}
+            </span>
+            <span className="text-[11px] text-ink">
+              You rated this lesson:{" "}
+              <span className="font-semibold text-accent">{MOOD_BADGE[mood].label}</span>
+            </span>
+          </div>
+        )}
 
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-[11px] font-medium text-muted">Type</legend>
