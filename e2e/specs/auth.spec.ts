@@ -20,6 +20,7 @@ import { expect, request, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 const BACKEND = process.env.E2E_API_URL ?? "http://localhost:4000";
+const ORIGIN = process.env.E2E_APP_ORIGIN ?? "http://localhost:5173";
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
 const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -33,6 +34,84 @@ function uniqueEmail(tag: string): string {
 }
 
 test.describe("auth flow", () => {
+  test("Phase 20-P1: OAuth buttons render above the email form on /login", async ({ page }) => {
+    // Phase 20-P1: OAuth is the happy path now — the provider row must sit
+    // above the "or sign in with email" divider and the email input, so
+    // first-time visitors don't scan past the 2-click option.
+    await page.goto("/login");
+    const oauthY = await page
+      .getByRole("button", { name: /^google$/i })
+      .evaluate((el) => el.getBoundingClientRect().top);
+    const emailY = await page
+      .getByLabel(/email/i)
+      .evaluate((el) => el.getBoundingClientRect().top);
+    expect(oauthY).toBeLessThan(emailY);
+    await expect(page.getByText(/or sign in with email/i)).toBeVisible();
+  });
+
+  test("Phase 20-P1: OAuth buttons render above the email form on /signup", async ({ page }) => {
+    await page.goto("/signup");
+    const oauthY = await page
+      .getByRole("button", { name: /^github$/i })
+      .evaluate((el) => el.getBoundingClientRect().top);
+    const emailY = await page
+      .getByLabel(/email/i)
+      .evaluate((el) => el.getBoundingClientRect().top);
+    expect(oauthY).toBeLessThan(emailY);
+    await expect(page.getByText(/or sign up with email/i)).toBeVisible();
+  });
+
+  test("Phase 20-P1: /auth/callback with no session shows classified error copy", async ({ page }) => {
+    // Phase 20-P1: AuthCallbackPage now classifies raw Supabase errors into
+    // expired / state / unknown buckets. Without a code in the URL, the
+    // PKCE exchange returns no session and the page surfaces the expired
+    // bucket's copy ("expired or already been used"). This smoke covers
+    // the "link already clicked" case and confirms the alert role + Back
+    // to sign in link are present.
+    await page.goto("/auth/callback");
+    const alert = page.getByRole("alert");
+    await expect(alert).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/expired or already been used/i)).toBeVisible();
+    await expect(page.getByRole("link", { name: /back to sign in/i })).toBeVisible();
+  });
+
+  test("Phase 20-P1: magic-link 'Check your email' panel offers a 30s-cooldown resend", async ({ page }) => {
+    // Phase 20-P1: the three "check your email" screens previously had no
+    // forward path if the email never arrived. We added a ResendEmailButton
+    // with 30s cooldown across signup, magic-link, and password-reset. Here
+    // we intercept the Supabase OTP endpoint so the real email server is
+    // never hit — we only verify the UI lifecycle (enabled → pending →
+    // cooldown label).
+    let otpCalls = 0;
+    await page.route("**/auth/v1/otp**", async (route) => {
+      otpCalls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: {}, error: null }),
+      });
+    });
+
+    await page.goto("/login");
+    // Switch to magic-link mode.
+    await page.getByRole("button", { name: /prefer not to use a password/i }).click();
+    await page.getByLabel(/email/i).fill(uniqueEmail("resend"));
+    await page.getByRole("button", { name: /send magic link/i }).click();
+
+    // The "Check your email" panel renders the resend button.
+    const resend = page.getByRole("button", { name: /resend sign-in link/i });
+    await expect(resend).toBeVisible({ timeout: 5_000 });
+    expect(otpCalls).toBe(1);
+
+    // Clicking it fires another OTP call and flips the label into the
+    // cooldown state.
+    await resend.click();
+    await expect.poll(() => otpCalls).toBe(2);
+    await expect(page.getByRole("button", { name: /resend in \d+s/i })).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
   test("unauthenticated visit to / redirects to /login", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
@@ -145,7 +224,7 @@ test.describe("auth flow", () => {
 
 test.describe("auth backend", () => {
   test("/api/session 401s without Authorization header", async () => {
-    const ctx = await request.newContext();
+    const ctx = await request.newContext({ extraHTTPHeaders: { Origin: ORIGIN } });
     const res = await ctx.post(`${BACKEND}/api/session`, {
       headers: { "X-Requested-With": "codetutor" },
       data: {},
@@ -156,7 +235,7 @@ test.describe("auth backend", () => {
   });
 
   test("/api/session 401s with malformed Authorization header", async () => {
-    const ctx = await request.newContext();
+    const ctx = await request.newContext({ extraHTTPHeaders: { Origin: ORIGIN } });
     const res = await ctx.post(`${BACKEND}/api/session`, {
       headers: {
         "X-Requested-With": "codetutor",
@@ -211,7 +290,7 @@ test.describe("auth backend", () => {
     const tokenB = b.session!.access_token;
 
     // A creates a session.
-    const ctx = await request.newContext();
+    const ctx = await request.newContext({ extraHTTPHeaders: { Origin: ORIGIN } });
     const createRes = await ctx.post(`${BACKEND}/api/session`, {
       headers: {
         "X-Requested-With": "codetutor",

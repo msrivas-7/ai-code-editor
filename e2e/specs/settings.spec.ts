@@ -234,6 +234,48 @@ test.describe("settings panel", () => {
     expect((capturedBody as { confirmEmail: string }).confirmEmail).toBe(user.email);
   });
 
+  test("Modal traps Tab focus inside the panel (Phase 20-P1)", async ({ page }) => {
+    // Phase 20-P1: Modal.tsx cycles Tab/Shift+Tab back to the first/last
+    // focusable element inside the panel. Without the trap, pressing Tab at
+    // the last button would move focus into the page behind (close button in
+    // the header, UserMenu avatar, etc.) — a WCAG failure and a confusing
+    // UX because the overlay swallows clicks but not keystrokes.
+    await page.goto("/");
+    await openSettings(page, "appearance");
+
+    // Collect the focusable buttons/inputs inside the dialog. "Appearance" is
+    // the lightest tab (three theme buttons + tab nav + close), so we can
+    // reason about a small finite list.
+    const dialog = page.locator('[role="dialog"]');
+    const focusables = dialog.locator(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    const count = await focusables.count();
+    expect(count).toBeGreaterThan(2);
+
+    // Tab from the last focusable must wrap to the first — not escape to
+    // page-level elements behind the overlay.
+    await focusables.nth(count - 1).focus();
+    await page.keyboard.press("Tab");
+    // Whatever is focused after the wrap must still be inside the dialog.
+    const stillInside = await page.evaluate(() => {
+      const active = document.activeElement;
+      const dlg = document.querySelector('[role="dialog"]');
+      return !!(active && dlg && dlg.contains(active));
+    });
+    expect(stillInside).toBe(true);
+
+    // Shift+Tab from the first focusable must wrap to the last.
+    await focusables.first().focus();
+    await page.keyboard.press("Shift+Tab");
+    const stillInsideBack = await page.evaluate(() => {
+      const active = document.activeElement;
+      const dlg = document.querySelector('[role="dialog"]');
+      return !!(active && dlg && dlg.contains(active));
+    });
+    expect(stillInsideBack).toBe(true);
+  });
+
   test("Escape closes the settings modal cleanly", async ({ page }) => {
     await seedApiKey(page, { key: "sk-escape-test-padding-1234567890" });
     await page.goto("/");

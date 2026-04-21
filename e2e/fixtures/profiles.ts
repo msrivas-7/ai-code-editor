@@ -35,6 +35,14 @@ export type ProfileId =
 
 const SEED_DIR = path.resolve(__dirname, "seeds");
 const BACKEND = process.env.E2E_API_URL ?? "http://localhost:4000";
+// Phase 20-P1: backend csrfGuard requires Origin on every mutating call and
+// allowlists it against CORS_ORIGIN. Setting it on the request context means
+// every ctx.patch/put/post/delete inherits it automatically.
+const ORIGIN = process.env.E2E_APP_ORIGIN ?? "http://localhost:5173";
+
+async function newBackendContext() {
+  return request.newContext({ extraHTTPHeaders: { Origin: ORIGIN } });
+}
 
 function readSeed(id: ProfileId): Record<string, string> {
   const p = path.join(SEED_DIR, `${id}.json`);
@@ -128,7 +136,7 @@ function translateSeed(seed: Record<string, string>): TranslatedSeed {
 // profile seed lands on a clean slate. Deletes the courses we know about
 // (discovered via GET /courses) plus resets preferences to defaults.
 async function resetServerState(token: string): Promise<void> {
-  const ctx = await request.newContext();
+  const ctx = await newBackendContext();
   try {
     // Discover courses the user currently has rows for.
     const res = await ctx.get(`${BACKEND}/api/user/courses`, {
@@ -199,7 +207,7 @@ async function seedServerState(
   token: string,
   seed: TranslatedSeed,
 ): Promise<void> {
-  const ctx = await request.newContext();
+  const ctx = await newBackendContext();
   try {
     if (Object.keys(seed.prefsPatch).length > 0) {
       await ctx.patch(`${BACKEND}/api/user/preferences`, {
@@ -279,7 +287,7 @@ export async function loadProfile(
     const hasWorkspace = translated.prefsPatch.workspaceCoachDone === true;
     const hasEditor = translated.prefsPatch.editorCoachDone === true;
     if (!hasWelcome || !hasWorkspace || !hasEditor) {
-      const ctx = await request.newContext();
+      const ctx = await newBackendContext();
       try {
         await ctx.patch(`${BACKEND}/api/user/preferences`, {
           headers: {
@@ -311,7 +319,7 @@ export async function markOnboardingDone(page: Page): Promise<void> {
   const workerIndex = test.info().workerIndex;
   const user = await getWorkerUser(workerIndex);
   const token = user.session.access_token;
-  const ctx = await request.newContext();
+  const ctx = await newBackendContext();
   try {
     await ctx.patch(`${BACKEND}/api/user/preferences`, {
       headers: {
@@ -356,7 +364,7 @@ export async function seedApiKey(
   const workerIndex = test.info().workerIndex;
   const user = await getWorkerUser(workerIndex);
   const token = user.session.access_token;
-  const ctx = await request.newContext();
+  const ctx = await newBackendContext();
   try {
     await ctx.patch(`${BACKEND}/api/user/preferences`, {
       headers: {
@@ -397,7 +405,7 @@ export async function seedLessonProgress(
   const workerIndex = test.info().workerIndex;
   const user = await getWorkerUser(workerIndex);
   const token = user.session.access_token;
-  const ctx = await request.newContext();
+  const ctx = await newBackendContext();
   const body: Record<string, unknown> = {
     status: opts.status ?? "in_progress",
     startedAt: opts.startedAt ?? new Date().toISOString(),
