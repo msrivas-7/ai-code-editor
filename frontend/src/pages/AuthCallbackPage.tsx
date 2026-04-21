@@ -15,6 +15,44 @@ import { useAuthStore } from "../auth/authStore";
 // link, unknown-tenant OAuth) all share the same fix — go back and start
 // the sign-in again — so we surface that as a primary action rather than
 // forcing the user to reason about a raw Supabase error string.
+
+// Phase 20-P1: Supabase surfaces raw strings like `AuthApiError: invalid
+// request: both auth code and code verifier should be non-empty` or
+// `Email link is invalid or has expired`. Those are noise to a user and
+// noise to a support ticket. Classify into 3 buckets we can actually act
+// on. The raw message still goes to the console for debugging.
+type AuthErrorKind = "expired" | "state" | "unknown";
+
+function classifyAuthError(raw: string): AuthErrorKind {
+  const s = raw.toLowerCase();
+  if (s.includes("expired") || s.includes("already been used")) {
+    return "expired";
+  }
+  // `code verifier` errors fire when the browser state got wiped between
+  // starting and finishing the PKCE dance — e.g. the callback ran in a new
+  // window, or cookies got cleared, or the user opened the link in a
+  // different browser from the one that requested it.
+  if (
+    s.includes("code verifier") ||
+    s.includes("flow_state_not_found") ||
+    s.includes("invalid request")
+  ) {
+    return "state";
+  }
+  return "unknown";
+}
+
+function friendlyAuthMessage(kind: AuthErrorKind): string {
+  switch (kind) {
+    case "expired":
+      return "That sign-in link has expired or already been used. Request a new one to continue.";
+    case "state":
+      return "We lost track of this sign-in. This usually happens if you opened the link in a different browser or cleared cookies mid-flow. Start again from the sign-in page.";
+    case "unknown":
+      return "Something went wrong finishing sign-in. Request a new link and try again.";
+  }
+}
+
 export default function AuthCallbackPage() {
   const user = useAuthStore((s) => s.user);
   const [err, setErr] = useState<string | null>(null);
@@ -22,22 +60,24 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const handle = (raw: string) => {
+      console.error("[auth-callback]", raw);
+      setErr(friendlyAuthMessage(classifyAuthError(raw)));
+    };
     supabase.auth
       .getSession()
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          setErr(error.message);
+          handle(error.message);
         } else if (!data.session) {
-          setErr(
-            "That sign-in link is expired or was already used. Request a new one to continue.",
-          );
+          setErr(friendlyAuthMessage("expired"));
         }
         setReady(true);
       })
       .catch((e) => {
         if (cancelled) return;
-        setErr((e as Error).message);
+        handle((e as Error).message);
         setReady(true);
       });
     return () => {

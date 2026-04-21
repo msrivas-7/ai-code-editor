@@ -53,7 +53,15 @@ export function OAuthButtons({ disabled }: { disabled?: boolean }) {
           {pending === "github" ? "Connecting…" : "GitHub"}
         </button>
       </div>
-      {err && <span className="text-[10px] text-danger">{err}</span>}
+      {err && (
+        <div
+          role="alert"
+          className="rounded-md border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger"
+        >
+          {err}{" "}
+          <span className="text-muted">— or use email instead below.</span>
+        </div>
+      )}
     </div>
   );
 }

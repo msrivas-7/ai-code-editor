@@ -47,6 +47,10 @@ interface AuthState {
   ) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
   signInWithOAuth: (provider: "google" | "github") => Promise<void>;
+  // Phase 20-P1: re-send the signup confirmation email. Supabase treats
+  // this as a no-op if the user is already confirmed — safe to offer
+  // unconditionally from the "check your inbox" screen.
+  resendSignupConfirmation: (email: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
   updateDisplayName: (firstName: string, lastName: string) => Promise<void>;
@@ -121,6 +125,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       throw error;
     }
     // Browser will redirect to the provider; we don't reach here normally.
+  },
+
+  resendSignupConfirmation: async (email) => {
+    set({ error: null });
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) {
+      set({ error: error.message });
+      throw error;
+    }
   },
 
   sendPasswordReset: async (email) => {

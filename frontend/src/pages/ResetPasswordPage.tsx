@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthShell } from "../auth/AuthShell";
 import { PasswordField } from "../auth/PasswordField";
+import { ResendEmailButton } from "../auth/ResendEmailButton";
 import { isValidEmail } from "../auth/emailValidation";
 import { isPasswordAcceptable } from "../auth/passwordPolicy";
 import { useAuthStore } from "../auth/authStore";
@@ -94,6 +95,12 @@ export default function ResetPasswordPage() {
         <p className="text-center text-[11px] text-muted">
           The link expires in an hour.
         </p>
+        <div className="mt-3 flex justify-center">
+          <ResendEmailButton
+            onResend={() => sendPasswordReset(email.trim())}
+            label="reset link"
+          />
+        </div>
       </AuthShell>
     );
   }

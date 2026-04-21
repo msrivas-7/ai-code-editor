@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import confetti from "canvas-confetti";
+
+// Phase 20-P1: confetti respects `prefers-reduced-motion`. The media query
+// covers users who get motion-sick from flying particles and users on low-end
+// devices who've globally disabled animations. Running it once at module load
+// is fine — the setting doesn't change between the user's first and last
+// lesson-complete in a session, and re-reading per-call costs nothing either.
+function celebrate(options: confetti.Options) {
+  if (typeof window === "undefined") return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  confetti(options);
+}
 import type { Lesson } from "../types";
 import { loadFullLesson, loadCourse, loadAllLessonMetas } from "../content/courseLoader";
 import { conceptsAvailableBefore } from "../content/conceptGraph";
@@ -412,7 +423,7 @@ export default function LessonPage() {
         const alreadyDone = (current?.practiceCompletedIds ?? []).includes(exercise.id);
         completePracticeExercise(courseId, lessonId, exercise.id);
         if (!alreadyDone) {
-          confetti({ particleCount: 80, spread: 55, origin: { y: 0.7 } });
+          celebrate({ particleCount: 80, spread: 55, origin: { y: 0.7 } });
         }
       }
       return;
@@ -473,7 +484,7 @@ export default function LessonPage() {
     }
     if (v.passed && !validation?.passed) {
       completeLesson(learnerId, courseId, lessonId, totalLessons);
-      confetti({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
+      celebrate({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
       setShowComplete(true);
     }
   }, [lesson, courseId, lessonId, completeLesson, learnerId, totalLessons, validation, practiceMode, practiceIndex, completePracticeExercise, sessionId, functionTests, testReport, lastFailedName]);

@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthShell } from "../auth/AuthShell";
 import { OAuthButtons } from "../auth/OAuthButtons";
 import { PasswordField } from "../auth/PasswordField";
+import { ResendEmailButton } from "../auth/ResendEmailButton";
 import { isValidEmail } from "../auth/emailValidation";
 import { useAuthStore } from "../auth/authStore";
 
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const signInWithPassword = useAuthStore((s) => s.signInWithPassword);
   const signInWithMagicLink = useAuthStore((s) => s.signInWithMagicLink);
   const clearError = useAuthStore((s) => s.clearError);
+
 
   const [mode, setMode] = useState<Mode>("password");
   const [email, setEmail] = useState("");
@@ -90,6 +92,12 @@ export default function LoginPage() {
           The link expires in an hour. You can close this tab once you've
           clicked it.
         </p>
+        <div className="mt-3 flex justify-center">
+          <ResendEmailButton
+            onResend={() => signInWithMagicLink(email.trim())}
+            label="sign-in link"
+          />
+        </div>
       </AuthShell>
     );
   }
@@ -107,6 +115,17 @@ export default function LoginPage() {
         </>
       }
     >
+      {/* Phase 20-P1: OAuth is the happy path now that verified email is
+          off the free SMTP tier — show providers above the email form with a
+          divider, so first-time visitors don't scan past the 2-click option. */}
+      <OAuthButtons disabled={submitting} />
+
+      <div className="my-4 flex items-center gap-2 text-[10px] text-faint">
+        <div className="h-px flex-1 bg-border" />
+        <span>or sign in with email</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
       <form
         onSubmit={mode === "password" ? handlePassword : handleMagicLink}
         className="flex flex-col gap-3"
@@ -189,14 +208,6 @@ export default function LoginPage() {
           )}
         </div>
       </form>
-
-      <div className="my-4 flex items-center gap-2 text-[10px] text-faint">
-        <div className="h-px flex-1 bg-border" />
-        <span>or continue with</span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
-
-      <OAuthButtons disabled={submitting} />
     </AuthShell>
   );
 }

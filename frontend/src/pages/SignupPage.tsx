@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AuthShell } from "../auth/AuthShell";
 import { OAuthButtons } from "../auth/OAuthButtons";
 import { PasswordField } from "../auth/PasswordField";
+import { ResendEmailButton } from "../auth/ResendEmailButton";
 import { isValidEmail } from "../auth/emailValidation";
 import { isPasswordAcceptable } from "../auth/passwordPolicy";
 import { useAuthStore } from "../auth/authStore";
@@ -18,6 +19,9 @@ export default function SignupPage() {
   const user = useAuthStore((s) => s.user);
   const loading = useAuthStore((s) => s.loading);
   const signUpWithPassword = useAuthStore((s) => s.signUpWithPassword);
+  const resendSignupConfirmation = useAuthStore(
+    (s) => s.resendSignupConfirmation,
+  );
   const clearError = useAuthStore((s) => s.clearError);
 
   const [firstName, setFirstName] = useState("");
@@ -103,6 +107,12 @@ export default function SignupPage() {
           If you don't see it, check your spam folder. The link expires in
           an hour.
         </p>
+        <div className="mt-3 flex justify-center">
+          <ResendEmailButton
+            onResend={() => resendSignupConfirmation(email.trim())}
+            label="confirmation email"
+          />
+        </div>
       </AuthShell>
     );
   }
@@ -128,6 +138,16 @@ export default function SignupPage() {
           Your account has been deleted.
         </div>
       )}
+      {/* Phase 20-P1: OAuth above the long signup form — most users finish
+          sign-up in 2 clicks via GitHub/Google and never see this form. */}
+      <OAuthButtons disabled={submitting} />
+
+      <div className="my-4 flex items-center gap-2 text-[10px] text-faint">
+        <div className="h-px flex-1 bg-border" />
+        <span>or sign up with email</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1.5">
@@ -241,14 +261,6 @@ export default function SignupPage() {
           {submitting ? "Creating account…" : "Create account"}
         </button>
       </form>
-
-      <div className="my-4 flex items-center gap-2 text-[10px] text-faint">
-        <div className="h-px flex-1 bg-border" />
-        <span>or sign up with</span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
-
-      <OAuthButtons disabled={submitting} />
     </AuthShell>
   );
 }
