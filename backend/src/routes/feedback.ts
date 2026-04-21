@@ -37,11 +37,22 @@ const diagnosticsSchema = z
     { message: `diagnostics exceeds ${DIAG_MAX_BYTES} bytes` },
   );
 
-const feedbackSchema = z.object({
-  body: z.string().trim().min(1, "body required").max(4000, "body too long"),
-  category: z.enum(["bug", "idea", "other"]),
-  diagnostics: diagnosticsSchema.optional().default({}),
-});
+// Body-or-mood invariant: the classic modal submits with a non-empty body
+// and no mood; the lesson-end chip submits with mood (+ lessonId) and an
+// empty body. We accept either shape and reject the zero-signal case where
+// both are absent. Matches the DB's `feedback_body_or_mood` CHECK.
+const feedbackSchema = z
+  .object({
+    body: z.string().trim().max(4000, "body too long").default(""),
+    category: z.enum(["bug", "idea", "other"]),
+    diagnostics: diagnosticsSchema.optional().default({}),
+    mood: z.enum(["good", "okay", "bad"]).nullish(),
+    lessonId: z.string().max(128).nullish(),
+  })
+  .refine((v) => v.body.length > 0 || v.mood != null, {
+    message: "body or mood is required",
+    path: ["body"],
+  });
 
 export const feedbackRouter: Router = Router();
 
@@ -54,6 +65,8 @@ feedbackRouter.post("/", async (req, res, next) => {
       body: parsed.body,
       category: parsed.category,
       diagnostics: parsed.diagnostics,
+      mood: parsed.mood ?? null,
+      lessonId: parsed.lessonId ?? null,
     });
     res.status(201).json({ id: row.id, createdAt: row.createdAt });
   } catch (err) {

@@ -199,7 +199,7 @@ export function LessonCompletePanel({
           )}
         </div>
 
-        <LessonFeedbackChip lessonTitle={lesson.title} />
+        <LessonFeedbackChip lessonId={lesson.id} lessonTitle={lesson.title} />
       </div>
     </Modal>
   );

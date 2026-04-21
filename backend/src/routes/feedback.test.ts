@@ -163,6 +163,107 @@ describe("POST /api/feedback", () => {
   });
 });
 
+// Phase 20-P2: mood-only inserts + body-or-mood invariant. Exercises the
+// chip path (empty body, mood set, lessonId set) and pins the rejection
+// when both body and mood are absent.
+
+describe("POST /api/feedback — mood-only (body-or-mood invariant)", () => {
+  it("accepts mood+lessonId with an empty body and persists both columns", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, {
+      body: "",
+      category: "other",
+      mood: "good",
+      lessonId: "python-fundamentals/hello-world",
+      diagnostics: { route: "/learn/course/python-fundamentals/lesson/hello-world" },
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { id: string };
+    feedbackIds.push(json.id);
+    const [row] = await db()<
+      Array<{ body: string; mood: string | null; lesson_id: string | null; category: string }>
+    >`SELECT body, mood, lesson_id, category FROM public.feedback WHERE id = ${json.id}`;
+    expect(row.body).toBe("");
+    expect(row.mood).toBe("good");
+    expect(row.lesson_id).toBe("python-fundamentals/hello-world");
+    expect(row.category).toBe("other");
+  });
+
+  it("accepts mood=bad + category=bug with empty body (confusion chip path)", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, {
+      body: "",
+      category: "bug",
+      mood: "bad",
+      lessonId: "python-fundamentals/variables",
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { id: string };
+    feedbackIds.push(json.id);
+  });
+
+  it("allows mood alongside a non-empty body (classic modal + pre-selected mood)", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, {
+      body: "Loved this one, but the hint copy was confusing",
+      category: "other",
+      mood: "okay",
+      lessonId: "python-fundamentals/conditionals",
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { id: string };
+    feedbackIds.push(json.id);
+  });
+
+  it("rejects when body is empty AND mood is absent with 400", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, { body: "", category: "other" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an unknown mood with 400", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, {
+      body: "",
+      category: "other",
+      mood: "meh",
+      lessonId: "python-fundamentals/hello-world",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a lessonId over 128 chars with 400", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, {
+      body: "",
+      category: "other",
+      mood: "good",
+      lessonId: "x".repeat(129),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("defaults mood and lessonId to null when omitted on a classic body submit", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, { body: "classic path", category: "idea" });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { id: string };
+    feedbackIds.push(json.id);
+    const [row] = await db()<
+      Array<{ mood: string | null; lesson_id: string | null }>
+    >`SELECT mood, lesson_id FROM public.feedback WHERE id = ${json.id}`;
+    expect(row.mood).toBeNull();
+    expect(row.lesson_id).toBeNull();
+  });
+});
+
 describe("feedback row survives account deletion (user_id SET NULL)", () => {
   it("keeps the row with user_id = null after the owning user is deleted", async () => {
     if (!dbReachable) return;

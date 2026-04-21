@@ -214,4 +214,30 @@ test.describe("lesson-end feedback chip", () => {
       "true",
     );
   });
+
+  // Phase 20-P2: a mood click fires a fire-and-forget POST that persists a
+  // mood-only row even if the learner never types anything in the modal.
+  // This is the single highest-intent signal the chip exists to capture —
+  // losing it when there's no note would defeat the purpose.
+  test("mood click fires POST /api/feedback with body='' + mood + lessonId", async ({
+    page,
+  }) => {
+    await completeHelloWorld(page);
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().endsWith("/api/feedback") && res.status() === 201,
+      ),
+      page.getByTestId("lesson-feedback-bad").click(),
+    ]);
+    const reqBody = JSON.parse(response.request().postData() ?? "{}") as {
+      body: string;
+      category: string;
+      mood: string;
+      lessonId: string;
+    };
+    expect(reqBody.body).toBe("");
+    expect(reqBody.mood).toBe("bad");
+    expect(reqBody.category).toBe("bug");
+    expect(reqBody.lessonId).toBe("hello-world");
+  });
 });

@@ -7,12 +7,15 @@ import { db } from "./client.js";
 // depth: don't expose a footgun that could dump arbitrary user_ids).
 
 export type FeedbackCategory = "bug" | "idea" | "other";
+export type FeedbackMood = "good" | "okay" | "bad";
 
 export interface InsertFeedbackArgs {
   userId: string;
   body: string;
   category: FeedbackCategory;
   diagnostics: Record<string, unknown>;
+  mood?: FeedbackMood | null;
+  lessonId?: string | null;
 }
 
 export interface FeedbackRow {
@@ -22,9 +25,18 @@ export interface FeedbackRow {
 
 export async function insertFeedback(args: InsertFeedbackArgs): Promise<FeedbackRow> {
   const sql = db();
+  const mood = args.mood ?? null;
+  const lessonId = args.lessonId ?? null;
   const rows = await sql<Array<{ id: string; created_at: Date }>>`
-    INSERT INTO public.feedback (user_id, body, category, diagnostics)
-    VALUES (${args.userId}, ${args.body}, ${args.category}, ${sql.json(args.diagnostics as Record<string, never>)})
+    INSERT INTO public.feedback (user_id, body, category, diagnostics, mood, lesson_id)
+    VALUES (
+      ${args.userId},
+      ${args.body},
+      ${args.category},
+      ${sql.json(args.diagnostics as Record<string, never>)},
+      ${mood},
+      ${lessonId}
+    )
     RETURNING id, created_at
   `;
   const row = rows[0];

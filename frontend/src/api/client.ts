@@ -364,14 +364,17 @@ export const api = {
     post<{ summary: string }>("/api/ai/summarize", body),
   listOpenAIModels: () => get<{ models: AIModel[] }>("/api/ai/models"),
 
-  // Phase 20-P1: global feedback channel. Body is always non-empty plaintext;
-  // diagnostics is opt-in and passed through verbatim (the client is the
-  // authoritative shape). Returns the row id so the UI can mention it in
-  // the thank-you screen (useful for support tickets that reference it).
+  // Phase 20-P1: global feedback channel. Body-or-mood is required (backend
+  // refine()); diagnostics is opt-in and passed through verbatim. Returns
+  // the row id so the UI can reference it in the thank-you screen. The
+  // lesson-end chip uses this with `{ body: "", mood, lessonId }` to persist
+  // a mood signal even when the learner doesn't type anything.
   submitFeedback: (body: {
     body: string;
     category: "bug" | "idea" | "other";
     diagnostics?: Record<string, string | number | boolean | null>;
+    mood?: "good" | "okay" | "bad" | null;
+    lessonId?: string | null;
   }) => post<{ id: string; createdAt: string }>("/api/feedback", body),
   askAIStream: async (
     body: AskStreamRequest,
