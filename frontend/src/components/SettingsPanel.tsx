@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
+import { usePreferencesStore } from "../state/preferencesStore";
 import { useAuthStore } from "../auth/authStore";
 import type { Persona } from "../types";
 import { useThemePref, type ThemePref } from "../util/theme";
@@ -273,69 +274,104 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
 
 function AITab() {
   const {
-    apiKey,
-    keyStatus,
-    keyError,
     models,
     modelsStatus,
     modelsError,
     selectedModel,
-    remember,
-    setApiKey,
-    setKeyStatus,
     setModels,
     setModelsStatus,
     setSelectedModel,
-    setRemember,
-    forgetKey,
     persona,
     setPersona,
+    clearConversation,
   } = useAIStore();
+  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
+  const saveOpenaiKey = usePreferencesStore((s) => s.saveOpenaiKey);
+  const forgetOpenaiKey = usePreferencesStore((s) => s.forgetOpenaiKey);
 
+  // Phase 18e: the key lives on the server. The input here is a local draft
+  // used only for the current "enter + validate + save" round-trip — it is
+  // never persisted anywhere, and clears as soon as the save succeeds.
+  type SaveStatus =
+    | { kind: "idle" }
+    | { kind: "validating" }
+    | { kind: "saved" }
+    | { kind: "invalid"; error: string };
+  const [draft, setDraft] = useState("");
   const [reveal, setReveal] = useState(false);
-  // Two-step confirm for Remove API key — clears both the key and the tutor
-  // chat, so a single click shouldn't wipe an in-progress conversation.
   const [confirmForget, setConfirmForget] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
 
-  const handleValidate = async () => {
-    if (!apiKey.trim()) return;
-    setKeyStatus("validating");
+  // Load the available models as soon as we know the user has a key on file
+  // (or has just saved one). `listOpenAIModels` pulls the key from the DB
+  // server-side, so the client only needs the userId the auth header carries.
+  useEffect(() => {
+    if (!hasKey) return;
+    if (modelsStatus !== "idle") return;
+    setModelsStatus("loading");
+    api
+      .listOpenAIModels()
+      .then(({ models: fetched }) => {
+        setModels(fetched);
+        setModelsStatus("loaded");
+      })
+      .catch((err) => setModelsStatus("error", (err as Error).message));
+  }, [hasKey, modelsStatus, setModels, setModelsStatus]);
+
+  const handleSave = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    setStatus({ kind: "validating" });
     try {
-      const result = await api.validateOpenAIKey(apiKey.trim());
+      const result = await api.validateOpenAIKey(trimmed);
       if (!result.valid) {
-        setKeyStatus("invalid", result.error ?? "invalid key");
+        setStatus({ kind: "invalid", error: result.error ?? "invalid key" });
         return;
       }
-      setKeyStatus("valid");
+      await saveOpenaiKey(trimmed);
+      setDraft("");
+      setStatus({ kind: "saved" });
+      // Force a fresh model listing with the new key.
       setModelsStatus("loading");
       try {
-        const { models: fetched } = await api.listOpenAIModels(apiKey.trim());
+        const { models: fetched } = await api.listOpenAIModels();
         setModels(fetched);
         setModelsStatus("loaded");
       } catch (err) {
         setModelsStatus("error", (err as Error).message);
       }
     } catch (err) {
-      setKeyStatus("invalid", (err as Error).message);
+      setStatus({ kind: "invalid", error: (err as Error).message });
     }
   };
 
-  const statusBlurb = () => {
-    switch (keyStatus) {
-      case "none":
-        return <span className="text-faint">not validated</span>;
-      case "validating":
-        return (
-          <span className="flex items-center gap-1.5 text-warn">
-            <span className="inline-block h-1.5 w-1.5 animate-pulseDot rounded-full bg-warn" />
-            validating…
-          </span>
-        );
-      case "valid":
-        return <span className="text-success">● valid</span>;
-      case "invalid":
-        return <span className="text-danger">× {keyError}</span>;
+  const handleForget = async () => {
+    try {
+      await forgetOpenaiKey();
+    } catch {
+      /* rollback handled in store */
     }
+    clearConversation();
+    setConfirmForget(false);
+    setStatus({ kind: "idle" });
+    setModels([]);
+    setModelsStatus("idle");
+    setSelectedModel(null);
+  };
+
+  const statusBlurb = () => {
+    if (status.kind === "validating") {
+      return (
+        <span className="flex items-center gap-1.5 text-warn">
+          <span className="inline-block h-1.5 w-1.5 animate-pulseDot rounded-full bg-warn" />
+          validating…
+        </span>
+      );
+    }
+    if (status.kind === "saved") return <span className="text-success">● saved</span>;
+    if (status.kind === "invalid") return <span className="text-danger">× {status.error}</span>;
+    if (hasKey) return <span className="text-success">● key saved</span>;
+    return <span className="text-faint">no key saved</span>;
   };
 
   return (
@@ -347,9 +383,12 @@ function AITab() {
           <div className="flex items-center gap-2">
             <input
               type={reveal ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-…"
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                if (status.kind !== "idle") setStatus({ kind: "idle" });
+              }}
+              placeholder={hasKey ? "enter a new key to replace" : "sk-…"}
               className="flex-1 rounded-md border border-border bg-elevated px-2.5 py-1.5 font-mono text-xs text-ink transition placeholder:text-faint focus:border-accent/60"
               autoComplete="off"
               spellCheck={false}
@@ -379,45 +418,35 @@ function AITab() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleValidate}
-            disabled={!apiKey.trim() || keyStatus === "validating"}
+            onClick={handleSave}
+            disabled={!draft.trim() || status.kind === "validating"}
             title={
-              !apiKey.trim()
+              !draft.trim()
                 ? "Enter an API key first"
-                : keyStatus === "validating"
+                : status.kind === "validating"
                   ? "Validating… please wait"
-                  : "Check this API key with OpenAI"
+                  : "Validate this key with OpenAI and save it"
             }
             aria-label={
-              !apiKey.trim()
-                ? "Validate API key (enter a key first)"
-                : keyStatus === "validating"
+              !draft.trim()
+                ? "Save API key (enter a key first)"
+                : status.kind === "validating"
                   ? "Validating API key"
-                  : "Validate API key"
+                  : "Validate and save API key"
             }
             className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-bg transition hover:bg-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
           >
-            Validate
+            Save
           </button>
           <div className="text-[11px]">{statusBlurb()}</div>
         </div>
 
-        <label className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 p-2.5">
-          <input
-            type="checkbox"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-            className="mt-0.5 accent-warn"
-          />
-          <div className="text-[11px] leading-relaxed">
-            <div className="font-semibold text-warn">Remember on this device</div>
-            <div className="text-warn/70">
-              Saved on this computer only — don't enable on a shared machine.
-            </div>
-          </div>
-        </label>
+        <p className="text-[10px] leading-relaxed text-faint">
+          Stored encrypted on our server and decrypted only when forwarding
+          requests to OpenAI.
+        </p>
 
-        {keyStatus === "valid" && (
+        {hasKey && (
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium text-muted">Model</span>
             {modelsStatus === "loading" && (
@@ -456,7 +485,7 @@ function AITab() {
           </div>
         )}
 
-        {apiKey && (
+        {hasKey && (
           confirmForget ? (
             <div className="flex flex-col gap-1.5 self-start rounded-md border border-danger/40 bg-danger/5 p-2">
               <span className="text-[11px] text-danger">
@@ -464,7 +493,7 @@ function AITab() {
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { forgetKey(); setConfirmForget(false); }}
+                  onClick={handleForget}
                   className="rounded-md bg-danger px-2.5 py-1 text-[11px] font-semibold text-bg transition hover:bg-danger/80"
                 >
                   Remove

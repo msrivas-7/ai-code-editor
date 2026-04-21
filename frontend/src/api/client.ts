@@ -135,6 +135,10 @@ export interface UserPreferences {
   workspaceCoachDone: boolean;
   editorCoachDone: boolean;
   uiLayout: Record<string, unknown>;
+  // Phase 18e: BYOK presence flag. The plaintext key lives only on the
+  // backend (encrypted at rest in user_preferences) — the frontend only
+  // learns whether one is set, never the value itself.
+  hasOpenaiKey: boolean;
   updatedAt: string;
 }
 
@@ -319,14 +323,15 @@ export const api = {
 
   validateOpenAIKey: (key: string) =>
     post<{ valid: boolean; error?: string }>("/api/ai/validate-key", { key }),
-  summarizeHistory: (
-    key: string,
-    body: { model: string; history: AIMessage[] }
-  ) => post<{ summary: string }>("/api/ai/summarize", body, { "X-OpenAI-Key": key }),
-  listOpenAIModels: (key: string) =>
-    get<{ models: AIModel[] }>("/api/ai/models", { "X-OpenAI-Key": key }),
+  saveOpenAIKey: (key: string) =>
+    put<{ ok: boolean }>("/api/user/openai-key", { key }),
+  deleteOpenAIKey: () => del<{ ok: boolean }>("/api/user/openai-key"),
+  // Phase 18e: the key is stored server-side now; these routes look it up
+  // via the authenticated userId, so the client no longer forwards one.
+  summarizeHistory: (body: { model: string; history: AIMessage[] }) =>
+    post<{ summary: string }>("/api/ai/summarize", body),
+  listOpenAIModels: () => get<{ models: AIModel[] }>("/api/ai/models"),
   askAIStream: async (
-    key: string,
     body: AskStreamRequest,
     handlers: AskStreamHandlers
   ): Promise<void> => {
@@ -335,7 +340,7 @@ export const api = {
       const auth = await authHeaders();
       res = await fetch("/api/ai/ask/stream", {
         method: "POST",
-        headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth, "X-OpenAI-Key": key },
+        headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
         body: JSON.stringify(body),
         signal: handlers.signal,
       });

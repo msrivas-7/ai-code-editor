@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
+import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
 import { useRunStore } from "../state/runStore";
 import { planSend } from "../util/summarizeHistory";
@@ -19,8 +20,6 @@ import { useShortcutLabels } from "../util/platform";
 
 export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: () => void; onOpenSettings?: () => void }) {
   const {
-    apiKey,
-    keyStatus,
     selectedModel,
     history,
     asking,
@@ -43,6 +42,7 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
     focusComposerNonce,
     sessionUsage,
   } = useAIStore();
+  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
 
   const { activeFile, language } = useProjectStore();
   const lastRun = useRunStore((s) => s.result);
@@ -65,7 +65,7 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
     textareaRef.current?.focus();
   }, [focusComposerNonce]);
 
-  const configured = keyStatus === "valid" && !!selectedModel;
+  const configured = hasKey && !!selectedModel;
 
   const { submitAsk, cancelAsk } = useTutorAsk({
     beforeSend: () => {
@@ -83,7 +83,7 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
         // Deliberately not awaited — the summarize result is cached for the
         // next ask, so the CURRENT ask doesn't block on it.
         api
-          .summarizeHistory(apiKey, {
+          .summarizeHistory({
             model: selectedModel!,
             history: plan.summarizeSlice.map((m) => ({
               role: m.role,

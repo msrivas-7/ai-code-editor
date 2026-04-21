@@ -1,9 +1,10 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { openaiProvider } from "../services/ai/openaiProvider.js";
 import { languageSchema } from "../services/execution/commands.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { aiRateLimit } from "../middleware/aiRateLimit.js";
+import { getOpenAIKey } from "../db/preferences.js";
 
 export const aiRouter = Router();
 
@@ -13,13 +14,22 @@ export const aiRouter = Router();
 // applied AFTER auth so the per-user bucket sees the authenticated userId.
 const authed = [authMiddleware, aiRateLimit] as const;
 
-// The user's OpenAI key is passed per-request via this header. Never logged,
-// never persisted server-side — the backend forwards it upstream and forgets.
-const KEY_HEADER = "x-openai-key";
-
-function getKey(req: import("express").Request): string | null {
-  const raw = req.header(KEY_HEADER);
-  return raw && raw.trim() ? raw.trim() : null;
+// Phase 18e: the user's OpenAI key lives encrypted in user_preferences.
+// Every authed AI route fetches + decrypts it on demand via the signed-in
+// userId. 400 with `KEY_MISSING` so the frontend can prompt the user to
+// open Settings and enter one.
+async function resolveKey(req: Request, res: Response): Promise<string | null> {
+  const userId = req.userId;
+  if (!userId) {
+    res.status(401).json({ error: "not authenticated" });
+    return null;
+  }
+  const key = await getOpenAIKey(userId);
+  if (!key) {
+    res.status(400).json({ error: "KEY_MISSING" });
+    return null;
+  }
+  return key;
 }
 
 const validateBody = z.object({
@@ -38,8 +48,8 @@ aiRouter.post("/validate-key", aiRateLimit, async (req, res, next) => {
 });
 
 aiRouter.get("/models", ...authed, async (req, res, next) => {
-  const key = getKey(req);
-  if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
+  const key = await resolveKey(req, res);
+  if (!key) return;
   try {
     const models = await openaiProvider.listModels(key);
     res.json({ models });
@@ -144,8 +154,8 @@ const summarizeBody = z.object({
 });
 
 aiRouter.post("/ask", ...authed, async (req, res, next) => {
-  const key = getKey(req);
-  if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
+  const key = await resolveKey(req, res);
+  if (!key) return;
   const parsed = askBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
@@ -175,8 +185,8 @@ aiRouter.post("/ask", ...authed, async (req, res, next) => {
 });
 
 aiRouter.post("/ask/stream", ...authed, async (req, res) => {
-  const key = getKey(req);
-  if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
+  const key = await resolveKey(req, res);
+  if (!key) return;
   const parsed = askBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
@@ -244,8 +254,8 @@ aiRouter.post("/ask/stream", ...authed, async (req, res) => {
 });
 
 aiRouter.post("/summarize", ...authed, async (req, res, next) => {
-  const key = getKey(req);
-  if (!key) return res.status(400).json({ error: "missing X-OpenAI-Key header" });
+  const key = await resolveKey(req, res);
+  if (!key) return;
   const parsed = summarizeBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });

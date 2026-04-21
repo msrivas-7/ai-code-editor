@@ -20,27 +20,18 @@ import {
 // or after the user flips a preference. Writes go through the prefs store's
 // `patch()` which handles the optimistic update + PATCH round-trip.
 //
-// `apiKey` + `remember` stay in localStorage: the OpenAI key is
-// explicitly per-device in 18b (see the Phase 18a/b plan — per-user BYOK is
-// a 19 concern).
+// Phase 18e: the OpenAI key itself is no longer in this store — it lives
+// encrypted on the server (user_preferences.openai_api_key_cipher). The UI
+// only ever sees `preferencesStore.hasOpenaiKey: boolean`; settings
+// save/delete go through preferencesStore.saveOpenaiKey / forgetOpenaiKey.
 
-const LS_KEY = "codetutor:openai-key";
-const LS_REMEMBER = "codetutor:openai-remember";
-
-export type KeyStatus = "none" | "validating" | "valid" | "invalid";
 export type ModelsStatus = "idle" | "loading" | "loaded" | "error";
 
 interface AIState {
-  apiKey: string;
-  keyStatus: KeyStatus;
-  keyError: string | null;
-
   models: AIModel[];
   modelsStatus: ModelsStatus;
   modelsError: string | null;
   selectedModel: string | null;
-
-  remember: boolean;
 
   history: AIMessage[];
   asking: boolean;
@@ -85,14 +76,9 @@ interface AIState {
   // also lives on each AIMessage; this is the aggregate for the header chip.
   sessionUsage: TokenUsage;
 
-  setApiKey: (key: string) => void;
-  setKeyStatus: (status: KeyStatus, error?: string | null) => void;
-
   setModels: (models: AIModel[]) => void;
   setModelsStatus: (status: ModelsStatus, error?: string | null) => void;
   setSelectedModel: (id: string | null) => void;
-
-  setRemember: (on: boolean) => void;
 
   setPendingAsk: (s: string | null) => void;
 
@@ -122,23 +108,15 @@ interface AIState {
   commitTurnSnapshot: (files: { path: string; content: string }[]) => void;
 
   clearConversation: () => void;
-  forgetKey: () => void;
 
   chatContext: string | null;
   switchChatContext: (contextKey: string) => void;
-}
 
-function loadInitial(): { apiKey: string; remember: boolean } {
-  try {
-    const remember = localStorage.getItem(LS_REMEMBER) === "1";
-    const apiKey = remember ? (localStorage.getItem(LS_KEY) ?? "") : "";
-    return { apiKey, remember };
-  } catch {
-    return { apiKey: "", remember: false };
-  }
+  // Full wipe on sign-out: drop every cached chat thread and all in-memory
+  // chat state. The chatCache Map is module-scoped, so without this the next
+  // user on the same tab inherits the previous user's history.
+  reset: () => void;
 }
-
-const initial = loadInitial();
 
 interface ChatSnapshot {
   history: AIMessage[];
@@ -156,16 +134,10 @@ function saveChatToCache(get: () => AIState): void {
 }
 
 export const useAIStore = create<AIState>((set, get) => ({
-  apiKey: initial.apiKey,
-  keyStatus: "none",
-  keyError: null,
-
   models: [],
   modelsStatus: "idle",
   modelsError: null,
   selectedModel: usePreferencesStore.getState().openaiModel,
-
-  remember: initial.remember,
 
   history: [],
   asking: false,
@@ -189,18 +161,6 @@ export const useAIStore = create<AIState>((set, get) => ({
   sessionUsage: { inputTokens: 0, outputTokens: 0 },
 
   chatContext: null,
-
-  setApiKey: (key) => {
-    set({ apiKey: key, keyStatus: "none", keyError: null, models: [], modelsStatus: "idle" });
-    if (get().remember) {
-      try {
-        if (key) localStorage.setItem(LS_KEY, key);
-        else localStorage.removeItem(LS_KEY);
-      } catch { /* ignore quota / disabled storage */ }
-    }
-  },
-
-  setKeyStatus: (status, error = null) => set({ keyStatus: status, keyError: error }),
 
   setModels: (models) => {
     const current = get().selectedModel;
@@ -230,20 +190,6 @@ export const useAIStore = create<AIState>((set, get) => ({
   commitSummary: (summary, throughIndex) =>
     set({ conversationSummary: summary, summarizedThrough: throughIndex }),
   setSummarizing: (on) => set({ summarizing: on }),
-
-  setRemember: (on) => {
-    set({ remember: on });
-    try {
-      if (on) {
-        localStorage.setItem(LS_REMEMBER, "1");
-        const k = get().apiKey;
-        if (k) localStorage.setItem(LS_KEY, k);
-      } else {
-        localStorage.removeItem(LS_REMEMBER);
-        localStorage.removeItem(LS_KEY);
-      }
-    } catch {}
-  },
 
   setActiveSelection: (sel) => set({ activeSelection: sel }),
   bumpFocusComposer: () => set((s) => ({ focusComposerNonce: s.focusComposerNonce + 1 })),
@@ -299,21 +245,29 @@ export const useAIStore = create<AIState>((set, get) => ({
     if (ctx) chatCache.delete(ctx);
   },
 
-  forgetKey: () => {
+  reset: () => {
+    chatCache.clear();
     set({
-      apiKey: "",
-      keyStatus: "none",
-      keyError: null,
       models: [],
       modelsStatus: "idle",
       modelsError: null,
       selectedModel: null,
       history: [],
+      asking: false,
+      askError: null,
+      pending: null,
+      lastTurnFiles: null,
+      runsSinceLastTurn: 0,
+      editsSinceLastTurn: 0,
+      pendingAsk: null,
+      conversationSummary: null,
+      summarizedThrough: 0,
+      summarizing: false,
+      activeSelection: null,
+      focusComposerNonce: 0,
+      sessionUsage: { inputTokens: 0, outputTokens: 0 },
+      chatContext: null,
     });
-    try {
-      localStorage.removeItem(LS_KEY);
-    } catch {}
-    void setOpenAIModelInPrefs(null).catch(() => { /* logged in prefs */ });
   },
 
   switchChatContext: (contextKey) => {

@@ -78,6 +78,12 @@ export const config = {
   // project). Points at the Supabase-managed Postgres for the current
   // environment (transaction pooler URL from Project Settings → Database).
   databaseUrl: process.env.DATABASE_URL,
+
+  // Phase 18e: master key for AES-256-GCM envelope encryption of user BYOK
+  // OpenAI keys. 32 raw bytes, base64-encoded at rest. Generate with
+  // `openssl rand -base64 32`. Rotating this invalidates every stored key —
+  // users would have to re-enter theirs in Settings.
+  byokEncryptionKey: process.env.BYOK_ENCRYPTION_KEY,
 } as const;
 
 export function assertConfigValid(): void {
@@ -98,6 +104,24 @@ export function assertConfigValid(): void {
     throw new Error(
       "[config] DATABASE_URL is required. Populate `.env` from `.env.example` " +
         "with your project's transaction-pooler connection string.",
+    );
+  }
+  if (!config.byokEncryptionKey || config.byokEncryptionKey.trim() === "") {
+    throw new Error(
+      "[config] BYOK_ENCRYPTION_KEY is required. Generate one with " +
+        "`openssl rand -base64 32` and set it in `.env`.",
+    );
+  }
+  try {
+    const buf = Buffer.from(config.byokEncryptionKey, "base64");
+    if (buf.length !== 32) {
+      throw new Error(
+        `[config] BYOK_ENCRYPTION_KEY must decode to 32 bytes (got ${buf.length}).`,
+      );
+    }
+  } catch (err) {
+    throw new Error(
+      `[config] BYOK_ENCRYPTION_KEY must be valid base64: ${(err as Error).message}`,
     );
   }
 }

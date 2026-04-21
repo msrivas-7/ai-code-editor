@@ -1,6 +1,11 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { getPreferences, upsertPreferences } from "../db/preferences.js";
+import {
+  clearOpenAIKey,
+  getPreferences,
+  setOpenAIKey,
+  upsertPreferences,
+} from "../db/preferences.js";
 import {
   listCourseProgress,
   upsertCourseProgress,
@@ -96,6 +101,45 @@ userDataRouter.patch("/preferences", async (req, res, next) => {
   try {
     const prefs = await upsertPreferences(requireUser(req), parsed.data);
     res.json(prefs);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- BYOK OpenAI key (Phase 18e) ----------
+//
+// Plaintext flows in over TLS, lives encrypted at rest (AES-256-GCM, keyed
+// off BYOK_ENCRYPTION_KEY), and is only decrypted server-side when the AI
+// routes forward it to OpenAI. GET is deliberately not exposed — the client
+// sees only `hasOpenaiKey: true|false` via GET /preferences.
+const openaiKeySchema = z
+  .object({
+    key: z
+      .string()
+      .trim()
+      .min(20, "key looks too short")
+      .max(400, "key looks too long")
+      .regex(/^[A-Za-z0-9_\-]+$/, "key has invalid characters"),
+  })
+  .strict();
+
+userDataRouter.put("/openai-key", async (req, res, next) => {
+  const parsed = openaiKeySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "invalid openai key" });
+  }
+  try {
+    await setOpenAIKey(requireUser(req), parsed.data.key);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+userDataRouter.delete("/openai-key", async (req, res, next) => {
+  try {
+    await clearOpenAIKey(requireUser(req));
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

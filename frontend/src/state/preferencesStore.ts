@@ -35,15 +35,24 @@ interface PreferencesState {
   workspaceCoachDone: boolean;
   editorCoachDone: boolean;
   uiLayout: Record<string, unknown>;
+  hasOpenaiKey: boolean;
 
   hydrate: (gen?: number) => Promise<void>;
   reset: () => void;
   patch: (body: UserPreferencesPatch) => Promise<void>;
+  saveOpenaiKey: (key: string) => Promise<void>;
+  forgetOpenaiKey: () => Promise<void>;
 }
 
 const DEFAULTS: Omit<
   PreferencesState,
-  "hydrate" | "reset" | "patch" | "hydrated" | "hydrateError"
+  | "hydrate"
+  | "reset"
+  | "patch"
+  | "saveOpenaiKey"
+  | "forgetOpenaiKey"
+  | "hydrated"
+  | "hydrateError"
 > = {
   persona: "intermediate",
   openaiModel: null,
@@ -52,6 +61,7 @@ const DEFAULTS: Omit<
   workspaceCoachDone: false,
   editorCoachDone: false,
   uiLayout: {},
+  hasOpenaiKey: false,
 };
 
 function applyServer(prefs: UserPreferences): Partial<PreferencesState> {
@@ -63,6 +73,7 @@ function applyServer(prefs: UserPreferences): Partial<PreferencesState> {
     workspaceCoachDone: prefs.workspaceCoachDone,
     editorCoachDone: prefs.editorCoachDone,
     uiLayout: prefs.uiLayout ?? {},
+    hasOpenaiKey: prefs.hasOpenaiKey,
     hydrated: true,
   };
 }
@@ -129,6 +140,30 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
         editorCoachDone: prior.editorCoachDone,
         uiLayout: prior.uiLayout,
       });
+      throw err;
+    }
+  },
+
+  // Phase 18e: server-backed BYOK key. The plaintext never lands in the
+  // store — only the `hasOpenaiKey` flag does. Optimistic flip-then-rollback
+  // so the Settings UI reflects the change immediately.
+  saveOpenaiKey: async (key) => {
+    const prior = get().hasOpenaiKey;
+    set({ hasOpenaiKey: true });
+    try {
+      await api.saveOpenAIKey(key);
+    } catch (err) {
+      set({ hasOpenaiKey: prior });
+      throw err;
+    }
+  },
+  forgetOpenaiKey: async () => {
+    const prior = get().hasOpenaiKey;
+    set({ hasOpenaiKey: false });
+    try {
+      await api.deleteOpenAIKey();
+    } catch (err) {
+      set({ hasOpenaiKey: prior });
       throw err;
     }
   },

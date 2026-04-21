@@ -4,6 +4,8 @@ import { supabase } from "./supabaseClient";
 import { useSessionStore } from "../state/sessionStore";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
+import { useAIStore } from "../state/aiStore";
+import { useRunStore } from "../state/runStore";
 import {
   clearSessionStarts,
   useProgressStore,
@@ -244,6 +246,11 @@ export function initAuth(): void {
       usePreferencesStore.getState().reset();
       useProgressStore.getState().reset();
       useProjectStore.getState().resetEditorHydration();
+      // Drop in-memory tutor threads (chatCache + history) and the per-device
+      // BYOK key, plus the per-lesson run output cache. These module-scoped
+      // Maps otherwise leak across sign-in boundaries on the same tab.
+      useAIStore.getState().reset();
+      useRunStore.getState().reset();
       clearSessionStarts();
     }
     lastUserId = u?.id ?? null;

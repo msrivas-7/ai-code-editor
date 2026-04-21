@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { api, type AskStreamRequest } from "../api/client";
 import { useAIStore } from "../state/aiStore";
+import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
 import type { EditorSelection, ProjectFile, AIMessage } from "../types";
 import { computeDiffSinceLast } from "./diffSinceLast";
@@ -38,8 +39,6 @@ export interface UseTutorAskResult {
 // carried its own near-identical ~100-line copy of this logic.
 export function useTutorAsk(opts: UseTutorAskOpts): UseTutorAskResult {
   const {
-    apiKey,
-    keyStatus,
     selectedModel,
     history,
     asking,
@@ -55,10 +54,11 @@ export function useTutorAsk(opts: UseTutorAskOpts): UseTutorAskResult {
     activeSelection,
     setActiveSelection,
   } = useAIStore();
+  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
   const { snapshot } = useProjectStore();
   const abortRef = useRef<AbortController | null>(null);
 
-  const configured = keyStatus === "valid" && !!selectedModel;
+  const configured = hasKey && !!selectedModel;
 
   const submitAsk = async (question: string): Promise<void> => {
     const trimmed = question.trim();
@@ -95,7 +95,7 @@ export function useTutorAsk(opts: UseTutorAskOpts): UseTutorAskResult {
         selection: selectionForTurn,
       });
 
-      await api.askAIStream(apiKey, body, {
+      await api.askAIStream(body, {
         signal: controller.signal,
         onDelta: (chunk) => {
           raw += chunk;

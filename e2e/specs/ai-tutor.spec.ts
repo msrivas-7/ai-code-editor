@@ -51,17 +51,17 @@ async function installAllTutorMocks(page: Page): Promise<void> {
   });
 }
 
-// The tutor panel renders TutorSetupWarning until keyStatus flips to "valid".
-// keyStatus is not persisted across reloads, so even with a seeded apiKey the
-// warning shows. Drive through the warning UI: the seeded key pre-fills the
-// backing store, user pastes-or-accepts, Connect triggers mocked validate-key
-// which resolves valid=true, warning unmounts, composer becomes usable.
-async function configureTutorKey(page: Page, key = "sk-test-e2e"): Promise<void> {
+// Phase 18e: the OpenAI key lives encrypted server-side in user_preferences,
+// and seedApiKey persists both the key + an openaiModel before page load —
+// so the TutorSetupWarning typically doesn't render. This helper covers both
+// cases: if the warning is up (unseeded path), drive it via Connect; either
+// way, wait for the composer to become enabled.
+async function configureTutorKey(page: Page, key = "sk-test-e2e-padding-12345"): Promise<void> {
   const keyInput = page.getByRole("textbox", { name: /openai api key/i });
-  await expect(keyInput).toBeVisible({ timeout: 10_000 });
-  await keyInput.fill(key);
-  await page.getByRole("button", { name: /^connect$/i }).click();
-  // Composer becomes available once keyStatus="valid" + selectedModel is set.
+  if (await keyInput.isVisible().catch(() => false)) {
+    await keyInput.fill(key);
+    await page.getByRole("button", { name: /^connect$/i }).click();
+  }
   await expect(S.tutorInput(page)).toBeEnabled({ timeout: 10_000 });
 }
 
@@ -86,13 +86,13 @@ test.describe("AI tutor", () => {
   });
 
   test("first-turn ask: sections render after mocked stream", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "empty");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
     await mockTutorResponse(page, "first-turn-concept");
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     await S.tutorInput(page).fill("What's a function?");
     await page.getByRole("button", { name: /^ask$/i }).click();
@@ -106,13 +106,13 @@ test.describe("AI tutor", () => {
   });
 
   test("hint ladder: aria-label cycles level 1 → 2 → 3", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "first-lesson-editing");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
     await mockTutorQueue(page, ["hint-level-1", "hint-level-2", "hint-level-3"]);
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     // Kick the ladder by asking an initial question — the Hint button only
     // renders next to a completed assistant turn (the "latest assistant"
@@ -139,13 +139,13 @@ test.describe("AI tutor", () => {
   });
 
   test("ActionChips: clicking 'explain more' submits a follow-up request", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "empty");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
     await mockTutorQueue(page, ["first-turn-concept", "lesson-explain"]);
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     await S.tutorInput(page).fill("Explain Python.");
     await page.getByRole("button", { name: /^ask$/i }).click();
@@ -162,13 +162,13 @@ test.describe("AI tutor", () => {
   });
 
   test("error banner renders retry button; retry with success lands cleanly", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "empty");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
     await mockTutorQueue(page, ["error-500", "first-turn-concept"]);
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     await S.tutorInput(page).fill("Tell me about decorators.");
     await page.getByRole("button", { name: /^ask$/i }).click();
@@ -185,13 +185,13 @@ test.describe("AI tutor", () => {
   });
 
   test("usage chip renders when response includes token usage", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "empty");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
     await mockTutorResponse(page, "first-turn-concept");
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     await S.tutorInput(page).fill("What's a variable?");
     await page.getByRole("button", { name: /^ask$/i }).click();
@@ -205,8 +205,8 @@ test.describe("AI tutor", () => {
   });
 
   test("streaming shows Stop button; clicking Stop cancels cleanly", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "empty");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
 
     // Install a slow-streaming mock so Stop is clickable before the stream
     // finishes. 800ms delay lets the user click.
@@ -226,7 +226,7 @@ test.describe("AI tutor", () => {
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     await S.tutorInput(page).fill("Long answer please.");
     await page.getByRole("button", { name: /^ask$/i }).click();
@@ -239,13 +239,13 @@ test.describe("AI tutor", () => {
   });
 
   test("editor-page AssistantPanel ask round-trip (mocked)", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-e2e", model: "gpt-4o-mini" });
     await loadProfile(page, "empty");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
     await mockTutorResponse(page, "first-turn-concept");
 
     await page.goto("/editor");
     await waitForMonacoReady(page);
-    await configureTutorKey(page, "sk-test-e2e");
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
 
     // AssistantPanel uses a textarea without the explicit "Ask the tutor"
     // aria-label — fall back to the placeholder match in S.tutorInput, which

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
+import { usePreferencesStore } from "../state/preferencesStore";
 
 interface TutorSetupWarningProps {
   onOpenSettings?: () => void;
@@ -8,74 +9,75 @@ interface TutorSetupWarningProps {
 
 // Inline-first API key setup. Configuring the tutor shouldn't require
 // punching out to the Settings modal — the key is the single blocker, so
-// we accept and validate it right here. For secondary preferences
+// we accept, validate, and save it right here. For secondary preferences
 // (persona/theme/forget) we still link to Settings.
+//
+// Phase 18e: the draft only ever lives in local component state. On Connect
+// we validate with OpenAI, then PUT it to /api/user/openai-key where it is
+// encrypted at rest. The plaintext never lands in a global store.
+type ConnectStatus =
+  | { kind: "idle" }
+  | { kind: "validating" }
+  | { kind: "invalid"; error: string };
+
 export function TutorSetupWarning({ onOpenSettings }: TutorSetupWarningProps) {
-  const {
-    apiKey,
-    keyStatus,
-    keyError,
-    remember,
-    setApiKey,
-    setKeyStatus,
-    setModels,
-    setModelsStatus,
-    setRemember,
-  } = useAIStore();
+  const saveOpenaiKey = usePreferencesStore((s) => s.saveOpenaiKey);
+  const { setModels, setModelsStatus } = useAIStore();
 
   const [draft, setDraft] = useState("");
   const [reveal, setReveal] = useState(false);
-  const validating = keyStatus === "validating";
+  const [status, setStatus] = useState<ConnectStatus>({ kind: "idle" });
+  const validating = status.kind === "validating";
 
-  const handleValidate = async () => {
+  const handleConnect = async () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
-    setApiKey(trimmed);
-    setKeyStatus("validating");
+    setStatus({ kind: "validating" });
     try {
       const result = await api.validateOpenAIKey(trimmed);
       if (!result.valid) {
-        setKeyStatus("invalid", result.error ?? "invalid key");
+        setStatus({ kind: "invalid", error: result.error ?? "invalid key" });
         return;
       }
-      setKeyStatus("valid");
+      await saveOpenaiKey(trimmed);
+      setDraft("");
+      setStatus({ kind: "idle" });
       setModelsStatus("loading");
       try {
-        const { models: fetched } = await api.listOpenAIModels(trimmed);
+        const { models: fetched } = await api.listOpenAIModels();
         setModels(fetched);
         setModelsStatus("loaded");
       } catch (err) {
         setModelsStatus("error", (err as Error).message);
       }
     } catch (err) {
-      setKeyStatus("invalid", (err as Error).message);
+      setStatus({ kind: "invalid", error: (err as Error).message });
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      handleValidate();
+      handleConnect();
     }
   };
-
-  // If the user already has an invalid/valid key saved in the store, prefer
-  // that as the starting value so they don't have to re-paste to retry.
-  const inputValue = draft || (keyStatus === "invalid" ? apiKey : "");
 
   return (
     <div className="rounded-md border border-warn/30 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
       <div className="mb-1 font-semibold">Let's connect your AI tutor</div>
       <p className="text-warn/90">
         Paste your OpenAI API key to unlock hints, code explanations, and
-        lesson-aware guidance.
+        lesson-aware guidance. Stored encrypted on our server.
       </p>
 
       <div className="mt-2.5 flex items-center gap-1.5">
         <input
           type={reveal ? "text" : "password"}
-          value={inputValue}
-          onChange={(e) => setDraft(e.target.value)}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (status.kind !== "idle") setStatus({ kind: "idle" });
+          }}
           onKeyDown={handleKeyDown}
           placeholder="sk-…"
           aria-label="OpenAI API key"
@@ -104,27 +106,17 @@ export function TutorSetupWarning({ onOpenSettings }: TutorSetupWarningProps) {
           )}
         </button>
         <button
-          onClick={handleValidate}
-          disabled={!inputValue.trim() || validating}
+          onClick={handleConnect}
+          disabled={!draft.trim() || validating}
           className="rounded-md bg-warn px-2.5 py-1 text-[11px] font-semibold text-bg transition hover:bg-warn/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {validating ? "Checking…" : "Connect"}
         </button>
       </div>
 
-      {keyStatus === "invalid" && keyError && (
-        <p className="mt-1.5 text-[11px] text-danger">× {keyError}</p>
+      {status.kind === "invalid" && (
+        <p className="mt-1.5 text-[11px] text-danger">× {status.error}</p>
       )}
-
-      <label className="mt-2 flex items-center gap-1.5 text-[11px] text-warn/80">
-        <input
-          type="checkbox"
-          checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-          className="accent-warn"
-        />
-        <span>Remember on this device (saved on this computer only)</span>
-      </label>
 
       {onOpenSettings && (
         <button

@@ -67,36 +67,38 @@ test.describe("settings panel", () => {
     await expect(page.getByText(/dense and technical/i)).toBeVisible();
   });
 
-  test("Show / hide API key toggle flips the input type", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-test-visibility" });
+  test("Show / hide API key toggle flips the input type on the draft input", async ({ page }) => {
     await page.goto("/");
     await openSettings(page, "ai");
 
+    // Phase 18e: the input is a local draft for a new key (the saved key
+    // never leaves the server). Reveal flips the draft input's type.
     const keyInput = page.locator('input[placeholder="sk-…"]');
+    await keyInput.fill("sk-test-visibility-padding-12345");
     await expect(keyInput).toHaveAttribute("type", "password");
 
-    // The reveal toggle carries a dynamic aria-label — "Show API key" while
-    // hidden, "Hide API key" once revealed.
     await page.getByRole("button", { name: /^show api key$/i }).click();
     await expect(keyInput).toHaveAttribute("type", "text");
-    await expect(keyInput).toHaveValue("sk-test-visibility");
+    await expect(keyInput).toHaveValue("sk-test-visibility-padding-12345");
 
     await page.getByRole("button", { name: /^hide api key$/i }).click();
     await expect(keyInput).toHaveAttribute("type", "password");
   });
 
-  test("Validate key → model picker loads → model change persists", async ({ page }) => {
+  test("Save key → model picker loads → model change persists", async ({ page }) => {
     await page.goto("/");
     await openSettings(page, "ai");
 
-    // Type a key and validate — mockAllAI's validate returns {valid:true}
-    // and models returns gpt-4o-mini + gpt-4o. The validate button's
-    // accessible name is "Validate API key" (dynamic aria-label).
-    await page.locator('input[placeholder="sk-…"]').fill("sk-valid-test");
-    await page.getByRole("button", { name: /^validate api key$/i }).click();
+    // Type a key and save — mockAllAI's validate returns {valid:true} and
+    // models returns gpt-4o-mini + gpt-4o. The save button's accessible
+    // name is "Validate and save API key" (dynamic aria-label).
+    await page
+      .locator('input[placeholder="sk-…"]')
+      .fill("sk-valid-test-padding-1234567890");
+    await page.getByRole("button", { name: /^validate and save api key$/i }).click();
 
-    // Valid pill renders, then the Model picker appears.
-    await expect(page.getByText(/● valid/i)).toBeVisible({ timeout: 5_000 });
+    // Saved pill renders, then the Model picker appears.
+    await expect(page.getByText(/● saved/i)).toBeVisible({ timeout: 5_000 });
     const modelSelect = page.getByRole("combobox", { name: /^model$/i });
     await expect(modelSelect).toBeVisible({ timeout: 5_000 });
 
@@ -109,7 +111,7 @@ test.describe("settings panel", () => {
     await expect(modelSelect).toHaveValue("gpt-4o");
   });
 
-  test("Invalid key surfaces the error and hides the Model picker", async ({ page }) => {
+  test("Invalid key surfaces the error and leaves the saved key untouched", async ({ page }) => {
     // Override the default validate-key mock with an invalid response BEFORE
     // navigating so the route is installed first.
     await page.route("**/api/ai/validate-key", async (route) => {
@@ -122,19 +124,26 @@ test.describe("settings panel", () => {
     await page.goto("/");
     await openSettings(page, "ai");
 
-    await page.locator('input[placeholder="sk-…"]').fill("sk-nope");
-    await page.getByRole("button", { name: /^validate api key$/i }).click();
+    await page
+      .locator('input[placeholder="sk-…"]')
+      .fill("sk-nope-padding-1234567890abcdef");
+    await page.getByRole("button", { name: /^validate and save api key$/i }).click();
 
     // Error blurb renders with the message from the mock.
     await expect(page.getByText(/× bad key format/i)).toBeVisible({ timeout: 5_000 });
-    // Model picker did NOT appear.
-    await expect(page.getByRole("combobox", { name: /^model$/i })).toHaveCount(0);
+    // `hasOpenaiKey` on the server remains false → no model picker, no
+    // "key saved" status pill.
+    await expect(page.getByText(/● saved|● key saved/i)).toHaveCount(0);
   });
 
   test("Remove API key is a two-step confirm (Cancel keeps, Remove wipes)", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-about-to-be-removed" });
+    await seedApiKey(page, { key: "sk-about-to-be-removed-padding-123" });
     await page.goto("/");
     await openSettings(page, "ai");
+
+    // With a key saved server-side, the status pill reads "key saved" and
+    // the Remove API key affordance is available.
+    await expect(page.getByText(/● key saved/i)).toBeVisible();
 
     // First click — inline confirm pill appears with Remove + Cancel buttons.
     await page.getByRole("button", { name: /^remove api key$/i }).click();
@@ -147,9 +156,7 @@ test.describe("settings panel", () => {
       .last()
       .click();
     await expect(page.getByText(/also clears your tutor chat/i)).toHaveCount(0);
-    expect(await page.evaluate(() => localStorage.getItem("codetutor:openai-key"))).toBe(
-      "sk-about-to-be-removed",
-    );
+    await expect(page.getByText(/● key saved/i)).toBeVisible();
 
     // Now actually remove it.
     await page.getByRole("button", { name: /^remove api key$/i }).click();
@@ -159,23 +166,23 @@ test.describe("settings panel", () => {
       .last()
       .click();
 
-    // The API-key input clears and the Remove API key affordance disappears
-    // because the component hides it when apiKey is empty.
-    await expect(page.locator('input[placeholder="sk-…"]')).toHaveValue("");
+    // Server flips hasOpenaiKey → false. The status pill drops to "no key
+    // saved" and the Remove affordance is hidden.
+    await expect(page.getByText(/no key saved/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /^remove api key$/i })).toHaveCount(0);
-    expect(await page.evaluate(() => localStorage.getItem("codetutor:openai-key"))).toBeNull();
   });
 
   test("Escape closes the settings modal cleanly", async ({ page }) => {
-    await seedApiKey(page, { key: "sk-escape-test" });
+    await seedApiKey(page, { key: "sk-escape-test-padding-1234567890" });
     await page.goto("/");
     await openSettings(page, "ai");
 
     await page.keyboard.press("Escape");
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
 
-    // Reopening on AI shows the same seeded key — state survives the close.
+    // Reopening on AI shows the same "key saved" status — server state
+    // survives the close.
     await openSettings(page, "ai");
-    await expect(page.locator('input[placeholder="sk-…"]')).toHaveValue("sk-escape-test");
+    await expect(page.getByText(/● key saved/i)).toBeVisible();
   });
 });

@@ -147,6 +147,14 @@ async function resetServerState(token: string): Promise<void> {
         });
       }
     }
+    // Wipe any saved BYOK OpenAI key so state doesn't leak across tests.
+    // Safe to call even when no key is stored — the DELETE is idempotent.
+    await ctx.delete(`${BACKEND}/api/user/openai-key`, {
+      headers: {
+        "X-Requested-With": "codetutor",
+        Authorization: `Bearer ${token}`,
+      },
+    });
     // Reset preferences back to defaults.
     await ctx.patch(`${BACKEND}/api/user/preferences`, {
       headers: {
@@ -322,9 +330,11 @@ export async function markOnboardingDone(page: Page): Promise<void> {
   }
 }
 
-// OpenAI API key + remember flag stay in localStorage per-device (the key is
-// BYOK and not something we want persisted cross-device). Persona + model
-// moved to the preferences table in 18b, so we PATCH those server-side.
+// Phase 18e: the OpenAI key lives encrypted in user_preferences. The seeded
+// value is an obviously-fake "sk-test-e2e" placeholder; specs that exercise
+// the tutor either mock /api/ai/* via Playwright routes or run against a
+// real key supplied out-of-band. Persona + model go to preferences in the
+// same PATCH.
 export async function seedApiKey(
   page: Page,
   opts: {
@@ -333,19 +343,16 @@ export async function seedApiKey(
     persona?: "beginner" | "intermediate" | "advanced";
   } = {},
 ): Promise<void> {
-  const { key = "sk-test-e2e", model = "gpt-4o-mini", persona = "intermediate" } =
-    opts;
+  void page;
+  // Server schema enforces min-20 chars / `[A-Za-z0-9_-]+`. The value never
+  // leaves the seeded Supabase project; specs that would hit OpenAI for real
+  // intercept /api/ai/* via Playwright routes.
+  const {
+    key = "sk-test-e2e-12345678901234",
+    model = "gpt-4o-mini",
+    persona = "intermediate",
+  } = opts;
 
-  // Per-device bits: LS.
-  await page.addInitScript(
-    ({ k }) => {
-      localStorage.setItem("codetutor:openai-remember", "1");
-      localStorage.setItem("codetutor:openai-key", k);
-    },
-    { k: key },
-  );
-
-  // Per-user bits: backend preferences.
   const workerIndex = test.info().workerIndex;
   const user = await getWorkerUser(workerIndex);
   const token = user.session.access_token;
@@ -358,6 +365,14 @@ export async function seedApiKey(
         "Content-Type": "application/json",
       },
       data: { persona, openaiModel: model },
+    });
+    await ctx.put(`${BACKEND}/api/user/openai-key`, {
+      headers: {
+        "X-Requested-With": "codetutor",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: { key },
     });
   } finally {
     await ctx.dispose();

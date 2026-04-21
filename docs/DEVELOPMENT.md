@@ -117,6 +117,7 @@ All optional — defaults work for local use. See [.env.example](../.env.example
 | `VITE_SUPABASE_ANON_KEY` | **required** | Public `sb_publishable_...` key from the Supabase project's API settings. Browser-safe; committed `.example` carries placeholder only. |
 | `SUPABASE_SERVICE_ROLE_KEY` | **required for E2E** | `sb_secret_...` key. The e2e auth helper uses it to admin-create per-worker test users. **Never** set in prod; the backend only verifies tokens, it has no need for the service role. |
 | `DATABASE_URL` | **required** | Postgres transaction pooler URL from the Supabase project's database settings (port 6543). The backend sets `prepare: false` on the postgres.js pool because the transaction pooler recycles connections between transactions and does not support prepared statements. |
+| `BYOK_ENCRYPTION_KEY` | **required** | Master key used to encrypt each user's saved OpenAI API key at rest in `user_preferences` (AES-256-GCM envelope, per-row random nonce). 32 bytes, base64-encoded — generate with `openssl rand -base64 32`. Backend refuses to boot without it. Rotating invalidates every stored key; dev and prod MUST use different values. |
 | `DEBUG_PROMPTS` | unset | When `1`, the AI provider logs full system + user turn text. Leave unset; learner code would otherwise reach the backend log. |
 
 ## Direct Docker Compose

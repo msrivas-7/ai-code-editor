@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAIStore } from "../../../state/aiStore";
+import { usePreferencesStore } from "../../../state/preferencesStore";
 import { useProjectStore } from "../../../state/projectStore";
 import { useRunStore } from "../../../state/runStore";
 import { useTutorAsk } from "../../../util/useTutorAsk";
@@ -31,9 +32,15 @@ interface GuidedTutorPanelProps {
 
 export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, priorConcepts, onCollapse, onOpenSettings, resetNonce }: GuidedTutorPanelProps) {
   const incrementHint = useProgressStore((s) => s.incrementHint);
+  // Derive the hint cap from the DB-backed hint_count (not local component
+  // state) so the limit survives navigation + reload. Local state rewinds on
+  // remount; hint_count is the authoritative counter.
+  const hintCount = useProgressStore(
+    (s) => s.lessonProgress[`${lessonMeta.courseId}/${lessonMeta.id}`]?.hintCount ?? 0,
+  );
+  const hintLevel = Math.min(hintCount, 3);
   const keys = useShortcutLabels();
   const {
-    keyStatus,
     selectedModel,
     history,
     asking,
@@ -50,25 +57,20 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
     focusComposerNonce,
     sessionUsage,
   } = useAIStore();
+  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
 
   const { activeFile } = useProjectStore();
   const lastRun = useRunStore((s) => s.result);
   const stdin = useRunStore((s) => s.stdin);
 
   const [draft, setDraft] = useState("");
-  const [hintLevel, setHintLevel] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const configured = keyStatus === "valid" && !!selectedModel;
-
-  useEffect(() => {
-    setHintLevel(0);
-  }, [lessonMeta.id]);
+  const configured = hasKey && !!selectedModel;
 
   useEffect(() => {
     if (!resetNonce) return;
-    setHintLevel(0);
     setDraft("");
     clearConversation();
   }, [resetNonce]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -158,7 +160,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => { clearConversation(); setHintLevel(0); setDraft(""); }}
+            onClick={() => { clearConversation(); setDraft(""); }}
             className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
             disabled={history.length === 0 || asking}
             title="Clear conversation"
@@ -247,7 +249,6 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
                             ];
                             const idx = Math.min(hintLevel, prompts.length - 1);
                             setPendingAsk(prompts[idx]);
-                            setHintLevel((l) => Math.min(l + 1, prompts.length));
                             incrementHint(lessonMeta.courseId, lessonMeta.id);
                           }}
                           disabled={asking}

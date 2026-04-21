@@ -1,4 +1,5 @@
 import { useAIStore } from "../state/aiStore";
+import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
 import { fileIcon } from "../util/fileIcon";
 
@@ -7,11 +8,11 @@ import { fileIcon } from "../util/fileIcon";
 // into the editor below by sharing its bg color.
 export function EditorTabs() {
   const { openTabs, activeFile, setActive, closeTab } = useProjectStore();
-  const keyStatus = useAIStore((s) => s.keyStatus);
+  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
   const selectedModel = useAIStore((s) => s.selectedModel);
   const asking = useAIStore((s) => s.asking);
   const setPendingAsk = useAIStore((s) => s.setPendingAsk);
-  const tutorReady = keyStatus === "valid" && !!selectedModel;
+  const tutorReady = hasKey && !!selectedModel;
 
   if (openTabs.length === 0) return null;
 

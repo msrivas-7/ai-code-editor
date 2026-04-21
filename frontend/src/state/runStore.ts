@@ -22,6 +22,7 @@ interface RunState {
   setError: (e: string | null) => void;
   setStdin: (v: string) => void;
   switchRunContext: (contextKey: string, defaults?: { stdin?: string }) => void;
+  reset: () => void;
 }
 
 export const useRunStore = create<RunState>((set, get) => ({
@@ -57,6 +58,16 @@ export const useRunStore = create<RunState>((set, get) => ({
       result: saved?.result ?? null,
       error: saved?.error ?? null,
       stdin: saved?.stdin ?? defaults?.stdin ?? "",
+    });
+  },
+  reset: () => {
+    runCache.clear();
+    set({
+      running: false,
+      result: null,
+      error: null,
+      stdin: starterStdin("python"),
+      runContext: null,
     });
   },
 }));

@@ -35,3 +35,6 @@ test-results/
 playwright-report/
 blob-report/
 .playwright/
+
+# Supabase CLI scratch dir (created by `npx supabase db push` etc.)
+supabase/.temp/

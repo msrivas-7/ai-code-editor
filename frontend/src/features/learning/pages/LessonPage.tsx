@@ -630,7 +630,7 @@ export default function LessonPage() {
   const lp = lessonProgressMap[`${courseId}/${lessonId}`];
   const canRun = !!sessionId && sessionPhase === "active" && !running;
   const hasStderr = !!(lastResult?.stderr?.trim());
-  const tutorConfigured = useAIStore((s) => s.keyStatus === "valid" && !!s.selectedModel);
+  const tutorConfigured = useAIStore((s) => !!s.selectedModel) && usePreferencesStore((s) => s.hasOpenaiKey);
 
   const passedVisibleTests = testReport
     ? testReport.results.filter((r) => !r.hidden && r.passed).length

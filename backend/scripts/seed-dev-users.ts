@@ -11,6 +11,8 @@
 //   * Requires ALLOW_DEV_SEED=yes every run. No default. Prints the target
 //     Supabase URL before writing so the operator can bail.
 //   * Refuses if SUPABASE_URL contains "prod".
+//   * Password read from DEV_SEED_PASSWORD (gitignored .env). Rotate by
+//     changing the env value and re-running — every user is re-stamped.
 //
 // Run:
 //   cd backend
@@ -142,8 +144,6 @@ interface Scenario {
   courses: CourseSeed[];
   lessons: LessonEntry[];
 }
-
-const PASSWORD = "DevUser-Passw0rd!";
 
 function completed(
   courseId: string,
@@ -464,6 +464,7 @@ async function main(): Promise<void> {
   const url = requireEnv("SUPABASE_URL");
   const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
   const dbUrl = requireEnv("DATABASE_URL");
+  const password = requireEnv("DEV_SEED_PASSWORD");
 
   if (/prod/i.test(url)) {
     throw new Error(
@@ -487,7 +488,7 @@ async function main(): Promise<void> {
         url,
         serviceKey,
         s.email,
-        PASSWORD,
+        password,
         { first_name: s.firstName, last_name: s.lastName },
       );
       await seedProgress(sql, userId, s);
@@ -496,7 +497,7 @@ async function main(): Promise<void> {
   } finally {
     await sql.end({ timeout: 5 });
   }
-  console.log("\nDone. Password for all users: " + PASSWORD);
+  console.log("\nDone. Shared password is the DEV_SEED_PASSWORD env value (see .dev-users.md).");
 }
 
 main().catch((err) => {
