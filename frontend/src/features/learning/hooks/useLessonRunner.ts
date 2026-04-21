@@ -1,0 +1,116 @@
+import { useCallback, useEffect, useState, type RefObject } from "react";
+import type { Lesson } from "../types";
+import { useAIStore } from "../../../state/aiStore";
+import { useProjectStore } from "../../../state/projectStore";
+import { useRunStore } from "../../../state/runStore";
+import { useSessionStore } from "../../../state/sessionStore";
+import { useProgressStore } from "../stores/progressStore";
+import { api } from "../../../api/client";
+
+export interface UseLessonRunnerArgs {
+  lesson: Lesson | null;
+  courseId: string | undefined;
+  lessonId: string | undefined;
+  practiceMode: boolean;
+  initializedRef: RefObject<boolean>;
+  // Controls the tutor pane's collapsed state from outside; "Explain Error"
+  // needs to expand it when the tutor is hidden.
+  tutorCollapsed: boolean;
+  setTutorCollapsed: (v: boolean) => void;
+}
+
+export function useLessonRunner({
+  lesson,
+  courseId,
+  lessonId,
+  practiceMode,
+  initializedRef,
+  tutorCollapsed,
+  setTutorCollapsed,
+}: UseLessonRunnerArgs) {
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const sessionPhase = useSessionStore((s) => s.phase);
+  const running = useRunStore((s) => s.running);
+  const setRunning = useRunStore((s) => s.setRunning);
+  const setResult = useRunStore((s) => s.setResult);
+  const setRunError = useRunStore((s) => s.setError);
+  const lastResult = useRunStore((s) => s.result);
+  const setPendingAsk = useAIStore((s) => s.setPendingAsk);
+  const incrementRun = useProgressStore((s) => s.incrementRun);
+  const saveCode = useProgressStore((s) => s.saveCode);
+  const saveOutput = useProgressStore((s) => s.saveOutput);
+  const projectFiles = useProjectStore((s) => s.files);
+
+  const [hasRun, setHasRun] = useState(false);
+  const [hasEdited, setHasEdited] = useState(false);
+
+  const handleRun = useCallback(async () => {
+    if (!sessionId || sessionPhase !== "active" || running || !courseId || !lessonId || !lesson) return;
+    setRunning(true);
+    setRunError(null);
+    try {
+      const files = useProjectStore.getState().snapshot();
+      await api.snapshotProject(sessionId, files);
+      const stdin = useRunStore.getState().stdin || undefined;
+      const result = await api.execute(sessionId, lesson.language, stdin);
+      setResult(result);
+      setHasRun(true);
+      incrementRun(courseId, lessonId);
+      if (!practiceMode) {
+        if (result.stdout) {
+          saveOutput(courseId, lessonId, result.stdout);
+        }
+        const codeMap: Record<string, string> = {};
+        for (const f of files) codeMap[f.path] = f.content;
+        saveCode(courseId, lessonId, codeMap);
+      }
+    } catch (err) {
+      setRunError((err as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  }, [sessionId, sessionPhase, running, courseId, lessonId, lesson, setRunning, setRunError, setResult, incrementRun, saveOutput, saveCode, practiceMode]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleRun();
+      }
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [handleRun]);
+
+  useEffect(() => {
+    if (initializedRef.current) setHasEdited(true);
+  }, [projectFiles, initializedRef]);
+
+  const handleExplainError = useCallback(() => {
+    if (!lastResult?.stderr) return;
+    const errText = lastResult.stderr.trim().slice(0, 500);
+    setPendingAsk(
+      `I got this error when I ran my code:\n\`\`\`\n${errText}\n\`\`\`\nCan you help me understand what went wrong?`,
+    );
+    if (tutorCollapsed) setTutorCollapsed(false);
+  }, [lastResult, setPendingAsk, tutorCollapsed, setTutorCollapsed]);
+
+  const hasStderr = !!(lastResult?.stderr?.trim());
+  const canRun = !!sessionId && sessionPhase === "active" && !running;
+
+  return {
+    handleRun,
+    handleExplainError,
+    hasRun,
+    hasEdited,
+    canRun,
+    hasStderr,
+    lastResult,
+    running,
+    sessionId,
+    sessionPhase,
+    setHasRun,
+    setHasEdited,
+  };
+}

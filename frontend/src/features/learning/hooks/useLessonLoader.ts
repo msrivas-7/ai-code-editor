@@ -1,0 +1,207 @@
+import { useEffect, useRef, useState } from "react";
+import type { Lesson } from "../types";
+import { loadAllLessonMetas, loadCourse, loadFullLesson } from "../content/courseLoader";
+import { conceptsAvailableBefore } from "../content/conceptGraph";
+import { loadSavedCode, useProgressStore } from "../stores/progressStore";
+import { useAIStore } from "../../../state/aiStore";
+import { useProjectStore } from "../../../state/projectStore";
+import { useRunStore } from "../../../state/runStore";
+import { LANGUAGE_ENTRYPOINT } from "../../../types";
+import { RESUME_TOAST_MS } from "../../../util/timings";
+
+export interface UseLessonLoaderArgs {
+  courseId: string | undefined;
+  lessonId: string | undefined;
+  learnerId: string;
+  // Passed in so the debounced auto-save writes to the right bucket
+  // (lastCode vs. practiceExerciseCode) without the loader owning the
+  // practice state machine itself.
+  practiceMode: boolean;
+  practiceIndex: number;
+  // When true, a fresh lesson mount should reset caller-owned flags so
+  // e.g. per-lesson counters don't leak between lessons. The loader signals
+  // "about to load a fresh lesson" via this callback so the validator hook
+  // can clear its own bookkeeping.
+  onResetPerLessonState?: () => void;
+}
+
+export function useLessonLoader({
+  courseId,
+  lessonId,
+  learnerId,
+  practiceMode,
+  practiceIndex,
+  onResetPerLessonState,
+}: UseLessonLoaderArgs) {
+  const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [totalLessons, setTotalLessons] = useState(10);
+  const [lessonOrder, setLessonOrder] = useState<string[]>([]);
+  const [priorConcepts, setPriorConcepts] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [resumed, setResumed] = useState(false);
+
+  // `initialized` gates one-shot effects (first project hydration, edit
+  // detector, test-report invalidation). Kept on a ref so the loader can
+  // expose it to the runner + validator without tripping React state churn.
+  const initializedRef = useRef(false);
+  const resumedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const startLesson = useProgressStore((s) => s.startLesson);
+  const incrementLessonTime = useProgressStore((s) => s.incrementLessonTime);
+  const saveCode = useProgressStore((s) => s.saveCode);
+  const savePracticeCode = useProgressStore((s) => s.savePracticeCode);
+  const switchChatContext = useAIStore((s) => s.switchChatContext);
+  const switchRunContext = useRunStore((s) => s.switchRunContext);
+  const switchProjectContext = useProjectStore((s) => s.switchProjectContext);
+  const projectFiles = useProjectStore((s) => s.files);
+
+  useEffect(() => {
+    return () => clearTimeout(resumedTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!courseId || !lessonId) return;
+    const ctxKey = `lesson:${courseId}/${lessonId}`;
+    switchChatContext(ctxKey);
+    switchRunContext(ctxKey);
+  }, [courseId, lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!courseId || !lessonId) return;
+    let cancelled = false;
+    initializedRef.current = false;
+    setLoading(true);
+    onResetPerLessonState?.();
+    Promise.all([
+      loadFullLesson(courseId, lessonId),
+      loadCourse(courseId),
+      loadAllLessonMetas(courseId),
+    ])
+      .then(([l, course, metas]) => {
+        if (cancelled) return;
+        setLesson(l);
+        setTotalLessons(course.lessonOrder.length);
+        setLessonOrder(course.lessonOrder);
+        const metaMap = new Map(metas.map((m) => [m.id, m]));
+        setPriorConcepts(conceptsAvailableBefore(course, metaMap, lessonId));
+        startLesson(learnerId, courseId, lessonId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLesson(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, lessonId, learnerId, startLesson]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!lesson || !courseId || !lessonId || initializedRef.current) return;
+    initializedRef.current = true;
+
+    const savedCode = loadSavedCode(courseId, lessonId);
+
+    const files: Record<string, string> = {};
+    const order: string[] = [];
+
+    if (savedCode && Object.keys(savedCode).length > 0) {
+      for (const [path, content] of Object.entries(savedCode)) {
+        files[path] = content;
+        order.push(path);
+      }
+      setResumed(true);
+      resumedTimerRef.current = setTimeout(() => setResumed(false), RESUME_TOAST_MS);
+    } else {
+      for (const f of lesson.starterFiles) {
+        files[f.path] = f.content;
+        order.push(f.path);
+      }
+    }
+
+    const entry = LANGUAGE_ENTRYPOINT[lesson.language];
+    if (order.length === 0) {
+      files[entry] = "# Write your code here\n";
+      order.push(entry);
+    }
+
+    const ctxKey = `lesson:${courseId}/${lessonId}`;
+    switchProjectContext(ctxKey, {
+      language: lesson.language,
+      files,
+      order,
+      activeFile: order[0],
+      openTabs: [order[0]],
+    });
+  }, [lesson, courseId, lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced auto-save. Lesson-mode writes to `lastCode`; practice-mode
+  // writes to `practiceExerciseCode[exerciseId]` so switching exercises
+  // doesn't clobber the main lesson buffer.
+  useEffect(() => {
+    if (!courseId || !lessonId || !initializedRef.current) return;
+    const timer = setTimeout(() => {
+      const snap = useProjectStore.getState().snapshot();
+      if (snap.length === 0) return;
+      const codeMap: Record<string, string> = {};
+      for (const f of snap) codeMap[f.path] = f.content;
+      if (practiceMode) {
+        const exercise = lesson?.practiceExercises?.[practiceIndex];
+        if (exercise) savePracticeCode(courseId, lessonId, exercise.id, codeMap);
+      } else {
+        saveCode(courseId, lessonId, codeMap);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [projectFiles, courseId, lessonId, saveCode, savePracticeCode, practiceMode, practiceIndex, lesson]);
+
+  // Time-spent tracking — tick only while the document is visible and the
+  // lesson isn't yet complete. Caps deltas at 60s so a long hidden/suspended
+  // span can't inflate time.
+  useEffect(() => {
+    if (!courseId || !lessonId || practiceMode) return;
+    let lastTick = Date.now();
+    const TICK_MS = 30_000;
+    const MAX_DELTA = 60_000;
+
+    const credit = () => {
+      const now = Date.now();
+      const delta = Math.min(now - lastTick, MAX_DELTA);
+      lastTick = now;
+      const current = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
+      if (current?.status === "completed") return;
+      if (delta > 0 && document.visibilityState === "visible") {
+        incrementLessonTime(courseId, lessonId, delta);
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        lastTick = Date.now();
+      } else {
+        credit();
+      }
+    };
+
+    const interval = setInterval(credit, TICK_MS);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      credit();
+    };
+  }, [courseId, lessonId, practiceMode, incrementLessonTime]);
+
+  return {
+    lesson,
+    totalLessons,
+    lessonOrder,
+    priorConcepts,
+    loading,
+    resumed,
+    initializedRef,
+  };
+}
