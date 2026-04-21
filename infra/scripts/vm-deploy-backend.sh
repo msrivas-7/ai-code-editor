@@ -8,13 +8,19 @@
 # recreates the backend container; Caddy keeps serving, and in-flight TLS
 # connections survive the backend bounce.
 #
-# Rollback strategy: before pulling the new :latest, we retag the currently-
-# cached :latest as :rollback. If the new image fails its health check, we
-# `git reset --hard $PREV_SHA`, retag :rollback back to :latest, and
-# `compose up -d` again — Caddy never moved, the backend just flips back.
+# Image pinning: docker-compose still references ${IMAGE}:latest (the .env
+# written by refresh-env is left alone so reboots don't diverge), but every
+# deploy pulls the specific ${IMAGE}:${NEW_SHA} tag from GHCR and retags it
+# to :latest locally. This replaces a floating GHCR :latest pull with an
+# immutable SHA pull — what ran in CI is what runs in prod.
+#
+# Rollback: if health fails, pull ${IMAGE}:${PREV_SHA} (already in GHCR from
+# the last deploy) and retag it to :latest, then compose up. Falls back to
+# the local :rollback tag if the PREV_SHA pull fails (e.g. network blip).
 set -u
 
-PREV_SHA="${1:?usage: $0 <prev-sha>}"
+PREV_SHA="${1:?usage: $0 <prev-sha> <new-sha>}"
+NEW_SHA="${2:?usage: $0 <prev-sha> <new-sha>}"
 
 COMPOSE_ARGS=(-f docker-compose.yml -f docker-compose.prod.yml --env-file .env)
 IMAGE=ghcr.io/msrivas-7/codetutor-backend
@@ -26,6 +32,7 @@ as_codetutor() { sudo -u codetutor "$@"; }
 
 cd /opt/codetutor || { echo "DEPLOY_FAILED: /opt/codetutor missing"; exit 1; }
 echo "prior HEAD: $PREV_SHA"
+echo "deploying : $NEW_SHA"
 
 # Snapshot the currently-running image as :rollback before pulling new :latest.
 # If the image doesn't exist locally (first-ever deploy), skip — nothing to
@@ -35,7 +42,8 @@ if as_codetutor docker image inspect "${IMAGE}:latest" > /dev/null 2>&1; then
 fi
 
 deploy_ok=false
-if as_codetutor docker compose "${COMPOSE_ARGS[@]}" pull backend \
+if as_codetutor docker pull "${IMAGE}:${NEW_SHA}" \
+  && as_codetutor docker tag "${IMAGE}:${NEW_SHA}" "${IMAGE}:latest" \
   && as_codetutor docker compose "${COMPOSE_ARGS[@]}" up -d backend; then
   for _ in $(seq 1 "$HEALTH_ATTEMPTS"); do
     if curl -fsS "$HEALTH_URL" > /dev/null 2>&1; then
@@ -53,7 +61,12 @@ fi
 
 echo "DEPLOY_FAILED: backend did not come healthy - rolling back to $PREV_SHA"
 as_codetutor git reset --hard "$PREV_SHA" || true
-if as_codetutor docker image inspect "${IMAGE}:rollback" > /dev/null 2>&1; then
+# Prefer an explicit pull of the prior SHA — survives local cache eviction
+# and VM rebuilds. Fall through to the local :rollback tag if GHCR is
+# unreachable.
+if as_codetutor docker pull "${IMAGE}:${PREV_SHA}" > /dev/null 2>&1; then
+  as_codetutor docker tag "${IMAGE}:${PREV_SHA}" "${IMAGE}:latest" || true
+elif as_codetutor docker image inspect "${IMAGE}:rollback" > /dev/null 2>&1; then
   as_codetutor docker tag "${IMAGE}:rollback" "${IMAGE}:latest" || true
 fi
 as_codetutor docker compose "${COMPOSE_ARGS[@]}" up -d backend || true

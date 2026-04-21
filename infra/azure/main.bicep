@@ -149,6 +149,20 @@ module vmHealthAlert 'modules/vm-health-alert.bicep' = {
   }
 }
 
+// Guest-level metric/log alerts (memory, CPU, disk, OOM killer). Scheduled
+// against the LA workspace — the AMA DCR in vm.bicep forwards the counters
+// + syslog, so the data lands there without a separate platform-metrics
+// destination.
+module alerts 'modules/alerts.bicep' = {
+  name: 'alerts'
+  params: {
+    location: location
+    workspaceId: monitoring.outputs.workspaceId
+    actionGroupId: monitoring.outputs.actionGroupId
+    tags: tags
+  }
+}
+
 // Grant the VM's managed identity "Key Vault Secrets User" so it can read
 // secret values at runtime. `dependsOn` is implicit via vm/keyvault module
 // outputs but we scope the role assignment at the KV resource level to

@@ -1,9 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+// Each case spawns a real python3/node subprocess to exercise the live
+// harness, so the default 5 s vitest timeout is too tight on Windows CI
+// where Python interpreter startup is noticeably slower. The inner
+// spawnSync deadline is already 20 s — match the outer timeout so we fail
+// on actual hangs rather than on Windows Python startup jitter.
+vi.setConfig({ testTimeout: 30_000 });
 import { harnessPython, HARNESS_PY, HARNESS_JSON as PY_JSON } from "./pythonHarness.js";
 import {
   harnessJavaScript,

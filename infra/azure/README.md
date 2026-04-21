@@ -17,6 +17,7 @@ See [the roadmap plan](../../docs/) for the full Phase 19 context.
 | `modules/keyvault.bicep` | RBAC-mode KV + Secrets Officer role for bootstrap principal. |
 | `modules/monitoring.bicep` | Log Analytics workspace + action group. |
 | `modules/vm-health-alert.bicep` | Activity log alert on VM ResourceHealth. |
+| `modules/alerts.bicep` | Scheduled-query alerts against Log Analytics — memory ≥90%, CPU ≥85%, OS disk ≥80%, syslog OOM-kill. |
 | `modules/vm-kv-access.bicep` | Grants VM MI "Key Vault Secrets User" on the KV. |
 | `modules/swa.bicep` | Azure Static Web App (Free), unlinked. |
 | `modules/backup.bicep` | Recovery Services Vault + weekly backup policy (4-week retention). |
@@ -111,6 +112,32 @@ az backup job list \
 
 `sshSourceIp` is locked to your current public IP. If it changes, re-deploy
 with the new CIDR — the NSG rule updates in place, no VM restart required.
+
+## Operational hardening (Phase 20-P1)
+
+The cloud-init + alerts module cover the "no observability past heartbeat"
+and "OOM kills the box" gaps surfaced in the four-lens review:
+
+- **2 GB swap** + `vm.swappiness=10` added at first boot. B2s has no swap
+  by default, so a single memory spike went straight to the OOM killer.
+- **Unattended-upgrades auto-reboot at 03:00 UTC** — kernel/security
+  updates installed by `unattended-upgrades` now actually apply. See
+  `/etc/apt/apt.conf.d/52unattended-upgrades-reboot` on the VM.
+- **Session workspace cleanup timer** — `codetutor-session-cleanup.timer`
+  runs hourly, prunes dirs under `/opt/codetutor/temp/sessions` older than
+  120 minutes. Backend's startup orphan-purge handles restarts; this
+  handles steady-state growth.
+- **Metric alerts** (via `modules/alerts.bicep`) email the admin action
+  group on sustained high memory / CPU / disk plus any OOM-killer syslog
+  signal. These complement the existing VM ResourceHealth alert.
+
+## Image pinning
+
+The deploy workflow pushes each backend/runner build to GHCR under both
+`:<github.sha>` and `:latest`. On the VM, `infra/scripts/vm-deploy-backend.sh`
+pulls the specific SHA tag and retags it to `:latest` locally so compose
+always runs an immutable image. Rollback pulls `${IMAGE}:${PREV_SHA}`
+directly — no reliance on local cache surviving a VM rebuild.
 
 ## What this does NOT include
 

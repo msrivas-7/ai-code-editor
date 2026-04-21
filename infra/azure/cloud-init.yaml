@@ -139,7 +139,70 @@ write_files:
       [Install]
       WantedBy=timers.target
 
+  # Hourly sweep of stale session workspaces. Startup purge in the backend
+  # handles orphans across restarts, but steady-state growth between restarts
+  # can still fill the 32 GB root disk if a burst of sessions doesn't exit
+  # cleanly. 2 h threshold is longer than any realistic lesson dwell — running
+  # sessions keep touching their dir via the runner mount, so mtime stays
+  # fresh and they're not caught by this sweep.
+  - path: /etc/systemd/system/codetutor-session-cleanup.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Prune stale CodeTutor session workspaces
+      ConditionPathIsDirectory=/opt/codetutor/temp/sessions
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/find /opt/codetutor/temp/sessions -mindepth 1 -maxdepth 1 -type d -mmin +120 -exec rm -rf {} +
+
+  - path: /etc/systemd/system/codetutor-session-cleanup.timer
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Hourly prune of stale CodeTutor session workspaces
+
+      [Timer]
+      OnBootSec=15min
+      OnUnitActiveSec=1h
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+  # Auto-reboot after unattended-upgrades lands a kernel/security update.
+  # Ubuntu's default installs but doesn't reboot, so CVEs sit unarmed until
+  # a manual bounce. 03:00 UTC is the lowest-traffic window for a learner
+  # product. systemd restart policy on codetutor-ai.service brings the stack
+  # back up; Caddy on restart reconstitutes the LE cert from /etc/caddy.
+  - path: /etc/apt/apt.conf.d/52unattended-upgrades-reboot
+    permissions: '0644'
+    owner: root:root
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "03:00";
+
 runcmd:
+  # --- 2 GB swap file ---
+  # B2s ships with no swap, so a single memory spike (e.g. an OOM'ing runner
+  # image build or a coincident backend + frontend dev image pull) goes
+  # straight to the OOM killer. 2 GB is enough headroom to survive bursts
+  # without turning the VM into a swap-thrashing toy; swappiness=10 keeps
+  # the kernel preferring to reclaim page cache over swapping anon pages.
+  - |
+    if [ ! -f /swapfile ]; then
+      fallocate -l 2G /swapfile
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+  - echo 'vm.swappiness=10' > /etc/sysctl.d/99-codetutor.conf
+  - sysctl --system
+
   # Wait for any in-progress apt/dpkg operation to release its lock. Ubuntu's
   # apt-daily.service systemd timer fires on boot and can race runcmd here,
   # producing "Could not get lock /var/lib/dpkg/lock-frontend" and a silently
@@ -192,6 +255,7 @@ runcmd:
   - systemctl daemon-reload
   - systemctl enable --now codetutor-ai.service
   - systemctl enable --now codetutor-ai-refresh-env.timer
+  - systemctl enable --now codetutor-session-cleanup.timer
 
   # --- Security: auto-apply Ubuntu security patches (reboots at 03:00 if needed) ---
   - dpkg-reconfigure -f noninteractive unattended-upgrades
