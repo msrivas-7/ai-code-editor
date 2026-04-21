@@ -6,6 +6,11 @@ build/
 .env
 .env.production
 .env.*.local
+
+# Dev-only test-user credentials (backend/scripts/seed-dev-users.ts output).
+# Password is shared + written into auth.users on codetutor-dev; keep it out
+# of git.
+.dev-users.md
 .DS_Store
 *.log
 *.tsbuildinfo

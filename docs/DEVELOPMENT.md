@@ -48,6 +48,17 @@ docker compose up -d backend
 cd frontend && npm run dev
 ```
 
+## Dev test users (manual QA)
+
+Replacement for the old `__dev__/profiles.ts` localStorage seeder — now that state lives in Postgres, the equivalent is a handful of real Supabase users on `codetutor-dev`, each seeded to a different progress state (fresh, mid-course, stuck, capstone-stuck, all-complete). Sign in with any of them through the normal `/login` form.
+
+```bash
+cd backend
+ALLOW_DEV_SEED=yes npm run seed:dev-users
+```
+
+Idempotent — re-run anytime to reset a drifted user. Credentials list (email/password/scenario) lives in the gitignored `.dev-users.md` at the repo root. Script source: [backend/scripts/seed-dev-users.ts](../backend/scripts/seed-dev-users.ts).
+
 ## Authoring lessons
 
 See [CONTENT_AUTHORING.md](./CONTENT_AUTHORING.md) for the full guide. Quick reference:
