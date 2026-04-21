@@ -22,7 +22,9 @@ Write code, run it in a sandboxed environment, and get structured help when you'
 
 [**Architecture**](docs/ARCHITECTURE.md) &nbsp;&bull;&nbsp; [**Development**](docs/DEVELOPMENT.md)
 
-<!-- TODO: Add screenshot/GIF here -->
+<br />
+
+<img src="frontend/public/og-image.png" alt="CodeTutor AI — three-pane workspace: lesson instructions on the left, code editor in the middle, AI tutor on the right with structured explanation, example, and pitfalls sections." width="900" />
 
 </div>
 
