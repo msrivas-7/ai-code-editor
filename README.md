@@ -2,17 +2,7 @@
 
 <img src="https://img.shields.io/badge/CodeTutor_AI-Learn_to_Code_with_AI-0f172a?style=for-the-badge&labelColor=0f172a" alt="CodeTutor AI" />
 
-<br />
-
-**Learn to code with an AI tutor that guides you — without giving away the answers.**
-<br />
-Write code, run it in a sandboxed container, and get structured help when you're stuck.
-
-<br />
-
 ### [Try it live → codetutor.msrivas.com](https://codetutor.msrivas.com)
-
-<br />
 
 [![CI](https://github.com/msrivas-7/CodeTutor-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/msrivas-7/CodeTutor-AI/actions/workflows/ci.yml)
 [![E2E](https://github.com/msrivas-7/CodeTutor-AI/actions/workflows/e2e.yml/badge.svg)](https://github.com/msrivas-7/CodeTutor-AI/actions/workflows/e2e.yml)
@@ -20,23 +10,21 @@ Write code, run it in a sandboxed container, and get structured help when you're
 [![Azure](https://img.shields.io/badge/Hosted_on-Azure-0078D4?style=flat-square&logo=microsoftazure&logoColor=white)](https://codetutor.msrivas.com)
 [![OpenAI](https://img.shields.io/badge/AI_Tutor-OpenAI-412991?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/api-keys)
 
-<br />
-
 [**Architecture**](docs/ARCHITECTURE.md) &nbsp;&bull;&nbsp; [**Development**](docs/DEVELOPMENT.md) &nbsp;&bull;&nbsp; [**Content authoring**](docs/CONTENT_AUTHORING.md)
-
-<br />
-
-**Most coding assistants solve the problem for you. CodeTutor AI teaches you to solve it yourself** — the tutor knows your lesson, your current code, and how many times you've tried, and escalates hints accordingly. You write the answer; it makes sure you understand why.
-
-<br />
-
-<sub><b>Lesson workspace</b> — instructions, editor, and an AI tutor that guides without spoiling.</sub>
-
-<img src="frontend/public/readme-hero.png" alt="CodeTutor AI — three-pane workspace: lesson instructions on the left, code editor in the middle, AI tutor on the right with structured explanation, example, and pitfalls sections." width="900" />
 
 </div>
 
-<br />
+---
+
+## Why CodeTutor AI
+
+Most coding assistants solve the problem for you. **CodeTutor AI teaches you to solve it yourself** — the tutor knows your lesson, your current code, and how many times you've tried, and escalates hints accordingly. You write the answer; it makes sure you understand why.
+
+<p align="center">
+  <img src="frontend/public/readme-hero.png" alt="CodeTutor AI — three-pane workspace: lesson instructions on the left, code editor in the middle, AI tutor on the right with structured explanation, example, and pitfalls sections." width="900" />
+  <br/>
+  <sub><b>Lesson workspace</b> — instructions, editor, and an AI tutor that guides without spoiling.</sub>
+</p>
 
 ---
 
@@ -109,43 +97,144 @@ Write code, run it in a sandboxed container, and get structured help when you're
 A full-stack TypeScript product shipping to real users at **[codetutor.msrivas.com](https://codetutor.msrivas.com)**.
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontFamily': '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+    'fontSize': '14px',
+    'primaryColor': '#1e293b',
+    'primaryTextColor': '#f8fafc',
+    'primaryBorderColor': '#334155',
+    'lineColor': '#64748b',
+    'tertiaryColor': '#0f172a',
+    'tertiaryBorderColor': '#334155',
+    'tertiaryTextColor': '#e2e8f0',
+    'clusterBkg': '#0f172a',
+    'clusterBorder': '#334155'
+  },
+  'flowchart': { 'curve': 'basis', 'htmlLabels': true, 'padding': 12 }
+}}%%
 flowchart LR
-    U(("User<br/>Browser"))
+    U(("<b>User</b><br/><sub>Browser</sub>"))
 
-    SWA["Static Web Apps<br/>frontend bundle"]
+    SWA["<b>Static Web Apps</b><br/><sub>frontend bundle</sub>"]
 
-    subgraph VM["Azure VM"]
+    subgraph VM["&nbsp;Azure VM · Ubuntu 24.04&nbsp;"]
         direction TB
-        CD["Caddy<br/>TLS + reverse proxy"]
-        BE["Backend<br/>Express + TS"]
-        SP["socket-proxy<br/>API allowlist"]
-        RN["Runner · per session<br/>non-root · no network<br/>read-only rootfs"]
-        CD --> BE
-        BE -->|tcp:2375| SP
-        SP -->|docker.sock| RN
+        CD["<b>Caddy</b><br/><sub>TLS · reverse proxy</sub>"]
+
+        subgraph BECTR["&nbsp;Backend container · Express + TS&nbsp;"]
+            direction TB
+            API["HTTP / SSE routes"]
+            SM["<b>SessionManager</b><br/><sub>userId ↔ runnerId</sub>"]
+            EB["ExecutionBackend<br/><sub>Dockerode client</sub>"]
+            SW["Idle sweeper<br/><sub>45 s tick · reaps idle</sub>"]
+            API --> SM
+            SM --> EB
+            SW -. prunes .-> SM
+        end
+
+        SP["<b>socket-proxy</b><br/><sub>endpoint allowlist</sub>"]
+
+        subgraph POOL["&nbsp;Runner pool · one container per session&nbsp;"]
+            direction LR
+            R1["Runner A<br/><sub>non-root · --network none<br/>read-only rootfs · caps dropped</sub>"]
+            R2["Runner B"]
+            R3["Runner …"]
+        end
+
+        CD --> API
+        EB -->|tcp:2375| SP
+        SP -->|docker.sock| R1
+        SP --> R2
+        SP --> R3
     end
 
-    SB[("Supabase<br/>Auth + Postgres")]
-    AI["OpenAI<br/>Responses API"]
-    KV["Key Vault<br/>runtime secrets"]
+    SB[("<b>Supabase</b><br/><sub>Auth · Postgres</sub>")]
+    AI["<b>OpenAI</b><br/><sub>Responses API</sub>"]
+    KV["<b>Key Vault</b><br/><sub>runtime secrets</sub>"]
 
     U -->|HTTPS| SWA
-    U -->|HTTPS / SSE| CD
-    U -->|Auth| SB
-    BE -->|JWKS + DB| SB
-    BE -->|json_schema| AI
-    BE -.->|Managed Identity| KV
+    U ==>|HTTPS / SSE| CD
+    U -.->|JWT| SB
+    BECTR -->|JWKS · DB| SB
+    BECTR -->|json_schema| AI
+    BECTR -. Managed Identity<br/>boot time .-> KV
 
-    classDef user fill:#1e293b,stroke:#0f172a,color:#fff,stroke-width:2px
-    classDef azure fill:#0078d4,stroke:#005a9e,color:#fff,stroke-width:2px
+    classDef user fill:#1e293b,stroke:#0f172a,color:#f8fafc,stroke-width:2px
+    classDef edge fill:#0284c7,stroke:#0369a1,color:#fff,stroke-width:2px
+    classDef svc fill:#0078d4,stroke:#005a9e,color:#fff,stroke-width:2px
+    classDef proxy fill:#f59e0b,stroke:#b45309,color:#0f172a,stroke-width:2px
     classDef runner fill:#10b981,stroke:#047857,color:#fff,stroke-width:2px
     classDef external fill:#475569,stroke:#334155,color:#fff,stroke-width:2px
 
     class U user
-    class SWA,CD,BE,SP,KV azure
-    class RN runner
+    class SWA edge
+    class CD,API,SM,EB,SW,KV svc
+    class SP proxy
+    class R1,R2,R3 runner
     class SB,AI external
 ```
+
+<details>
+<summary><b>Session lifecycle — create → snapshot → run → reap</b></summary>
+
+<br />
+
+```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontFamily': '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+    'fontSize': '13px',
+    'primaryColor': '#0284c7',
+    'primaryTextColor': '#f8fafc',
+    'primaryBorderColor': '#0369a1',
+    'lineColor': '#64748b',
+    'actorBkg': '#1e293b',
+    'actorTextColor': '#f8fafc',
+    'actorBorder': '#334155',
+    'signalColor': '#cbd5e1',
+    'signalTextColor': '#e2e8f0',
+    'noteBkgColor': '#fef3c7',
+    'noteTextColor': '#78350f',
+    'noteBorderColor': '#f59e0b',
+    'sequenceNumberColor': '#f8fafc',
+    'activationBkgColor': '#10b981'
+  }
+}}%%
+sequenceDiagram
+    autonumber
+    participant U as Browser
+    participant BE as Backend
+    participant SM as SessionManager
+    participant SP as socket-proxy
+    participant RN as Runner
+
+    U->>BE: POST /api/session (JWT)
+    BE->>SM: create(userId)
+    SM->>SP: /containers/create (allowlist check)
+    SP->>RN: spawn · non-root · --network none · read-only
+    RN-->>SP: containerId
+    SP-->>SM: handle
+    SM-->>BE: sessionId
+    BE-->>U: { sessionId }
+
+    U->>BE: POST /api/project/snapshot (files)
+    BE->>RN: write workspace
+
+    U->>BE: POST /api/execution/run (code, stdin)
+    BE->>SP: exec
+    SP->>RN: run · CPU · mem · PID capped
+    RN-->>BE: stdout · stderr (SSE)
+    BE-->>U: streamed output
+
+    Note over SM,RN: Idle sweeper ticks every 45 s —<br/>reaps sessions past idle timeout
+    SM->>SP: /containers/{id} DELETE
+    SP->>RN: stop · remove
+```
+
+</details>
 
 | Layer | Stack |
 | --- | --- |
