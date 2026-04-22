@@ -1,6 +1,7 @@
 import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
+import { useAIStatus } from "../state/useAIStatus";
 import { fileIcon } from "../util/fileIcon";
 
 // Horizontal tab strip above the editor. Mirrors VSCode-style ergonomics:
@@ -12,7 +13,9 @@ export function EditorTabs() {
   const selectedModel = useAIStore((s) => s.selectedModel);
   const asking = useAIStore((s) => s.asking);
   const setPendingAsk = useAIStore((s) => s.setPendingAsk);
-  const tutorReady = hasKey && !!selectedModel;
+  const { status } = useAIStatus();
+  const onPlatform = status?.source === "platform";
+  const tutorReady = onPlatform || (hasKey && !!selectedModel);
 
   if (openTabs.length === 0) return null;
 
