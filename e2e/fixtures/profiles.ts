@@ -48,7 +48,8 @@ function readSeed(id: ProfileId): Record<string, string> {
   const p = path.join(SEED_DIR, `${id}.json`);
   if (!fs.existsSync(p)) {
     throw new Error(
-      `Missing seed ${p}. Run \`cd e2e && npm run dump-seeds\` to regenerate.`,
+      `Missing seed ${p}. Seeds are hand-authored JSON (legacy localStorage ` +
+        `shape) committed under e2e/fixtures/seeds/ — add or restore the file there.`,
     );
   }
   return JSON.parse(fs.readFileSync(p, "utf8"));

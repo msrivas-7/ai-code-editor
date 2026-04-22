@@ -92,6 +92,7 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
   const user = useAuthStore((s) => s.user);
   const updateDisplayName = useAuthStore((s) => s.updateDisplayName);
   const signOut = useAuthStore((s) => s.signOut);
+  const patchPreferences = usePreferencesStore((s) => s.patch);
   const nav = useNavigate();
 
   const meta = (user?.user_metadata ?? {}) as {
@@ -114,6 +115,8 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
   const [signingOut, setSigningOut] = useState(false);
   const [signOutErr, setSignOutErr] = useState<string | null>(null);
   const [showDelete, setShowDelete] = useState(false);
+  const [replaying, setReplaying] = useState(false);
+  const [replayErr, setReplayErr] = useState<string | null>(null);
 
   // Auto-dismiss the save status after ~2.5s. Using a timer (not CSS) so the
   // message can also be cleared early on next save. The effect's cleanup
@@ -151,6 +154,23 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
       setSaveMsg({ kind: "error", text: (e as Error).message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleReplayIntro = async () => {
+    setReplayErr(null);
+    setReplaying(true);
+    try {
+      await patchPreferences({
+        welcomeDone: false,
+        workspaceCoachDone: false,
+        editorCoachDone: false,
+      });
+      onClose?.();
+      nav("/");
+    } catch (e) {
+      setReplayErr((e as Error).message);
+      setReplaying(false);
     }
   };
 
@@ -252,6 +272,32 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
         >
           {signingOut ? "Signing out…" : "Sign out"}
         </button>
+      </section>
+
+      <hr className="border-border" />
+
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-semibold text-ink">Guided tour</h3>
+        {replayErr && (
+          <div
+            role="alert"
+            className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger"
+          >
+            {replayErr}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleReplayIntro}
+          disabled={replaying}
+          aria-busy={replaying}
+          className="self-start rounded-md border border-border bg-elevated px-3 py-1 text-[11px] font-semibold text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {replaying ? "Resetting…" : "Show intro again"}
+        </button>
+        <p className="text-[10px] leading-relaxed text-faint">
+          Replay the welcome message and the workspace and editor tips.
+        </p>
       </section>
 
       <hr className="border-border" />

@@ -276,6 +276,34 @@ test.describe("settings panel", () => {
     expect(stillInsideBack).toBe(true);
   });
 
+  test("'Show intro again' resets onboarding flags, closes modal, and replays the welcome overlay", async ({ page }) => {
+    // Phase 20-P3: Settings → Account → Guided tour lets a re-visiting user
+    // replay the welcome + coach tours. beforeEach marks the three onboarding
+    // flags true, so the overlay is dormant when the test starts. Clicking
+    // the button PATCHes all three back to false, closes the modal, and
+    // navigates to / — where StartPage's WelcomeOverlay remounts.
+    await page.goto("/learn");
+    await expect(page.getByRole("button", { name: /skip onboarding/i })).toHaveCount(0);
+
+    await openSettings(page, "account");
+    await page.getByRole("button", { name: /^show intro again$/i }).click();
+
+    // Modal closes, URL is /, overlay is back.
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("button", { name: /skip onboarding/i })).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // Server-side persistence: reload and the overlay is still the first
+    // thing the user sees (proves the PATCH actually landed, not just an
+    // optimistic client flip).
+    await page.reload();
+    await expect(page.getByRole("button", { name: /skip onboarding/i })).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
   test("Escape closes the settings modal cleanly", async ({ page }) => {
     await seedApiKey(page, { key: "sk-escape-test-padding-1234567890" });
     await page.goto("/");

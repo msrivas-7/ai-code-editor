@@ -44,10 +44,13 @@ jobs:
       # Phase 20-P3: Playwright cycles test pages faster than `pagehide`-driven
       # session cleanup reaches the backend, so prod-tight caps (2/user) block
       # the next test for the full sweeper interval (~45 s) and manifest as
-      # "Run Code button disabled 30 s" flakes that pass on retry. Loose
-      # values here give teardown races ample headroom — prod posture
+      # "Run Code button disabled 30 s" flakes that pass on retry. The auth
+      # fixture now explicitly ends each test's session in afterEach (see
+      # e2e/fixtures/auth.ts), which drops the per-user leak rate dramatically;
+      # the loose cap below is belt-and-suspenders for any session id the
+      # sniffer misses (early-failed tests, mid-flight rebinds). Prod posture
       # (config.ts defaults 2/20/8) is unaffected.
-      MAX_SESSIONS_PER_USER: "20"
+      MAX_SESSIONS_PER_USER: "60"
       MAX_SESSIONS_GLOBAL: "200"
       DOCKER_EXEC_CONCURRENCY: "16"
     steps:

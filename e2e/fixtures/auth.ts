@@ -15,9 +15,12 @@
 // Each Playwright worker gets its own user (suffix by worker index) so
 // user-keyed rate-limit buckets don't collide across parallel tests.
 
-import { test as baseTest } from "@playwright/test";
+import { test as baseTest, request as playwrightRequest } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
+
+const BACKEND_URL = process.env.E2E_API_URL ?? "http://localhost:4000";
+const APP_ORIGIN = process.env.E2E_APP_ORIGIN ?? "http://localhost:5173";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -235,10 +238,75 @@ export async function teardownTestUsers(): Promise<void> {
  * Specs that want finer control (e.g. signup.spec.ts which tests the
  * unauthenticated path) can still import `test` from @playwright/test.
  */
+// Playwright's `pagehide` → keepalive-fetch endSession path is unreliable
+// during context teardown: the browser process gets torn down before the
+// request leaves the wire, so many tests leak their session into the backend
+// Map. That pile-up is what trips the per-user `MAX_SESSIONS_PER_USER` cap
+// (CI: 20) and surfaces as spurious 429 "Too many requests" banners in
+// downstream tests for the same worker.
+//
+// Fix: sniff POST /api/session responses for the session id the test spun
+// up, then explicitly end each one after the spec body returns via a
+// backend-only request context (the page has already closed by teardown
+// time, so in-browser fetch won't work).
 export const test = baseTest.extend({
   page: async ({ page }, use, testInfo) => {
     await loginAsTestUser(page, testInfo.workerIndex);
+
+    const createdSessionIds = new Set<string>();
+    // Each response's body read is async; stash the promises so we can await
+    // them before teardown — Playwright doesn't block on `page.on` callbacks
+    // and the test could finish before a late JSON parse resolves.
+    const inflight: Promise<unknown>[] = [];
+    page.on("response", (res) => {
+      if (res.request().method() !== "POST") return;
+      const path = new URL(res.url()).pathname;
+      if (path !== "/api/session" && path !== "/api/session/rebind") return;
+      if (!res.ok()) return;
+      inflight.push(
+        res
+          .json()
+          .then((body) => {
+            const id = (body as { sessionId?: unknown }).sessionId;
+            if (typeof id === "string" && id.length > 0) createdSessionIds.add(id);
+          })
+          .catch(() => {
+            // Body may already be consumed / not JSON — ignore; the sweeper
+            // still reaps idle containers within ~2m if we miss one.
+          }),
+      );
+    });
+
     await use(page);
+    await Promise.allSettled(inflight);
+
+    if (createdSessionIds.size > 0) {
+      const user = await getWorkerUser(testInfo.workerIndex);
+      const ctx = await playwrightRequest.newContext({
+        extraHTTPHeaders: {
+          Origin: APP_ORIGIN,
+          "X-Requested-With": "codetutor",
+          Authorization: `Bearer ${user.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      try {
+        await Promise.all(
+          [...createdSessionIds].map((sessionId) =>
+            ctx
+              .post(`${BACKEND_URL}/api/session/end`, {
+                data: { sessionId },
+              })
+              .catch(() => {
+                // Best-effort: a stray 404 (already reaped) or transient
+                // network hiccup here must not fail the test.
+              }),
+          ),
+        );
+      } finally {
+        await ctx.dispose();
+      }
+    }
   },
 });
 

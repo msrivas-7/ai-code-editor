@@ -8,15 +8,13 @@
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:real": "E2E_REAL_OPENAI=1 playwright test specs/real-api",
-    "report": "playwright show-report",
-    "dump-seeds": "tsx scripts/dump-profile-seeds.ts"
+    "report": "playwright show-report"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@supabase/supabase-js": "^2.103.3",
     "@types/node": "^20.11.0",
     "dotenv": "^16.4.5",
-    "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }
 }
