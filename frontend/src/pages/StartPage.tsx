@@ -57,7 +57,7 @@ export default function StartPage() {
                 execution, and AI-powered help.
               </p>
             </div>
-            <span className="mt-auto text-[11px] font-medium text-accent opacity-0 transition group-hover:opacity-100">
+            <span className="mt-auto text-[11px] font-medium text-accent transition sm:opacity-0 sm:group-hover:opacity-100">
               Launch editor →
             </span>
           </button>
@@ -80,7 +80,7 @@ export default function StartPage() {
                 your progress and get lesson-aware AI guidance.
               </p>
             </div>
-            <span className="mt-auto text-[11px] font-medium text-violet opacity-0 transition group-hover:opacity-100">
+            <span className="mt-auto text-[11px] font-medium text-violet transition sm:opacity-0 sm:group-hover:opacity-100">
               Start learning →
             </span>
           </button>

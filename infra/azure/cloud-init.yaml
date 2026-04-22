@@ -49,6 +49,14 @@ write_files:
           --query value -o tsv
       }
 
+      # Soft variant for secrets that are optional in prod — returns empty
+      # string when the KV secret doesn't exist, so refresh-env doesn't fail
+      # under `set -e`. Backend treats empty string as "not configured".
+      fetch_optional() {
+        az keyvault secret show --vault-name "$KV_NAME" --name "$1" \
+          --query value -o tsv 2>/dev/null || echo ""
+      }
+
       # No heredocs — YAML indent-stripping would break the closing delimiter.
       # Plain echoes into a grouped redirect keep this robust.
       {
@@ -58,6 +66,10 @@ write_files:
         echo "BYOK_ENCRYPTION_KEY=$(fetch BYOK-ENCRYPTION-KEY)"
         echo "VITE_SUPABASE_URL=$(fetch VITE-SUPABASE-URL)"
         echo "VITE_SUPABASE_ANON_KEY=$(fetch VITE-SUPABASE-ANON-KEY)"
+        # Optional: METRICS-TOKEN gates /api/metrics. When absent from KV
+        # the endpoint is loopback-only (fine for prod today — no external
+        # scraper). Seed it in KV when wiring in Prometheus.
+        echo "METRICS_TOKEN=$(fetch_optional METRICS-TOKEN)"
         # Non-secret prod config. CORS locked to the canonical custom
         # domain (shadowed by docker-compose.prod.yml's backend env block);
         # rate limits back to prod-tight values (dev's 500/2000/500 headroom

@@ -271,18 +271,27 @@ describe("POST /api/ai/summarize — empty history short-circuit", () => {
   });
 });
 
-describe("POST /api/ai/validate-key — public surface", () => {
-  it("accepts an unauthenticated caller and 400s on empty key", async () => {
+describe("POST /api/ai/validate-key — auth-gated", () => {
+  it("rejects an unauthenticated caller with 401 and does not hit the provider", async () => {
     const res = await req(null, "/api/ai/validate-key", {
+      method: "POST",
+      body: JSON.stringify({ key: "sk-abc" }),
+    });
+    expect(res.status).toBe(401);
+    expect(vi.mocked(openaiProvider.validateKey)).not.toHaveBeenCalled();
+  });
+
+  it("400s on empty key for an authenticated caller", async () => {
+    const res = await req("u1", "/api/ai/validate-key", {
       method: "POST",
       body: JSON.stringify({ key: "" }),
     });
     expect(res.status).toBe(400);
   });
 
-  it("forwards a valid key to the provider", async () => {
+  it("forwards a valid key to the provider for an authenticated caller", async () => {
     vi.mocked(openaiProvider.validateKey).mockResolvedValueOnce({ valid: true });
-    const res = await req(null, "/api/ai/validate-key", {
+    const res = await req("u1", "/api/ai/validate-key", {
       method: "POST",
       body: JSON.stringify({ key: "sk-abc" }),
     });

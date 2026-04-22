@@ -132,10 +132,11 @@ async function main() {
     res.status(result.ok ? 200 : 503).json(result);
   });
 
-  // Phase 20-P2: Prometheus exposition. Unauthenticated by design — data is
-  // aggregate-only (session count, token totals, exec histogram), no scraper
-  // is wired yet, and Prom convention is a public `/metrics`. Mounted
-  // before the auth chain for the same reason /api/health is.
+  // Phase 20-P2: Prometheus exposition. Phase 20-P3 gate: router enforces
+  // either `Authorization: Bearer ${METRICS_TOKEN}` (when that env is set)
+  // or loopback-only (when it isn't). Mounted before the auth/csrf chain
+  // because Prom scrapers can't carry a Supabase JWT — the router owns its
+  // own auth story. See routes/metrics.ts for the rationale.
   app.use("/api/metrics", metricsRouter);
 
   // Middleware chain per route group (Phase 18a):

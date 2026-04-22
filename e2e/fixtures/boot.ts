@@ -36,8 +36,10 @@ async function ping(url: string, label: string) {
 export default async function globalSetup() {
   await Promise.all([
     ping(FRONTEND, "frontend"),
-    // validate-key with no body → 400 is expected + means the route is mounted.
-    ping(`${BACKEND}/api/ai/validate-key`, "backend"),
+    // /api/health is the unauthenticated liveness probe. Post-20-P3 the
+    // previous target (/api/ai/validate-key) is auth-gated, so a 401 leaks
+    // into the ping path and obscures actual connectivity failures.
+    ping(`${BACKEND}/api/health`, "backend"),
   ]);
 
   if (!process.env.SUPABASE_URL) {

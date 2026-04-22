@@ -14,6 +14,11 @@
 # to :latest locally. This replaces a floating GHCR :latest pull with an
 # immutable SHA pull — what ran in CI is what runs in prod.
 #
+# Health gate: we poll /api/health/deep (not the shallow /api/health), so the
+# rollback fires when Postgres or the docker socket-proxy dep is broken — not
+# just when the process is alive. The shallow endpoint is kept for external
+# uptime probes that only want "is the HTTP listener up?".
+#
 # Rollback: if health fails, pull ${IMAGE}:${PREV_SHA} (already in GHCR from
 # the last deploy) and retag it to :latest, then compose up. Falls back to
 # the local :rollback tag if the PREV_SHA pull fails (e.g. network blip).
@@ -24,7 +29,7 @@ NEW_SHA="${2:?usage: $0 <prev-sha> <new-sha>}"
 
 COMPOSE_ARGS=(-f docker-compose.yml -f docker-compose.prod.yml --env-file .env)
 IMAGE=ghcr.io/msrivas-7/codetutor-backend
-HEALTH_URL=http://127.0.0.1:4000/api/health
+HEALTH_URL=http://127.0.0.1:4000/api/health/deep
 HEALTH_ATTEMPTS=10
 HEALTH_INTERVAL=3
 

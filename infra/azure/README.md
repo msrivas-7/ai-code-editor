@@ -73,6 +73,15 @@ az keyvault secret set --vault-name "$KV" --name VITE-SUPABASE-URL         --val
 az keyvault secret set --vault-name "$KV" --name VITE-SUPABASE-ANON-KEY    --value "..."
 ```
 
+`METRICS-TOKEN` is **optional**. When absent, `/api/metrics` is loopback-only
+(fine for the single-VM topology today — no external Prom scraper). Seed it
+only when wiring in an external scraper that needs Bearer auth:
+
+```bash
+az keyvault secret set --vault-name "$KV" --name METRICS-TOKEN \
+  --value "$(openssl rand -base64 32)"
+```
+
 Secret names use hyphens (KV disallows underscores); 19b's `refresh-env`
 script maps them back to `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` /
 etc. when writing the VM's `.env`.

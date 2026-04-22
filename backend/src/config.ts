@@ -95,6 +95,15 @@ export const config = {
   // `openssl rand -base64 32`. Rotating this invalidates every stored key —
   // users would have to re-enter theirs in Settings.
   byokEncryptionKey: process.env.BYOK_ENCRYPTION_KEY,
+
+  // Phase 20-P3: shared secret for `/api/metrics`. When set, the Prometheus
+  // endpoint requires `Authorization: Bearer <METRICS_TOKEN>`; when unset,
+  // `/api/metrics` only accepts loopback requests (127.0.0.1 / ::1), so the
+  // endpoint is still reachable by a same-host scraper or `curl` from the
+  // VM itself but not from the public internet via Caddy. Keeping it
+  // unauthenticated was a BI leak (live session count + per-model token
+  // totals) and a DoS-pressure oracle.
+  metricsToken: process.env.METRICS_TOKEN,
 } as const;
 
 // Phase 20-P2 hygiene: once the sensitive env vars have been copied into the
@@ -105,6 +114,7 @@ export const config = {
 delete process.env.BYOK_ENCRYPTION_KEY;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 delete process.env.DATABASE_URL;
+delete process.env.METRICS_TOKEN;
 
 export function assertConfigValid(): void {
   if (!config.supabase.url || config.supabase.url.trim() === "") {

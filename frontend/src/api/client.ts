@@ -30,9 +30,9 @@ async function throwApiError(res: Response, path: string): Promise<never> {
 // `signOutOn401` centralises the "token is invalid" response: we clear the
 // Supabase session (which triggers onAuthStateChange → RequireAuth → /login)
 // and propagate the error up. This keeps stale-session handling out of every
-// call site. The /api/health and /api/ai/validate-key routes are still
-// callable pre-auth; they simply don't include the Authorization header if
-// no session is present.
+// call site. /api/health is callable pre-auth; every other backend route
+// (including /api/ai/validate-key — both UI call sites live behind
+// RequireAuth) requires an Authorization header.
 async function authHeaders(): Promise<Record<string, string>> {
   try {
     const { data } = await supabase.auth.getSession();

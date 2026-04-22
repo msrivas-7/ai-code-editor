@@ -61,6 +61,13 @@ services:
       # Master key for encrypting per-user BYOK OpenAI keys at rest. 32-byte
       # base64; required — assertConfigValid() refuses to boot without it.
       BYOK_ENCRYPTION_KEY: "${BYOK_ENCRYPTION_KEY}"
+      # Phase 20-P3: optional bearer for /api/metrics. When blank the
+      # endpoint is loopback-only (fine for dev — a direct fetch from the
+      # host goes through the docker bridge so req.ip is non-loopback and
+      # is blocked; inside-container scraping still works). When set, the
+      # endpoint accepts `Authorization: Bearer <token>`. E2E sets it so
+      # metrics.spec can exercise the authed path.
+      METRICS_TOKEN: "${METRICS_TOKEN:-}"
     volumes:
       # Relative path — Compose resolves it against the compose file location
       # on every host. Works in PowerShell, zsh, bash identically.

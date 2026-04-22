@@ -44,10 +44,13 @@ function requestAbortSignal(res: Response): {
 
 export const aiRouter = Router();
 
-// Phase 18a. `validate-key` stays public: the learner hasn't necessarily
-// finished signup yet (they may want to test their OpenAI key first). Every
-// other AI surface requires a valid Supabase session. Rate-limiting is
-// applied AFTER auth so the per-user bucket sees the authenticated userId.
+// Every AI surface — including `validate-key` — requires a valid Supabase
+// session. Both call sites (SettingsPanel, TutorSetupWarning) live behind
+// RequireAuth, so there is no legitimate pre-auth caller. Gating it closes
+// the "free OpenAI key-validity oracle" finding (20-P3 security audit):
+// unauthenticated attackers could otherwise use this route to validate
+// stolen keys or burn our egress + IP rep. Rate-limiting is applied AFTER
+// auth so the per-user bucket sees the authenticated userId.
 const authed = [authMiddleware, aiRateLimit] as const;
 
 // Phase 18e: the user's OpenAI key lives encrypted in user_preferences.
@@ -72,7 +75,7 @@ const validateBody = z.object({
   key: z.string().min(1),
 });
 
-aiRouter.post("/validate-key", aiRateLimit, async (req, res, next) => {
+aiRouter.post("/validate-key", ...authed, async (req, res, next) => {
   const parsed = validateBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "key required" });
   try {

@@ -41,7 +41,7 @@ export function CourseCard({ course, progress, lessonCount, onOpen }: CourseCard
         </span>
       </div>
 
-      <span className="text-[11px] font-medium text-violet opacity-0 transition group-hover:opacity-100">
+      <span className="text-[11px] font-medium text-violet transition sm:opacity-0 sm:group-hover:opacity-100">
         {status === "not_started" ? "Start course →" : status === "completed" ? "Review →" : "Continue →"}
       </span>
     </button>
