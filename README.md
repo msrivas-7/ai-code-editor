@@ -117,9 +117,13 @@ A full-stack TypeScript product shipping to real users at **[codetutor.msrivas.c
 flowchart LR
     U((User<br/>Browser))
     SWA[Static Web Apps<br/>frontend bundle]
-    SB[(Supabase<br/>Auth + Postgres)]
-    AI[OpenAI<br/>Responses API]
-    KV[Key Vault<br/>runtime secrets]
+
+    subgraph CLOUD[Cloud services]
+        direction TB
+        SB[(Supabase<br/>Auth + Postgres)]
+        AI[OpenAI<br/>Responses API]
+        KV[Key Vault<br/>runtime secrets]
+    end
 
     subgraph VM[Azure VM · Ubuntu 24.04]
         direction TB
@@ -155,9 +159,9 @@ flowchart LR
     U --> SWA
     U ==>|HTTPS / SSE| CD
     U -.->|auth| SB
-    BECTR -->|JWKS + DB| SB
-    BECTR -->|json_schema| AI
-    BECTR -. Managed Identity .-> KV
+    API -->|JWKS + DB| SB
+    EB --> AI
+    EB -. boot time .-> KV
 
     classDef user fill:#1e293b,stroke:#0f172a,color:#f8fafc,stroke-width:2px
     classDef edge fill:#0284c7,stroke:#0369a1,color:#fff,stroke-width:2px
