@@ -1,11 +1,50 @@
 import { useState } from "react";
-import { api } from "../api/client";
+import { api, type AIStatusNoneReason } from "../api/client";
 import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
+import { PaidAccessInterestButton } from "./PaidAccessInterestButton";
 
 interface TutorSetupWarningProps {
   onOpenSettings?: () => void;
   onDismiss?: () => void;
+  // Phase 20-P4: when the server has told us why there's no tutor (free tier
+  // paused, account denylisted, provider key dead), branch the headline copy.
+  // Default behavior (no reason passed) renders the original "Connect your
+  // AI tutor" flow — unchanged from the BYOK-only days.
+  reason?: AIStatusNoneReason;
+}
+
+// One generic copy for every server-side "paused" reason — we intentionally
+// don't leak which specific cap or flag fired, so callers can't probe our
+// thresholds. Denylist gets its own copy because the remedy is the same
+// (BYOK) but the subject differs.
+function copyForReason(reason?: AIStatusNoneReason): {
+  title: string;
+  body: string;
+} {
+  switch (reason) {
+    case "free_disabled":
+    case "usd_cap_hit":
+    case "provider_auth_failed":
+    case "daily_usd_per_user_hit":
+    case "lifetime_usd_per_user_hit":
+      return {
+        title: "Free tutor is paused",
+        body: "Add your OpenAI key below to keep asking questions. You keep full control — OpenAI bills you directly, typical tutor usage is fractions of a cent per question.",
+      };
+    case "denylisted":
+      return {
+        title: "Free tutor unavailable",
+        body: "Free tutor access is unavailable for this account. Add your OpenAI key below to continue — OpenAI bills you directly.",
+      };
+    case "free_exhausted":
+    case "no_key":
+    default:
+      return {
+        title: "Connect your AI tutor",
+        body: "The tutor uses your own OpenAI account to answer questions about your code and the current lesson — we never see the key in plaintext (it's encrypted on our server).",
+      };
+  }
 }
 
 // Inline-first API key setup. Configuring the tutor shouldn't require
@@ -21,7 +60,7 @@ type ConnectStatus =
   | { kind: "validating" }
   | { kind: "invalid"; error: string };
 
-export function TutorSetupWarning({ onOpenSettings, onDismiss }: TutorSetupWarningProps) {
+export function TutorSetupWarning({ onOpenSettings, onDismiss, reason }: TutorSetupWarningProps) {
   const saveOpenaiKey = usePreferencesStore((s) => s.saveOpenaiKey);
   const { setModels, setModelsStatus } = useAIStore();
 
@@ -29,6 +68,15 @@ export function TutorSetupWarning({ onOpenSettings, onDismiss }: TutorSetupWarni
   const [reveal, setReveal] = useState(false);
   const [status, setStatus] = useState<ConnectStatus>({ kind: "idle" });
   const validating = status.kind === "validating";
+
+  const { title, body } = copyForReason(reason);
+  // Round 6: denylisted users see the paid-interest CTA again. A banned
+  // account willing to pay is actually a strong lead; backend now flags the
+  // row with `denylisted_at_click=true` so the operator can filter at review
+  // time. Only `no_key` / undefined reason stays hidden — that's the first-
+  // run onboarding path and a paid-plan ask would crowd out the "paste your
+  // key" primary action.
+  const showPaidInterest = reason !== undefined && reason !== "no_key";
 
   const handleConnect = async () => {
     const trimmed = draft.trim();
@@ -65,12 +113,8 @@ export function TutorSetupWarning({ onOpenSettings, onDismiss }: TutorSetupWarni
 
   return (
     <div className="rounded-md border border-warn/30 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
-      <div className="mb-1 font-semibold">Connect your AI tutor</div>
-      <p className="text-warn/90">
-        The tutor uses your own OpenAI account to answer questions about your
-        code and the current lesson — we never see the key in plaintext (it's
-        encrypted on our server).
-      </p>
+      <div className="mb-1 font-semibold">{title}</div>
+      <p className="text-warn/90">{body}</p>
       <p className="mt-1.5 text-[11px] text-warn/80">
         You'll need an API key from{" "}
         <a
@@ -131,6 +175,15 @@ export function TutorSetupWarning({ onOpenSettings, onDismiss }: TutorSetupWarni
 
       {status.kind === "invalid" && (
         <p className="mt-1.5 text-[11px] text-danger">× {status.error}</p>
+      )}
+
+      {showPaidInterest && (
+        <div className="mt-2.5 border-t border-warn/20 pt-2">
+          <PaidAccessInterestButton
+            tone="warn"
+            leadIn="Not ready to bring your own key? Let us know you'd use a paid plan — one click, no form."
+          />
+        </div>
       )}
 
       <div className="mt-2 flex items-center gap-3">

@@ -23,6 +23,14 @@ import { aiTokensConsumed } from "../metrics.js";
 
 const OPENAI_BASE = "https://api.openai.com/v1";
 
+// Phase 20-P4: server-side cap on the model's output length. Bounds the
+// worst case for a prompt-injected "write a 100k-token novel" attack on the
+// platform key and keeps any single call's $ predictable. 2000 output
+// tokens at nano rates is ~$0.0008 — well inside the per-call cost math.
+// Applied to ALL AI calls, not just platform, because there's no legitimate
+// tutor exchange that needs more.
+const MAX_OUTPUT_TOKENS = 2000;
+
 // Phase 17 / M-A3: full prompt content can contain the learner's code —
 // keep it out of the log unless a developer explicitly opts in. In normal
 // operation we print sizes only.
@@ -200,6 +208,7 @@ export const openaiProvider: AIProvider = {
       model: params.model,
       instructions,
       input: userTurn,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
       text: {
         format: {
           type: "json_schema",
@@ -271,8 +280,9 @@ export const openaiProvider: AIProvider = {
         : undefined;
 
     if (usage) {
-      aiTokensConsumed.inc({ model: params.model, kind: "input" }, usage.inputTokens);
-      aiTokensConsumed.inc({ model: params.model, kind: "output" }, usage.outputTokens);
+      const fs = params.fundingSource ?? "byok";
+      aiTokensConsumed.inc({ model: params.model, kind: "input", funding_source: fs }, usage.inputTokens);
+      aiTokensConsumed.inc({ model: params.model, kind: "output", funding_source: fs }, usage.outputTokens);
     }
 
     return { sections, raw, usage };
@@ -281,13 +291,15 @@ export const openaiProvider: AIProvider = {
   async summarize({
     key,
     model,
+    fundingSource,
     history,
   }: {
     key: string;
     model: string;
+    fundingSource?: "byok" | "platform";
     history: AIMessage[];
-  }): Promise<string> {
-    if (history.length === 0) return "";
+  }): Promise<{ summary: string; usage?: import("./provider.js").TokenUsage }> {
+    if (history.length === 0) return { summary: "" };
     const input = buildSummarizeInput(history);
     console.log(`[openai] summarize model=${model} turns=${history.length}`);
     const res = await openaiFetch("/responses", key, {
@@ -296,6 +308,7 @@ export const openaiProvider: AIProvider = {
         model,
         instructions: SUMMARIZE_SYSTEM_PROMPT,
         input,
+        max_output_tokens: MAX_OUTPUT_TOKENS,
       }),
     });
     if (!res.ok) {
@@ -306,6 +319,7 @@ export const openaiProvider: AIProvider = {
     const json = (await res.json()) as {
       output_text?: string;
       output?: { content?: { type?: string; text?: string }[] }[];
+      usage?: { input_tokens?: number; output_tokens?: number };
     };
     let summary = json.output_text ?? "";
     if (!summary && json.output) {
@@ -315,8 +329,21 @@ export const openaiProvider: AIProvider = {
         .map((c) => c.text ?? "")
         .join("");
     }
+    const usage =
+      typeof json.usage?.input_tokens === "number" &&
+      typeof json.usage?.output_tokens === "number"
+        ? {
+            inputTokens: json.usage.input_tokens,
+            outputTokens: json.usage.output_tokens,
+          }
+        : undefined;
+    if (usage) {
+      const fs = fundingSource ?? "byok";
+      aiTokensConsumed.inc({ model, kind: "input", funding_source: fs }, usage.inputTokens);
+      aiTokensConsumed.inc({ model, kind: "output", funding_source: fs }, usage.outputTokens);
+    }
     console.log(`[openai] summarize done chars=${summary.length}`);
-    return summary.trim();
+    return { summary: summary.trim(), usage };
   },
 
   async askStream(params: AIAskParams, handlers: AIStreamHandlers): Promise<void> {
@@ -332,6 +359,7 @@ export const openaiProvider: AIProvider = {
       instructions,
       input: userTurn,
       stream: true,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
       text: {
         format: {
           type: "json_schema",
@@ -403,8 +431,9 @@ export const openaiProvider: AIProvider = {
         const u = evt.response?.usage;
         if (typeof u?.input_tokens === "number" && typeof u?.output_tokens === "number") {
           usage = { inputTokens: u.input_tokens, outputTokens: u.output_tokens };
-          aiTokensConsumed.inc({ model: params.model, kind: "input" }, u.input_tokens);
-          aiTokensConsumed.inc({ model: params.model, kind: "output" }, u.output_tokens);
+          const fs = params.fundingSource ?? "byok";
+          aiTokensConsumed.inc({ model: params.model, kind: "input", funding_source: fs }, u.input_tokens);
+          aiTokensConsumed.inc({ model: params.model, kind: "output", funding_source: fs }, u.output_tokens);
         }
       }
     };

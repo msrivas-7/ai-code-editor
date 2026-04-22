@@ -3,6 +3,7 @@ import { api, type AskStreamRequest } from "../api/client";
 import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
+import { useAIStatus } from "../state/useAIStatus";
 import type { EditorSelection, ProjectFile, AIMessage } from "../types";
 import { computeDiffSinceLast } from "./diffSinceLast";
 import { parsePartialTutor } from "./partialJson";
@@ -56,9 +57,14 @@ export function useTutorAsk(opts: UseTutorAskOpts): UseTutorAskResult {
   } = useAIStore();
   const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
   const { snapshot } = useProjectStore();
+  const { status: aiStatus } = useAIStatus();
   const abortRef = useRef<AbortController | null>(null);
 
-  const configured = hasKey && !!selectedModel;
+  // Platform (free-tier) users have no BYOK key and no selectedModel — the
+  // backend picks `gpt-4.1-nano` for them. Mirror the panel-level gate here
+  // so submitAsk doesn't early-return for every platform user.
+  const onPlatform = !hasKey && aiStatus?.source === "platform";
+  const configured = onPlatform || (hasKey && !!selectedModel);
 
   const submitAsk = async (question: string): Promise<void> => {
     const trimmed = question.trim();

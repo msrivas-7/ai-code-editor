@@ -97,6 +97,10 @@ export interface TokenUsage {
 export interface AIAskParams {
   key: string;
   model: string;
+  // Phase 20-P4: funding source is labeled on token-consumed metrics so the
+  // operator can split platform-funded spend from user-BYOK spend. The
+  // provider never gates on this; it's just a passthrough label.
+  fundingSource?: "byok" | "platform";
   question: string;
   files: ProjectFile[];
   activeFile?: string;
@@ -155,5 +159,10 @@ export interface AIProvider {
   listModels(key: string): Promise<AIModel[]>;
   ask(params: AIAskParams): Promise<AIAskResult>;
   askStream(params: AIAskParams, handlers: AIStreamHandlers): Promise<void>;
-  summarize(params: { key: string; model: string; history: AIMessage[] }): Promise<string>;
+  summarize(params: {
+    key: string;
+    model: string;
+    fundingSource?: "byok" | "platform";
+    history: AIMessage[];
+  }): Promise<{ summary: string; usage?: TokenUsage }>;
 }

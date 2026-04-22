@@ -4,6 +4,7 @@ import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { useProjectStore } from "../state/projectStore";
 import { useRunStore } from "../state/runStore";
+import { useAIStatus } from "../state/useAIStatus";
 import { planSend } from "../util/summarizeHistory";
 import { useTutorAsk } from "../util/useTutorAsk";
 import {
@@ -15,6 +16,8 @@ import {
   hasTutorContent,
 } from "./TutorResponseViews";
 import { TutorSetupWarning } from "./TutorSetupWarning";
+import { FreeTierPill } from "./FreeTierPill";
+import { ExhaustionCard } from "./ExhaustionCard";
 import { SelectionPreview } from "./SelectionPreview";
 import { useShortcutLabels } from "../util/platform";
 
@@ -43,15 +46,39 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
     sessionUsage,
   } = useAIStore();
   const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
+  const { status: aiStatus, refetch: refetchAIStatus } = useAIStatus();
 
   const { activeFile, language } = useProjectStore();
   const lastRun = useRunStore((s) => s.result);
   const stdin = useRunStore((s) => s.stdin);
 
   const [draft, setDraft] = useState("");
+  const [exhaustionDismissed, setExhaustionDismissed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const keys = useShortcutLabels();
+
+  // Phase 20-P4: derive what kind of tutor funding is in play. `hasKey`
+  // wins over whatever ai-status last said — if the user just pasted a
+  // BYOK key, we shouldn't render the free-tier pill until the status
+  // refetch lands. `source === "platform"` means free tier is active.
+  const effectiveSource: "byok" | "platform" | "none" =
+    hasKey ? "byok" : (aiStatus?.source ?? "byok");
+  const onPlatform = effectiveSource === "platform";
+  const exhausted = effectiveSource === "none" && aiStatus?.reason === "free_exhausted";
+  // Drop stale "dismissed" state whenever the counter refreshes (new day,
+  // BYOK added, etc.) so the next exhaustion re-shows the card.
+  useEffect(() => {
+    if (!exhausted) setExhaustionDismissed(false);
+  }, [exhausted]);
+
+  // Keep the free-tier counter fresh: after every assistant turn finishes
+  // (asking goes true → false), re-pull status so the pill drops.
+  const prevAsking = useRef(asking);
+  useEffect(() => {
+    if (prevAsking.current && !asking) refetchAIStatus();
+    prevAsking.current = asking;
+  }, [asking, refetchAIStatus]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -65,7 +92,11 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
     textareaRef.current?.focus();
   }, [focusComposerNonce]);
 
-  const configured = hasKey && !!selectedModel;
+  // Configured = we have SOMETHING to ask against. Either the user pasted a
+  // BYOK key (hasKey) AND the model list loaded (selectedModel), OR the
+  // backend is willing to fund us on the platform key (onPlatform — the
+  // model is implicit, server-picked `gpt-4.1-nano`).
+  const configured = onPlatform || (hasKey && !!selectedModel);
 
   const { submitAsk, cancelAsk } = useTutorAsk({
     beforeSend: () => {
@@ -84,7 +115,7 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
         // next ask, so the CURRENT ask doesn't block on it.
         api
           .summarizeHistory({
-            model: selectedModel!,
+            model: selectedModel ?? "gpt-4.1-nano",
             history: plan.summarizeSlice.map((m) => ({
               role: m.role,
               content: m.content,
@@ -101,7 +132,9 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
       return plan.historyForSend;
     },
     buildBody: ({ question, files, diffSinceLastTurn, historyForSend, selection }) => ({
-      model: selectedModel!,
+      // Platform users have no selectedModel — backend locks them to
+      // `gpt-4.1-nano` via the allowlist, so we pass that name verbatim.
+      model: selectedModel ?? "gpt-4.1-nano",
       question,
       files,
       activeFile: activeFile ?? undefined,
@@ -149,13 +182,21 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
     <div className="flex h-full flex-col border-l border-border">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          {selectedModel && (
+          {selectedModel && !onPlatform && (
             <span className="rounded border border-border bg-elevated px-1.5 py-[1px] font-mono text-[10px] text-muted">
               {selectedModel}
             </span>
           )}
-          {(sessionUsage.inputTokens > 0 || sessionUsage.outputTokens > 0) && (
-            <UsageChip usage={sessionUsage} modelId={selectedModel} size="xs" />
+          {onPlatform && aiStatus?.source === "platform" && aiStatus.remainingToday !== null && aiStatus.capToday !== null && aiStatus.resetAtUtc ? (
+            <FreeTierPill
+              remaining={aiStatus.remainingToday}
+              cap={aiStatus.capToday}
+              resetAtUtc={aiStatus.resetAtUtc}
+            />
+          ) : (
+            !onPlatform && (sessionUsage.inputTokens > 0 || sessionUsage.outputTokens > 0) && (
+              <UsageChip usage={sessionUsage} modelId={selectedModel} size="xs" />
+            )
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -182,10 +223,11 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {!configured && (
+        {!configured && !exhausted && (
           <TutorSetupWarning
             onOpenSettings={onOpenSettings}
             onDismiss={onCollapse}
+            reason={aiStatus?.source === "none" ? aiStatus.reason : undefined}
           />
         )}
         {history.length === 0 && !asking && configured && (
@@ -233,7 +275,7 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
                   ) : (
                     <span />
                   )}
-                  {m.role === "assistant" && m.usage && (
+                  {m.role === "assistant" && m.usage && !onPlatform && (
                     <UsageChip usage={m.usage} modelId={selectedModel} />
                   )}
                 </div>
@@ -262,6 +304,14 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
       </div>
 
       <div className="border-t border-border bg-panel p-2">
+        {exhausted && !exhaustionDismissed ? (
+          <ExhaustionCard
+            resetAtUtc={aiStatus?.resetAtUtc ?? null}
+            onOpenSettings={onOpenSettings}
+            onDismiss={() => setExhaustionDismissed(true)}
+          />
+        ) : (
+          <>
         {activeSelection && (
           <SelectionPreview selection={activeSelection} onClear={() => setActiveSelection(null)} />
         )}
@@ -308,6 +358,8 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
             </button>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

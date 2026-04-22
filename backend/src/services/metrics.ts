@@ -37,7 +37,47 @@ export const aiTokensConsumed = new Counter({
   help: "OpenAI tokens consumed across all completions.",
   // `model` enables per-model cost breakdown; `kind` splits input vs
   // output so totals are directly priceable against OpenAI's rate card.
-  labelNames: ["model", "kind"] as const,
+  // Phase 20-P4: `funding_source` splits byok vs platform so the operator
+  // can isolate spend on their own key from aggregate user spend.
+  labelNames: ["model", "kind", "funding_source"] as const,
+  registers: [registry],
+});
+
+// Phase 20-P4: free-tier telemetry. `outcome` is the resolver decision,
+// `route` pins which AI endpoint fired. Together they bound cardinality to
+// ~30 series permanently — no per-user labels. The operator graph is a
+// stacked bar of outcomes over time: a climbing 'exhausted' bar is exactly
+// the demand signal the free tier is meant to surface.
+export const aiPlatformRequests = new Counter({
+  name: "ai_platform_requests_total",
+  help: "Platform AI requests, by resolver outcome and route.",
+  labelNames: ["outcome", "route"] as const,
+  registers: [registry],
+});
+
+// Willingness-to-pay signal. Single counter covering all three exhaustion-
+// card CTAs — ratio of clicked_paid_interest / exhausted is the primary
+// gate on building any paid SKU.
+//
+// Round 7: `denylisted` label splits clean leads from banned-but-willing
+// ones so the conversion KPI can be computed without joining the DB. Value
+// is "yes" (denylisted at click) | "no" (clean) | "na" (outcomes that
+// aren't the paid-interest click). Cardinality stays bounded: 3 outcomes ×
+// 3 denylisted-values = 9 series max, forever.
+export const aiExhaustionCtaClicks = new Counter({
+  name: "ai_exhaustion_cta_clicks_total",
+  help: "Exhaustion-card CTA engagement (dismissed | clicked_byok | clicked_paid_interest).",
+  labelNames: ["outcome", "denylisted"] as const,
+  registers: [registry],
+});
+
+// Any non-zero here warrants a manual look. Each signal corresponds to a
+// specific abuse pattern that should be impossible under the nine defense
+// layers but is tracked so a latent bug surfaces fast.
+export const aiPlatformAbuseSignals = new Counter({
+  name: "ai_platform_abuse_signals_total",
+  help: "Suspicious platform behavior; non-zero => investigate.",
+  labelNames: ["signal"] as const,
   registers: [registry],
 });
 
