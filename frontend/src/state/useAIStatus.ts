@@ -77,6 +77,18 @@ supabase.auth.onAuthStateChange((event) => {
   }
 });
 
+// Imperative invalidator for non-React callers (the preferences store calls
+// this after saveOpenaiKey / forgetOpenaiKey so the panels immediately learn
+// that the credential source has flipped — without this, a user who removes
+// their BYOK key keeps seeing the "Connect your AI tutor" copy until the 30 s
+// TTL lapses, because the cached `source: 'byok'` response shadows the fresh
+// `source: 'platform'` one the backend would now return).
+export function invalidateAIStatus(): void {
+  cached = null;
+  inflight = null;
+  void fetchFresh();
+}
+
 export function useAIStatus(): {
   status: AIStatusResponse | null;
   refetch: () => void;

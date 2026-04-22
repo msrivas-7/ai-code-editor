@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api, type UserPreferences, type UserPreferencesPatch } from "../api/client";
 import { currentGen } from "../auth/generation";
+import { invalidateAIStatus } from "./useAIStatus";
 
 // Phase 18b: single source of truth for every per-user preference that used
 // to live in localStorage — persona, OpenAI model id, theme, onboarding
@@ -152,6 +153,7 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
     set({ hasOpenaiKey: true });
     try {
       await api.saveOpenAIKey(key);
+      invalidateAIStatus();
     } catch (err) {
       set({ hasOpenaiKey: prior });
       throw err;
@@ -162,6 +164,7 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
     set({ hasOpenaiKey: false });
     try {
       await api.deleteOpenAIKey();
+      invalidateAIStatus();
     } catch (err) {
       set({ hasOpenaiKey: prior });
       throw err;
