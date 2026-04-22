@@ -1,5 +1,7 @@
 import type { JSONValue } from "postgres";
+import { z } from "zod";
 import { db } from "./client.js";
+import { HttpError } from "../middleware/errorHandler.js";
 
 export interface LessonProgress {
   courseId: string;
@@ -21,28 +23,39 @@ export interface LessonProgress {
   practiceExerciseCode: Record<string, Record<string, string>>;
 }
 
-interface Row {
-  course_id: string;
-  lesson_id: string;
-  status: string;
-  started_at: Date | null;
-  completed_at: Date | null;
-  updated_at: Date;
-  attempt_count: number;
-  run_count: number;
-  hint_count: number;
-  time_spent_ms: string | number;
-  last_code: Record<string, unknown> | null;
-  last_output: string | null;
-  practice_completed_ids: string[];
-  practice_exercise_code: Record<string, Record<string, string>> | null;
-}
+// Phase 20-P3 Bucket 3 (#2): parse rows at the DB boundary — catches stray
+// statuses or non-numeric counts from a bad migration before they flow into
+// progress bars + auto-save math.
+export const LessonRowSchema = z.object({
+  course_id: z.string(),
+  lesson_id: z.string(),
+  status: z.enum(["not_started", "in_progress", "completed"]),
+  started_at: z.date().nullable(),
+  completed_at: z.date().nullable(),
+  updated_at: z.date(),
+  attempt_count: z.union([z.number(), z.string()]),
+  run_count: z.union([z.number(), z.string()]),
+  hint_count: z.union([z.number(), z.string()]),
+  time_spent_ms: z.union([z.number(), z.string()]),
+  last_code: z.record(z.string(), z.unknown()).nullable(),
+  last_output: z.string().nullable(),
+  practice_completed_ids: z.array(z.string()).nullable(),
+  practice_exercise_code: z.record(z.string(), z.record(z.string(), z.string())).nullable(),
+});
 
-function rowToLesson(r: Row): LessonProgress {
+function rowToLesson(raw: unknown): LessonProgress {
+  const parsed = LessonRowSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new HttpError(
+      500,
+      `corrupt lesson_progress row: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
+    );
+  }
+  const r = parsed.data;
   return {
     courseId: r.course_id,
     lessonId: r.lesson_id,
-    status: r.status as LessonProgress["status"],
+    status: r.status,
     startedAt: r.started_at ? r.started_at.toISOString() : null,
     completedAt: r.completed_at ? r.completed_at.toISOString() : null,
     updatedAt: r.updated_at.toISOString(),
@@ -63,7 +76,7 @@ export async function listLessonProgress(
 ): Promise<LessonProgress[]> {
   const sql = db();
   const rows = courseId
-    ? await sql<Row[]>`
+    ? await sql`
         SELECT course_id, lesson_id, status, started_at, completed_at,
                updated_at, attempt_count, run_count, hint_count,
                time_spent_ms, last_code, last_output, practice_completed_ids,
@@ -71,7 +84,7 @@ export async function listLessonProgress(
           FROM public.lesson_progress
          WHERE user_id = ${userId} AND course_id = ${courseId}
       `
-    : await sql<Row[]>`
+    : await sql`
         SELECT course_id, lesson_id, status, started_at, completed_at,
                updated_at, attempt_count, run_count, hint_count,
                time_spent_ms, last_code, last_output, practice_completed_ids,
@@ -111,7 +124,7 @@ export async function upsertLessonProgress(
     patch.practiceExerciseCode === undefined
       ? null
       : sql.json(patch.practiceExerciseCode as JSONValue);
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     INSERT INTO public.lesson_progress (
       user_id, course_id, lesson_id, status, started_at, completed_at,
       attempt_count, run_count, hint_count, time_spent_ms,

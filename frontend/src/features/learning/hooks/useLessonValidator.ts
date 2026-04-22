@@ -9,6 +9,12 @@ import { useProgressStore } from "../stores/progressStore";
 import { api } from "../../../api/client";
 import { pickFirstFailure, validateLesson } from "../utils/validator";
 import { LANGUAGE_ENTRYPOINT } from "../../../types";
+import {
+  buildAskTutorPrompt,
+  countFailsByVisibility,
+  selectCompletionRulesForCheck,
+  shouldAutoEnterPractice,
+} from "./lessonGuards";
 
 // Phase 20-P1: confetti respects `prefers-reduced-motion`. Lifted out of
 // the page when LessonPage was split — validator is the only place left
@@ -159,7 +165,8 @@ export function useLessonValidator({
     if (practiceMode) {
       const exercise = lesson.practiceExercises?.[practiceIndex];
       if (!exercise) return;
-      const practiceFnTests = exercise.completionRules
+      const practiceRules = selectCompletionRulesForCheck(lesson, true, practiceIndex);
+      const practiceFnTests = practiceRules
         .filter((r) => r.type === "function_tests")
         .flatMap((r) => r.tests ?? []);
       let practiceReport: TestReport | null = null;
@@ -227,8 +234,7 @@ export function useLessonValidator({
     if (!v.passed) {
       setFailedCheckCount((c) => c + 1);
       if (latestReport && functionTests.length > 0) {
-        const visibleFails = latestReport.results.filter((r) => !r.hidden && !r.passed).length;
-        const hiddenFails = latestReport.results.filter((r) => r.hidden && !r.passed).length;
+        const { visibleFails, hiddenFails } = countFailsByVisibility(latestReport);
         if (visibleFails > 0) setFailedVisibleTests((c) => c + 1);
         else if (hiddenFails > 0) setFailedHiddenTests((c) => c + 1);
       }
@@ -297,7 +303,13 @@ export function useLessonValidator({
     if (autoEnteredPractice.current) return;
     if (searchParams.get("mode") !== "practice") return;
     const currentLp = useProgressStore.getState().lessonProgress[`${courseId}/${lessonId}`];
-    if (currentLp?.status !== "completed" || !lesson.practiceExercises?.length) {
+    const canEnter = shouldAutoEnterPractice({
+      hasLesson: true,
+      modeParam: searchParams.get("mode"),
+      lessonStatus: currentLp?.status,
+      practiceExerciseCount: lesson.practiceExercises?.length ?? 0,
+    });
+    if (!canEnter) {
       setSearchParams({}, { replace: true });
       return;
     }
@@ -413,12 +425,7 @@ export function useLessonValidator({
   const handleAskTutorAboutFailure = useCallback(() => {
     const fail = pickFirstFailure(testReport);
     if (!fail) return;
-    const prompt = fail.hidden
-      ? `My function passes the visible examples but Check My Work says a related edge case still fails${fail.category ? ` (category: ${fail.category})` : ""}. What kinds of inputs should I test beyond the examples, and how would I trace my code through them?`
-      : fail.error
-        ? `When my function ran on the "${fail.name}" example, it raised this error:\n\`\`\`\n${(fail.error ?? "").trim().slice(0, 400)}\n\`\`\`\nCan you help me understand what caused it?`
-        : `The "${fail.name}" example returned \`${fail.actualRepr ?? "(no value)"}\` but expected \`${fail.expectedRepr ?? "(unknown)"}\`. Can you help me see why my code gives the wrong answer here?`;
-    setPendingAsk(prompt);
+    setPendingAsk(buildAskTutorPrompt(fail));
     if (tutorCollapsed) setTutorCollapsed(false);
   }, [testReport, setPendingAsk, tutorCollapsed, setTutorCollapsed]);
 

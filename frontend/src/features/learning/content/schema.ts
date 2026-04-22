@@ -15,6 +15,10 @@ const courseId = z
   .min(1)
   .regex(/^_?[a-z0-9][a-z0-9_-]*$/i, "must be a simple identifier (letters, digits, -, _), optionally prefixed with `_`");
 
+// Phase 20-P3 Bucket 3 (#1): the shapes below are mirrored by
+// backend/src/schema/lessonRuleSchema.ts. If you add a variant here (new
+// completionRule type, new functionTest field), add the matching variant on
+// the backend side or it will be silently dropped at the API boundary.
 export const functionTestSchema = z.object({
   name: nonEmptyString,
   call: nonEmptyString,

@@ -1,81 +1,104 @@
 import { useEffect, useState } from "react";
 
-// Phase 20-P2: the Editor + Lesson layouts pack Monaco, a file tree, an
-// output panel and a tutor panel onto one screen. Below ~640px wide, the
-// splitters collapse onto each other, Monaco's gutter eats the code column,
-// and touch targets get ambiguous — the experience is broken, not just
-// cramped. Rather than ship a bad mobile view, we gate with a full-screen
-// card that explains the constraint and offers a "Continue anyway" escape
-// hatch for power users who really want to poke at it on a phone.
+// Phase 20-P3 Bucket 3 (#5): soft "your screen is narrow" nudge.
 //
-// The dismissal is session-scoped (sessionStorage, not localStorage) so the
-// user gets the warning again next time they land here on mobile — reminding
-// them to switch devices is the right default; silently respecting a stale
-// dismiss would be more annoying than useful.
+// The editor + lesson layout assumes ≥1024 px wide. On phones (< 640 px) it
+// collapses to something barely usable; on tablets (640–1023 px) it's
+// cramped but functional. We don't block either — users who want to push
+// through on a phone can, that's their call. We just show a dismissible
+// banner that explains why a laptop is better.
+//
+// Dismissal is sessionStorage-scoped so the warning reappears next visit —
+// reminding the learner that the experience is better elsewhere is the right
+// default; silently respecting a stale dismiss would be more annoying than
+// useful.
 
-const BREAKPOINT_PX = 640;
+const PHONE_MAX_PX = 639;
+const TABLET_MAX_PX = 1023;
 const DISMISS_KEY = "ui:narrow-viewport-dismissed";
 
+type Size = "phone" | "tablet" | "wide";
+
+function readSize(): Size {
+  if (typeof window === "undefined") return "wide";
+  const w = window.innerWidth;
+  if (w <= PHONE_MAX_PX) return "phone";
+  if (w <= TABLET_MAX_PX) return "tablet";
+  return "wide";
+}
+
 export function NarrowViewportGate() {
-  const [isNarrow, setIsNarrow] = useState(false);
+  const [size, setSize] = useState<Size>(() => readSize());
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     return sessionStorage.getItem(DISMISS_KEY) === "1";
   });
 
   useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${BREAKPOINT_PX - 1}px)`);
-    const update = () => setIsNarrow(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
+    const update = () => setSize(readSize());
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
-  if (!isNarrow || dismissed) return null;
+  if (size === "wide" || dismissed) return null;
 
-  const dismiss = () => {
+  const onDismiss = () => {
     sessionStorage.setItem(DISMISS_KEY, "1");
     setDismissed(true);
   };
 
+  const isPhone = size === "phone";
+  const headline = isPhone
+    ? "You'll have a better time on a laptop"
+    : "Looking a little cramped";
+  const body = isPhone
+    ? "CodeTutor's editor and lessons are built for bigger screens. Things will feel squeezed on a phone — you're welcome to keep going, but a laptop or tablet will make everything easier to read and tap."
+    : "The editor is designed for wider screens. Everything fits on your tablet, but panels are tight. For the best experience, open this on a laptop when you have one handy.";
+
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="narrow-viewport-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/95 px-4 backdrop-blur"
+      role="status"
+      aria-live="polite"
+      className="fixed left-1/2 top-2 z-40 -translate-x-1/2 rounded-lg border border-border bg-panel/95 px-3 py-2 text-xs text-ink shadow-md backdrop-blur"
+      style={{ maxWidth: "calc(100vw - 1rem)" }}
     >
-      <div className="w-full max-w-sm rounded-xl border border-border bg-panel p-5 text-center shadow-lg">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
+      <div className="flex items-start gap-2">
+        <svg
+          className="mt-[2px] h-4 w-4 flex-shrink-0 text-accent"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2" y="4" width="20" height="14" rx="2" />
+          <line x1="2" y1="20" x2="22" y2="20" />
+        </svg>
+        <div className="flex-1">
+          <p className="font-medium text-ink">{headline}</p>
+          <p className="mt-0.5 text-[11px] text-muted">{body}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="ml-1 flex-shrink-0 rounded p-1 text-muted hover:bg-border/40 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
           <svg
-            className="h-5 w-5"
+            className="h-3.5 w-3.5"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
           >
-            <rect x="4" y="2" width="16" height="20" rx="2" />
-            <line x1="12" y1="18" x2="12" y2="18.01" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
-        </div>
-        <h2 id="narrow-viewport-title" className="text-sm font-semibold text-ink">
-          Bigger screen, please
-        </h2>
-        <p className="mt-2 text-xs text-muted">
-          The code editor and lesson panels need a laptop or tablet to be
-          usable. Come back on a wider screen and you'll get the full
-          experience — file tree, Monaco, tutor, and output all visible at
-          once.
-        </p>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="mt-4 text-[11px] text-muted hover:text-ink hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          Continue anyway
         </button>
       </div>
     </div>

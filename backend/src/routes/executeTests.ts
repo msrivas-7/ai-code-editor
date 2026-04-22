@@ -6,13 +6,17 @@ import { languageSchema } from "../services/execution/commands.js";
 import { getHarness } from "../services/execution/harness/registry.js";
 import { runTests } from "../services/execution/harness/runHarness.js";
 import type { ExecutionBackend } from "../services/execution/backends/index.js";
+import { functionTestSchema as canonicalFunctionTestSchema } from "../schema/lessonRuleSchema.js";
 
-const functionTestSchema = z.object({
+// Route-specific size limits: the canonical authoring schema allows arbitrary
+// string lengths, but the harness runs these strings through a container eval
+// loop where oversized payloads inflate memory + runtime. Enforced here at the
+// route boundary, not in the shared schema.
+const functionTestSchema = canonicalFunctionTestSchema.extend({
   name: z.string().min(1).max(120),
   call: z.string().min(1).max(4000),
   expected: z.string().min(1).max(4000),
   setup: z.string().max(4000).optional(),
-  hidden: z.boolean().optional(),
   category: z.string().max(120).optional(),
 });
 

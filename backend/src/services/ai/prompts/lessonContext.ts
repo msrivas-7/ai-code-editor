@@ -1,21 +1,7 @@
 import { commandFor, type Language } from "../../execution/commands.js";
+import type { CompletionRule, FunctionTestSpec } from "../../../schema/lessonRuleSchema.js";
 
-// Mirrors the authoring discriminated union. We carry the richer shape through
-// the prompt pipeline so future prompt blocks can reference fields like
-// `function_tests.tests` without changing types again.
-export interface FunctionTestSpec {
-  name: string;
-  call: string;
-  expected: string;
-  setup?: string;
-  hidden?: boolean;
-  category?: string;
-}
-export type CompletionRule =
-  | { type: "expected_stdout"; expected: string }
-  | { type: "required_file_contains"; pattern: string; file?: string }
-  | { type: "function_tests"; tests: FunctionTestSpec[] }
-  | { type: "custom_validator" };
+export type { CompletionRule, FunctionTestSpec };
 
 export interface LessonContext {
   courseId: string;

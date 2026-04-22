@@ -9,6 +9,7 @@ import { useProjectStore } from "../../../state/projectStore";
 import { useRunStore } from "../../../state/runStore";
 import { LANGUAGE_ENTRYPOINT } from "../../../types";
 import { RESUME_TOAST_MS } from "../../../util/timings";
+import { shouldBouncePrereq } from "./lessonGuards";
 
 export interface UseLessonLoaderArgs {
   courseId: string | undefined;
@@ -91,10 +92,13 @@ export function useLessonLoader({
         const completedIds = progressState.courseProgress[courseId]?.completedLessonIds ?? [];
         const existingStatus =
           progressState.lessonProgress[`${courseId}/${lessonId}`]?.status ?? "not_started";
-        const prereqsMet =
-          l.prerequisiteLessonIds.length === 0 ||
-          l.prerequisiteLessonIds.every((id) => completedIds.includes(id));
-        if (!prereqsMet && existingStatus === "not_started") {
+        if (
+          shouldBouncePrereq({
+            lessonPrerequisiteIds: l.prerequisiteLessonIds,
+            completedLessonIds: completedIds,
+            existingStatus,
+          })
+        ) {
           navigate(`/learn/course/${courseId}`, { replace: true });
           return;
         }

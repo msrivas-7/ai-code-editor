@@ -1,5 +1,7 @@
 import type { JSONValue } from "postgres";
+import { z } from "zod";
 import { db } from "./client.js";
+import { HttpError } from "../middleware/errorHandler.js";
 
 export interface EditorProject {
   language: string;
@@ -21,17 +23,26 @@ const DEFAULT_PROJECT: EditorProject = {
   updatedAt: new Date(0).toISOString(),
 };
 
-interface Row {
-  language: string;
-  files: Record<string, string>;
-  active_file: string | null;
-  open_tabs: string[];
-  file_order: string[];
-  stdin: string;
-  updated_at: Date;
-}
+// Phase 20-P3 Bucket 3 (#2): parse rows at the DB boundary.
+export const ProjectRowSchema = z.object({
+  language: z.string(),
+  files: z.record(z.string(), z.string()).nullable(),
+  active_file: z.string().nullable(),
+  open_tabs: z.array(z.string()).nullable(),
+  file_order: z.array(z.string()).nullable(),
+  stdin: z.string().nullable(),
+  updated_at: z.date(),
+});
 
-function rowToProject(r: Row): EditorProject {
+function rowToProject(raw: unknown): EditorProject {
+  const parsed = ProjectRowSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new HttpError(
+      500,
+      `corrupt editor_project row: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
+    );
+  }
+  const r = parsed.data;
   return {
     language: r.language,
     files: r.files ?? {},
@@ -45,7 +56,7 @@ function rowToProject(r: Row): EditorProject {
 
 export async function getEditorProject(userId: string): Promise<EditorProject> {
   const sql = db();
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     SELECT language, files, active_file, open_tabs, file_order, stdin, updated_at
       FROM public.editor_project
      WHERE user_id = ${userId}
@@ -68,7 +79,7 @@ export async function saveEditorProject(
   project: EditorProjectInput,
 ): Promise<EditorProject> {
   const sql = db();
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     INSERT INTO public.editor_project (
       user_id, language, files, active_file, open_tabs, file_order, stdin
     )

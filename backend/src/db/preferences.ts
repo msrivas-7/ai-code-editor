@@ -1,5 +1,7 @@
 import type { JSONValue } from "postgres";
+import { z } from "zod";
 import { db } from "./client.js";
+import { HttpError } from "../middleware/errorHandler.js";
 import { decryptKey, encryptKey } from "../services/crypto/byok.js";
 
 export interface UserPreferences {
@@ -28,23 +30,35 @@ const DEFAULT_PREFS: UserPreferences = {
   updatedAt: new Date(0).toISOString(),
 };
 
-interface Row {
-  persona: string;
-  openai_model: string | null;
-  theme: string;
-  welcome_done: boolean;
-  workspace_coach_done: boolean;
-  editor_coach_done: boolean;
-  ui_layout: Record<string, unknown>;
-  has_openai_key: boolean;
-  updated_at: Date;
-}
+// Phase 20-P3 Bucket 3 (#2): parse rows at the DB boundary instead of hard-
+// casting strings into union types. A bad migration that writes e.g.
+// persona='bogus' used to land unchecked and silently mis-render prompts;
+// now it fails fast with a 500 the logs can pin down.
+export const PrefsRowSchema = z.object({
+  persona: z.enum(["beginner", "intermediate", "advanced"]),
+  openai_model: z.string().nullable(),
+  theme: z.enum(["system", "light", "dark"]),
+  welcome_done: z.boolean(),
+  workspace_coach_done: z.boolean(),
+  editor_coach_done: z.boolean(),
+  ui_layout: z.record(z.string(), z.unknown()).nullable(),
+  has_openai_key: z.boolean(),
+  updated_at: z.date(),
+});
 
-function rowToPrefs(r: Row): UserPreferences {
+function rowToPrefs(raw: unknown): UserPreferences {
+  const parsed = PrefsRowSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new HttpError(
+      500,
+      `corrupt user_preferences row: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
+    );
+  }
+  const r = parsed.data;
   return {
-    persona: r.persona as UserPreferences["persona"],
+    persona: r.persona,
     openaiModel: r.openai_model,
-    theme: r.theme as UserPreferences["theme"],
+    theme: r.theme,
     welcomeDone: r.welcome_done,
     workspaceCoachDone: r.workspace_coach_done,
     editorCoachDone: r.editor_coach_done,
@@ -56,7 +70,7 @@ function rowToPrefs(r: Row): UserPreferences {
 
 export async function getPreferences(userId: string): Promise<UserPreferences> {
   const sql = db();
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     SELECT persona, openai_model, theme, welcome_done, workspace_coach_done,
            editor_coach_done, ui_layout,
            (openai_api_key_cipher IS NOT NULL) AS has_openai_key,
@@ -83,7 +97,7 @@ export async function upsertPreferences(
   patch: PreferencesPatch,
 ): Promise<UserPreferences> {
   const sql = db();
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     INSERT INTO public.user_preferences (
       user_id, persona, openai_model, theme, welcome_done,
       workspace_coach_done, editor_coach_done, ui_layout

@@ -99,8 +99,11 @@ export class LocalDockerBackend implements ExecutionBackend {
     const hostWorkspacePath = joinHostPath(root, spec.sessionId);
 
     await fs.mkdir(workspacePath, { recursive: true });
-    // Runner image runs as uid/gid 1100; allow it to write.
-    await fs.chmod(workspacePath, 0o777).catch(() => {});
+    // Phase 20-P3 Bucket 3 (#4): backend `app` and runner `runner` are both
+    // UID 1100, so 0700 grants the owner read/write/execute and locks
+    // everyone else out — including anything on the host that would
+    // otherwise see a world-writable directory on the bind mount.
+    await fs.chmod(workspacePath, 0o700).catch(() => {});
 
     const container = await this.docker.createContainer({
       Image: this.opts.runnerImage,
@@ -275,7 +278,9 @@ export class LocalDockerBackend implements ExecutionBackend {
       // docker exec as user "runner"). Without this guard, a symlink planted
       // inside the workspace would let our writeFile() escape the session
       // dir and overwrite arbitrary files in the backend container's FS —
-      // the backend today runs as root, so that is a full sandbox break.
+      // and even though the backend now runs as non-root `app` (UID 1100,
+      // Phase 20-P3 Bucket 3 #4), the escape still exposes the backend's
+      // own source tree and docker socket. Defense in depth.
       //
       // Two guards below:
       //   (a) Walk each parent segment, rejecting any that is a symlink.
@@ -296,10 +301,13 @@ export class LocalDockerBackend implements ExecutionBackend {
         fsConstants.O_CREAT |
         fsConstants.O_EXCL |
         fsConstants.O_NOFOLLOW;
-      const fh = await fs.open(abs, flags, 0o644);
+      const fh = await fs.open(abs, flags, 0o600);
       try {
         await fh.writeFile(f.content, "utf8");
-        await fh.chmod(0o666).catch(() => {});
+        // 0600 is enough because backend (app, UID 1100) and runner
+        // (runner, UID 1100) share ownership; nobody else should read
+        // workspace contents.
+        await fh.chmod(0o600).catch(() => {});
       } finally {
         await fh.close();
       }
@@ -346,7 +354,7 @@ export class LocalDockerBackend implements ExecutionBackend {
     // container has a bind mount on this path and recreating the directory
     // would invalidate the mount's inode.
     await fs.mkdir(h.workspacePath, { recursive: true });
-    await fs.chmod(h.workspacePath, 0o777).catch(() => {});
+    await fs.chmod(h.workspacePath, 0o700).catch(() => {});
     // Use withFileTypes so readdir gives us entry-kind info without a
     // follow-up lstat. fs.rm({recursive, force}) on a symlink would just
     // unlink the symlink (not follow it) — but we want to be explicit.

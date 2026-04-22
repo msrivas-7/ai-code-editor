@@ -18,13 +18,20 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runtime
 
 # gosu drops privileges in the entrypoint after the chown. Backend runs as
-# `app` (system user, no shell, UID <1000); only the chown line in
+# `app` (system user, no shell); only the chown line in
 # docker-entrypoint.sh executes as root.
+#
+# Phase 20-P3 Bucket 3 (#4): UID/GID are pinned to 1100 — identical to the
+# runner image's `runner` user — so the bind-mounted workspace can be
+# chmod 0700 without blocking the runner container from reading/writing its
+# own session files. Without matching UIDs the workspaces had to be 0777 so
+# both anonymous UIDs could access them, which weakened the sandbox story
+# (anything the host saw on the mount was world-writable).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends gosu \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd -r app \
-  && useradd -r -g app -d /app -s /usr/sbin/nologin app
+  && groupadd -r -g 1100 app \
+  && useradd -r -u 1100 -g app -d /app -s /usr/sbin/nologin app
 
 WORKDIR /app
 

@@ -50,11 +50,16 @@ export default function LearningDashboardPage() {
   // into JavaScript. Sort by courseProgress.updatedAt desc; untouched courses
   // fall to the end and we fall back to `courses[0]` only when nobody has
   // started anything.
+  //
+  // `loadCourseProgress` writes a fresh `updatedAt: now()` into the store even
+  // for "not_started" rows, so raw updatedAt alone can't distinguish touched
+  // from untouched — whichever course hydrated last wins. Gate the timestamp
+  // on `status !== "not_started"` so untouched courses genuinely return 0.
   const activeCourse = useMemo(() => {
     if (courses.length === 0) return null;
     const ts = (id: string): number => {
       const p = courseProgressMap[id];
-      if (!p?.updatedAt) return 0;
+      if (!p?.updatedAt || p.status === "not_started") return 0;
       const t = new Date(p.updatedAt).getTime();
       return Number.isFinite(t) ? t : 0;
     };

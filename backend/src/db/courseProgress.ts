@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { db } from "./client.js";
+import { HttpError } from "../middleware/errorHandler.js";
 
 export interface CourseProgress {
   courseId: string;
@@ -10,20 +12,31 @@ export interface CourseProgress {
   completedLessonIds: string[];
 }
 
-interface Row {
-  course_id: string;
-  status: string;
-  started_at: Date | null;
-  completed_at: Date | null;
-  updated_at: Date;
-  last_lesson_id: string | null;
-  completed_lesson_ids: string[];
-}
+// Phase 20-P3 Bucket 3 (#2): parse rows at the DB boundary — a bad migration
+// that lands status='done' (instead of 'completed') would have silently broken
+// dashboard filters; now it fails fast.
+export const CourseRowSchema = z.object({
+  course_id: z.string(),
+  status: z.enum(["not_started", "in_progress", "completed"]),
+  started_at: z.date().nullable(),
+  completed_at: z.date().nullable(),
+  updated_at: z.date(),
+  last_lesson_id: z.string().nullable(),
+  completed_lesson_ids: z.array(z.string()).nullable(),
+});
 
-function rowToCourse(r: Row): CourseProgress {
+function rowToCourse(raw: unknown): CourseProgress {
+  const parsed = CourseRowSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new HttpError(
+      500,
+      `corrupt course_progress row: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
+    );
+  }
+  const r = parsed.data;
   return {
     courseId: r.course_id,
-    status: r.status as CourseProgress["status"],
+    status: r.status,
     startedAt: r.started_at ? r.started_at.toISOString() : null,
     completedAt: r.completed_at ? r.completed_at.toISOString() : null,
     updatedAt: r.updated_at.toISOString(),
@@ -34,7 +47,7 @@ function rowToCourse(r: Row): CourseProgress {
 
 export async function listCourseProgress(userId: string): Promise<CourseProgress[]> {
   const sql = db();
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     SELECT course_id, status, started_at, completed_at, updated_at,
            last_lesson_id, completed_lesson_ids
       FROM public.course_progress
@@ -57,7 +70,7 @@ export async function upsertCourseProgress(
   patch: CoursePatch,
 ): Promise<CourseProgress> {
   const sql = db();
-  const rows = await sql<Row[]>`
+  const rows = await sql`
     INSERT INTO public.course_progress (
       user_id, course_id, status, started_at, completed_at,
       last_lesson_id, completed_lesson_ids

@@ -6,6 +6,7 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 import { aiRateLimit } from "../middleware/aiRateLimit.js";
 import { getOpenAIKey } from "../db/preferences.js";
 import { config } from "../config.js";
+import { completionRuleSchema } from "../schema/lessonRuleSchema.js";
 
 // Wire a per-request AbortController to (a) a config-driven deadline and
 // (b) the response's `close` event, so OpenAI calls stop burning tokens
@@ -134,28 +135,6 @@ const selectionSchema = z.object({
   endLine: z.number().int().min(1),
   text: z.string(),
 });
-
-// Mirrors the authoring schema in frontend/src/features/learning/content/schema.ts.
-// Kept as a discriminated union here so the `function_tests.tests` payload
-// survives the route boundary instead of being silently dropped.
-const functionTestSchema = z.object({
-  name: z.string().min(1),
-  call: z.string().min(1),
-  expected: z.string().min(1),
-  setup: z.string().optional(),
-  hidden: z.boolean().optional(),
-  category: z.string().optional(),
-});
-const completionRuleSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("expected_stdout"), expected: z.string() }),
-  z.object({
-    type: z.literal("required_file_contains"),
-    file: z.string().optional(),
-    pattern: z.string(),
-  }),
-  z.object({ type: z.literal("function_tests"), tests: z.array(functionTestSchema).min(1) }),
-  z.object({ type: z.literal("custom_validator") }),
-]);
 
 const askBody = z.object({
   model: z.string().min(1),
