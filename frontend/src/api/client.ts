@@ -138,6 +138,30 @@ export interface ExecuteTestsResponse {
   durationMs: number;
 }
 
+// Phase 20-P4: /api/user/ai-status response shape. Mirrors the backend's
+// CredentialNoneReason union in services/ai/credential.ts — keep in sync.
+export type AIStatusNoneReason =
+  | "no_key"
+  | "free_disabled"
+  | "free_exhausted"
+  | "daily_usd_per_user_hit"
+  | "lifetime_usd_per_user_hit"
+  | "usd_cap_hit"
+  | "denylisted"
+  | "provider_auth_failed";
+
+export interface AIStatusResponse {
+  source: "byok" | "platform" | "none";
+  reason?: AIStatusNoneReason;
+  remainingToday: number | null;
+  capToday: number | null;
+  resetAtUtc: string | null;
+  // Phase 20-P4: once a user has clicked the paid-interest CTA anywhere,
+  // every surface hides the button — one signal per user is enough and more
+  // clutter is noise. Backend derives from EXISTS on paid_access_interest.
+  hasShownPaidInterest: boolean;
+}
+
 // Phase 18b: per-user data API surface. Every shape here mirrors the
 // backend's db/*.ts types; mismatches surface as runtime shape errors
 // rather than type errors, so keep the two in sync when the schema moves.
@@ -369,6 +393,56 @@ export const api = {
   // the row id so the UI can reference it in the thank-you screen. The
   // lesson-end chip uses this with `{ body: "", mood, lessonId }` to persist
   // a mood signal even when the learner doesn't type anything.
+  // Phase 20-P4: /api/user/ai-status — UI reads this to decide whether to
+  // render FreeTierPill (source=platform), the existing UsageChip toolbar
+  // (source=byok), or the ExhaustionCard (source=none / free_exhausted).
+  getAIStatus: () =>
+    get<AIStatusResponse>("/api/user/ai-status"),
+  // Exhaustion card telemetry — all three button outcomes feed this counter.
+  // Both endpoints return 204 so we can't go through `post<T>` (which parses
+  // JSON). Inline fetch with the shared auth + CSRF headers.
+  reportExhaustionClick: async (
+    outcome: "dismissed" | "clicked_byok" | "clicked_paid_interest",
+  ): Promise<void> => {
+    const auth = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/user/ai-exhaustion-click`, {
+      method: "POST",
+      headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
+      body: JSON.stringify({ outcome }),
+    });
+    if (!res.ok) {
+      await handle401(res);
+      await throwApiError(res, "/api/user/ai-exhaustion-click");
+    }
+  },
+  // Willingness-to-pay signal. Server reads email/display_name from the
+  // auth session; the client sends no body.
+  submitPaidAccessInterest: async (): Promise<void> => {
+    const auth = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/user/paid-access-interest`, {
+      method: "POST",
+      headers: { ...JSON_HEADERS, ...CSRF_HEADER, ...auth },
+    });
+    if (!res.ok) {
+      await handle401(res);
+      await throwApiError(res, "/api/user/paid-access-interest");
+    }
+  },
+  // Round 5: user-initiated withdrawal ("clicked by mistake"). Deletes the
+  // row; the next /ai-status refetch reports hasShownPaidInterest=false and
+  // every mounted surface restores the CTA in lockstep.
+  withdrawPaidAccessInterest: async (): Promise<void> => {
+    const auth = await authHeaders();
+    const res = await fetch(`${API_BASE}/api/user/paid-access-interest`, {
+      method: "DELETE",
+      headers: { ...CSRF_HEADER, ...auth },
+    });
+    if (!res.ok) {
+      await handle401(res);
+      await throwApiError(res, "/api/user/paid-access-interest");
+    }
+  },
+
   submitFeedback: (body: {
     body: string;
     category: "bug" | "idea" | "other";

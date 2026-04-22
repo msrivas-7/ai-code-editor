@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { openaiProvider } from "../services/ai/openaiProvider.js";
 import { languageSchema } from "../services/execution/commands.js";
@@ -7,6 +8,21 @@ import { aiRateLimit } from "../middleware/aiRateLimit.js";
 import { getOpenAIKey } from "../db/preferences.js";
 import { config } from "../config.js";
 import { completionRuleSchema } from "../schema/lessonRuleSchema.js";
+import {
+  resolveAICredential,
+  invalidateUsageCaches,
+  type AICredential,
+  type CredentialNoneReason,
+} from "../services/ai/credential.js";
+import {
+  isPlatformAllowedModel,
+  priceUsd,
+} from "../services/ai/pricing.js";
+import { writeUsageRow } from "../db/usageLedger.js";
+import {
+  aiPlatformRequests,
+  aiPlatformAbuseSignals,
+} from "../services/metrics.js";
 
 // Wire a per-request AbortController to (a) a config-driven deadline and
 // (b) the response's `close` event, so OpenAI calls stop burning tokens
@@ -55,10 +71,10 @@ export const aiRouter = Router();
 const authed = [authMiddleware, aiRateLimit] as const;
 
 // Phase 18e: the user's OpenAI key lives encrypted in user_preferences.
-// Every authed AI route fetches + decrypts it on demand via the signed-in
-// userId. 400 with `KEY_MISSING` so the frontend can prompt the user to
-// open Settings and enter one.
-async function resolveKey(req: Request, res: Response): Promise<string | null> {
+// Kept around for `validate-key` + `/models`, which are BYOK-only surfaces
+// (validating a user-provided key, listing the user's models). Neither
+// consumes platform tokens; no free-tier path.
+async function resolveByokKey(req: Request, res: Response): Promise<string | null> {
   const userId = req.userId;
   if (!userId) {
     res.status(401).json({ error: "not authenticated" });
@@ -70,6 +86,116 @@ async function resolveKey(req: Request, res: Response): Promise<string | null> {
     return null;
   }
   return key;
+}
+
+// Phase 20-P4: every AI route runs through this. It resolves the user's
+// credential (BYOK > platform > none), translates `none` reasons into the
+// correct HTTP status/body, and emits a `ai_platform_requests_total`
+// sample so each outcome shows up on the operator dashboard. The caller
+// receives the credential on success and must return immediately on null
+// (response was already written).
+async function resolveCredentialOrRespond(
+  req: Request,
+  res: Response,
+  route: "ask" | "ask_stream" | "summarize",
+): Promise<AICredential | null> {
+  const userId = req.userId;
+  if (!userId) {
+    res.status(401).json({ error: "not authenticated" });
+    return null;
+  }
+  const cred = await resolveAICredential(userId);
+  if (cred.source === "byok") {
+    aiPlatformRequests.inc({ outcome: "byok", route });
+    return cred;
+  }
+  if (cred.source === "platform") {
+    aiPlatformRequests.inc({ outcome: "served", route });
+    return cred;
+  }
+  // cred.source === 'none' — map reason to outcome + HTTP status.
+  const reason = cred.reason;
+  const outcomeByReason: Record<CredentialNoneReason, string> = {
+    no_key: "byok",
+    free_disabled: "killed_disabled",
+    free_exhausted: "exhausted",
+    daily_usd_per_user_hit: "daily_usd_user",
+    lifetime_usd_per_user_hit: "lifetime_usd_user",
+    usd_cap_hit: "killed_usd_cap",
+    denylisted: "denylisted",
+    provider_auth_failed: "provider_auth_failed",
+  };
+  aiPlatformRequests.inc({ outcome: outcomeByReason[reason], route });
+
+  if (reason === "free_exhausted") {
+    res.status(429).json({ error: "FREE_TIER_EXHAUSTED", reason });
+    return null;
+  }
+  if (reason === "denylisted") {
+    res.status(403).json({ error: "USER_DENYLISTED", reason });
+    return null;
+  }
+  if (reason === "no_key") {
+    // Free tier disabled AND no BYOK. Keep the existing KEY_MISSING contract
+    // so the SettingsPanel prompt path triggers unchanged for BYOK-only mode.
+    res.status(400).json({ error: "KEY_MISSING", reason });
+    return null;
+  }
+  // free_disabled / usd_cap_hit / provider_auth_failed / daily_usd_per_user_hit
+  // / lifetime_usd_per_user_hit → user-visible "paused" copy. Operator sees
+  // the precise reason in metrics; we don't leak the cap numbers.
+  res.status(503).json({ error: "PLATFORM_AI_PAUSED", reason });
+  return null;
+}
+
+// Server-side model gate. The `byok` path is permissive — the user owns
+// their bill. The `platform` path is locked to the curated allowlist
+// (gpt-4.1-nano), so there's no "request gpt-4 on the operator's key"
+// escalation. Returns true if the route should proceed; false if it
+// already responded with a 403.
+function enforceModelAllowlist(
+  cred: AICredential,
+  model: string,
+  res: Response,
+  route: "ask" | "ask_stream" | "summarize",
+): boolean {
+  if (cred.source !== "platform") return true;
+  if (!isPlatformAllowedModel(model)) {
+    aiPlatformRequests.inc({ outcome: "model_rejected", route });
+    aiPlatformAbuseSignals.inc({ signal: "model_rejection" });
+    res.status(403).json({ error: "MODEL_NOT_ALLOWED" });
+    return false;
+  }
+  return true;
+}
+
+// Wrap the writeUsageRow call so route handlers don't have to swallow DB
+// errors inline; a failed ledger write shouldn't take the whole response
+// down, but it MUST be logged and flagged — an unlogged platform call is a
+// hole in the cap enforcement.
+async function safeWriteUsage(
+  userId: string,
+  row: Omit<Parameters<typeof writeUsageRow>[0], "userId">,
+): Promise<void> {
+  try {
+    await writeUsageRow({ userId, ...row });
+    if (row.fundingSource === "platform") {
+      invalidateUsageCaches(userId);
+    }
+  } catch (err) {
+    console.error(`[ai] ledger write failed user=${userId} route=${row.route}:`, err);
+  }
+}
+
+// Cheap platform-route diagnostic: a user hit the per-user daily $ cap
+// without using up their visible 30-question budget. Means they're
+// minting cost on ways we didn't plan for. Counter → operator investigates.
+function flagIfAbuseShape(reason: CredentialNoneReason | null): void {
+  if (reason === "daily_usd_per_user_hit") {
+    aiPlatformAbuseSignals.inc({ signal: "daily_usd_hit" });
+  } else if (reason === "lifetime_usd_per_user_hit") {
+    aiPlatformAbuseSignals.inc({ signal: "lifetime_usd_hit" });
+  }
 }
 
 const validateBody = z.object({
@@ -88,7 +214,8 @@ aiRouter.post("/validate-key", ...authed, async (req, res, next) => {
 });
 
 aiRouter.get("/models", ...authed, async (req, res, next) => {
-  const key = await resolveKey(req, res);
+  // /models is BYOK-only: the operator's list is fixed at allowlist.
+  const key = await resolveByokKey(req, res);
   if (!key) return;
   try {
     const models = await openaiProvider.listModels(key);
@@ -172,17 +299,23 @@ const summarizeBody = z.object({
 });
 
 aiRouter.post("/ask", ...authed, async (req, res, next) => {
-  const key = await resolveKey(req, res);
-  if (!key) return;
+  const userId = req.userId!;
+  const cred = await resolveCredentialOrRespond(req, res, "ask");
+  if (!cred || cred.source === "none") return;
   const parsed = askBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
   }
+  // Platform users are locked to the nano allowlist even if the client
+  // sends a bigger model. BYOK users use whatever they want.
+  if (!enforceModelAllowlist(cred, parsed.data.model, res, "ask")) return;
+  const requestId = randomUUID();
   const abort = requestAbortSignal(res);
   try {
     const result = await openaiProvider.ask({
-      key,
+      key: cred.key,
       model: parsed.data.model,
+      fundingSource: cred.source,
       question: parsed.data.question,
       files: parsed.data.files,
       activeFile: parsed.data.activeFile,
@@ -198,6 +331,28 @@ aiRouter.post("/ask", ...authed, async (req, res, next) => {
       lessonContext: parsed.data.lessonContext ?? null,
       signal: abort.signal,
     });
+    // Ledger write on success. For /ask both BYOK and platform rows land
+    // here; BYOK is for debugging/audit only, platform rows gate the caps.
+    const inTok = result.usage?.inputTokens ?? 0;
+    const outTok = result.usage?.outputTokens ?? 0;
+    const { costUsd, priceVersion } = safePrice(
+      parsed.data.model,
+      inTok,
+      outTok,
+      cred.source,
+    );
+    await safeWriteUsage(userId, {
+      model: parsed.data.model,
+      fundingSource: cred.source,
+      route: "ask",
+      countsTowardQuota: cred.source === "platform",
+      inputTokens: inTok,
+      outputTokens: outTok,
+      costUsd,
+      priceVersion,
+      status: "finish",
+      requestId,
+    });
     res.json(result);
   } catch (err) {
     // Client-close: response is already gone, no point forwarding to the
@@ -210,12 +365,15 @@ aiRouter.post("/ask", ...authed, async (req, res, next) => {
 });
 
 aiRouter.post("/ask/stream", ...authed, async (req, res) => {
-  const key = await resolveKey(req, res);
-  if (!key) return;
+  const userId = req.userId!;
+  const cred = await resolveCredentialOrRespond(req, res, "ask_stream");
+  if (!cred || cred.source === "none") return;
   const parsed = askBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
   }
+  if (!enforceModelAllowlist(cred, parsed.data.model, res, "ask_stream")) return;
+  const requestId = randomUUID();
 
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream");
@@ -246,8 +404,9 @@ aiRouter.post("/ask/stream", ...authed, async (req, res) => {
   try {
     await openaiProvider.askStream(
       {
-        key,
+        key: cred.key,
         model: parsed.data.model,
+        fundingSource: cred.source,
         question: parsed.data.question,
         files: parsed.data.files,
         activeFile: parsed.data.activeFile,
@@ -268,12 +427,44 @@ aiRouter.post("/ask/stream", ...authed, async (req, res) => {
           if (closed) return;
           send({ delta: chunk });
         },
-        onDone: (raw, sections, usage) => {
+        onDone: async (raw, sections, usage) => {
+          const inTok = usage?.inputTokens ?? 0;
+          const outTok = usage?.outputTokens ?? 0;
+          const { costUsd, priceVersion } = safePrice(
+            parsed.data.model,
+            inTok,
+            outTok,
+            cred.source,
+          );
+          await safeWriteUsage(userId, {
+            model: parsed.data.model,
+            fundingSource: cred.source,
+            route: "ask_stream",
+            countsTowardQuota: cred.source === "platform",
+            inputTokens: inTok,
+            outputTokens: outTok,
+            costUsd,
+            priceVersion,
+            status: "finish",
+            requestId,
+          });
           if (closed) return;
           send({ done: true, raw, sections, usage });
           done();
         },
-        onError: (message) => {
+        onError: async (message) => {
+          await safeWriteUsage(userId, {
+            model: parsed.data.model,
+            fundingSource: cred.source,
+            route: "ask_stream",
+            countsTowardQuota: false,
+            inputTokens: 0,
+            outputTokens: 0,
+            costUsd: 0,
+            priceVersion: 1,
+            status: "error",
+            requestId,
+          });
           if (closed) return;
           send({ error: message });
           done();
@@ -286,8 +477,12 @@ aiRouter.post("/ask/stream", ...authed, async (req, res) => {
 });
 
 aiRouter.post("/summarize", ...authed, async (req, res, next) => {
-  const key = await resolveKey(req, res);
-  if (!key) return;
+  const userId = req.userId!;
+  const cred = await resolveCredentialOrRespond(req, res, "summarize");
+  if (!cred || cred.source === "none") {
+    flagIfAbuseShape(cred?.source === "none" ? cred.reason : null);
+    return;
+  }
   const parsed = summarizeBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
@@ -295,14 +490,62 @@ aiRouter.post("/summarize", ...authed, async (req, res, next) => {
   if (parsed.data.history.length === 0) {
     return res.json({ summary: "" });
   }
+  if (!enforceModelAllowlist(cred, parsed.data.model, res, "summarize")) return;
+  const requestId = randomUUID();
   try {
-    const summary = await openaiProvider.summarize({
-      key,
+    const result = await openaiProvider.summarize({
+      key: cred.key,
       model: parsed.data.model,
+      fundingSource: cred.source,
       history: parsed.data.history,
     });
-    res.json({ summary });
+    const inTok = result.usage?.inputTokens ?? 0;
+    const outTok = result.usage?.outputTokens ?? 0;
+    const { costUsd, priceVersion } = safePrice(
+      parsed.data.model,
+      inTok,
+      outTok,
+      cred.source,
+    );
+    // /summarize on platform is metered for $ but NOT counted against the
+    // visible 30/day question budget. Users don't see summarize calls —
+    // counting them would feel like cheating the learner out of their
+    // budget. Caps L2/L3/L4 still apply through cost_usd.
+    await safeWriteUsage(userId, {
+      model: parsed.data.model,
+      fundingSource: cred.source,
+      route: "summarize",
+      countsTowardQuota: false,
+      inputTokens: inTok,
+      outputTokens: outTok,
+      costUsd,
+      priceVersion,
+      status: "finish",
+      requestId,
+    });
+    res.json({ summary: result.summary });
   } catch (err) {
     next(err);
   }
 });
+
+// priceUsd throws if a non-allowlisted model reaches it. On BYOK we've
+// seen real users paste new/future models; we don't want to 500 on them.
+// Return 0 cost with the current price_version and let the ledger record
+// the call as "accounted-for but not priced" — operator can query later.
+function safePrice(
+  model: string,
+  inTok: number,
+  outTok: number,
+  fundingSource: "byok" | "platform",
+): { costUsd: number; priceVersion: number } {
+  if (fundingSource === "byok") {
+    try {
+      return priceUsd(model, inTok, outTok);
+    } catch {
+      return { costUsd: 0, priceVersion: 1 };
+    }
+  }
+  // Platform path: model gate already ran, so priceUsd must succeed.
+  return priceUsd(model, inTok, outTok);
+}

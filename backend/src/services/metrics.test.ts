@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import {
+  aiExhaustionCtaClicks,
   aiTokensConsumed,
   execDuration,
   registry,
@@ -13,6 +14,7 @@ import {
 beforeEach(() => {
   aiTokensConsumed.reset();
   execDuration.reset();
+  aiExhaustionCtaClicks.reset();
 });
 
 describe("metrics exposition", () => {
@@ -52,6 +54,42 @@ describe("metrics exposition", () => {
     );
     expect(out).toMatch(
       /exec_duration_seconds_bucket\{le="10",language="rust",ok="false"\} 1/,
+    );
+  });
+
+  it("aiExhaustionCtaClicks emits outcome × denylisted label tuples", async () => {
+    // Round 7 added `denylisted: yes|no|na` as a second label on this
+    // counter so the operator can split clean-lead conversion from banned-
+    // lead conversion without joining the paid_access_interest table. If
+    // someone drops the label, inverts yes/no, or forgets `"na"` on the
+    // non-paid-interest paths, that regression would ship silently — this
+    // test is the only thing that would catch it.
+    aiExhaustionCtaClicks.inc({ outcome: "dismissed", denylisted: "na" });
+    aiExhaustionCtaClicks.inc({ outcome: "clicked_byok", denylisted: "na" });
+    aiExhaustionCtaClicks.inc({
+      outcome: "clicked_paid_interest",
+      denylisted: "no",
+    });
+    aiExhaustionCtaClicks.inc({
+      outcome: "clicked_paid_interest",
+      denylisted: "yes",
+    });
+
+    const out = await registry.metrics();
+
+    expect(out).toMatch(/# HELP ai_exhaustion_cta_clicks_total /);
+    expect(out).toMatch(/# TYPE ai_exhaustion_cta_clicks_total counter/);
+    expect(out).toMatch(
+      /ai_exhaustion_cta_clicks_total\{outcome="dismissed",denylisted="na"\} 1/,
+    );
+    expect(out).toMatch(
+      /ai_exhaustion_cta_clicks_total\{outcome="clicked_byok",denylisted="na"\} 1/,
+    );
+    expect(out).toMatch(
+      /ai_exhaustion_cta_clicks_total\{outcome="clicked_paid_interest",denylisted="no"\} 1/,
+    );
+    expect(out).toMatch(
+      /ai_exhaustion_cta_clicks_total\{outcome="clicked_paid_interest",denylisted="yes"\} 1/,
     );
   });
 

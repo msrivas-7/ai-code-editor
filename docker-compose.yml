@@ -77,6 +77,16 @@ services:
       # endpoint accepts `Authorization: Bearer <token>`. E2E sets it so
       # metrics.spec can exercise the authed path.
       METRICS_TOKEN: "${METRICS_TOKEN:-}"
+      # Phase 20-P4: free AI tier on the operator's OpenAI key. OFF by
+      # default so a fresh deploy doesn't start burning spend on first
+      # boot. Flip to "1" in prod compose only after the 24h post-merge
+      # soak confirms metrics are clean. See hazy-wishing-wren.md.
+      ENABLE_FREE_TIER: "${ENABLE_FREE_TIER:-0}"
+      FREE_TIER_DAILY_QUESTIONS: "${FREE_TIER_DAILY_QUESTIONS:-30}"
+      FREE_TIER_DAILY_USD_PER_USER: "${FREE_TIER_DAILY_USD_PER_USER:-0.10}"
+      FREE_TIER_LIFETIME_USD_PER_USER: "${FREE_TIER_LIFETIME_USD_PER_USER:-1.00}"
+      FREE_TIER_DAILY_USD_CAP: "${FREE_TIER_DAILY_USD_CAP:-2.00}"
+      PLATFORM_OPENAI_API_KEY: "${PLATFORM_OPENAI_API_KEY:-}"
     volumes:
       # Relative path — Compose resolves it against the compose file location
       # on every host. Works in PowerShell, zsh, bash identically.

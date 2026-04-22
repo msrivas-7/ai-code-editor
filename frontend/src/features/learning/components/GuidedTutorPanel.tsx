@@ -3,6 +3,7 @@ import { useAIStore } from "../../../state/aiStore";
 import { usePreferencesStore } from "../../../state/preferencesStore";
 import { useProjectStore } from "../../../state/projectStore";
 import { useRunStore } from "../../../state/runStore";
+import { useAIStatus } from "../../../state/useAIStatus";
 import { useTutorAsk } from "../../../util/useTutorAsk";
 import {
   TutorResponseView,
@@ -13,6 +14,8 @@ import {
   hasTutorContent,
 } from "../../../components/TutorResponseViews";
 import { TutorSetupWarning } from "../../../components/TutorSetupWarning";
+import { FreeTierPill } from "../../../components/FreeTierPill";
+import { ExhaustionCard } from "../../../components/ExhaustionCard";
 import { SelectionPreview } from "../../../components/SelectionPreview";
 import { useShortcutLabels } from "../../../util/platform";
 import { useProgressStore } from "../stores/progressStore";
@@ -58,16 +61,32 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
     sessionUsage,
   } = useAIStore();
   const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
+  const { status: aiStatus, refetch: refetchAIStatus } = useAIStatus();
 
   const { activeFile } = useProjectStore();
   const lastRun = useRunStore((s) => s.result);
   const stdin = useRunStore((s) => s.stdin);
 
   const [draft, setDraft] = useState("");
+  const [exhaustionDismissed, setExhaustionDismissed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const configured = hasKey && !!selectedModel;
+  // Phase 20-P4: BYOK wins; otherwise mirror what ai-status tells us.
+  const effectiveSource: "byok" | "platform" | "none" =
+    hasKey ? "byok" : (aiStatus?.source ?? "byok");
+  const onPlatform = effectiveSource === "platform";
+  const exhausted = effectiveSource === "none" && aiStatus?.reason === "free_exhausted";
+  useEffect(() => {
+    if (!exhausted) setExhaustionDismissed(false);
+  }, [exhausted]);
+  const prevAsking = useRef(asking);
+  useEffect(() => {
+    if (prevAsking.current && !asking) refetchAIStatus();
+    prevAsking.current = asking;
+  }, [asking, refetchAIStatus]);
+
+  const configured = onPlatform || (hasKey && !!selectedModel);
 
   useEffect(() => {
     if (!resetNonce) return;
@@ -86,7 +105,9 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
 
   const { submitAsk, cancelAsk } = useTutorAsk({
     buildBody: ({ question, files, diffSinceLastTurn, historyForSend, selection }) => ({
-      model: selectedModel!,
+      // Platform users have no selectedModel — backend locks them to
+      // `gpt-4.1-nano` via the allowlist, so we pass that name verbatim.
+      model: selectedModel ?? "gpt-4.1-nano",
       question,
       files,
       activeFile: activeFile ?? undefined,
@@ -149,13 +170,21 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
           <span className="text-xs font-semibold">Lesson Tutor</span>
-          {selectedModel && (
+          {selectedModel && !onPlatform && (
             <span className="rounded border border-border bg-elevated px-1.5 py-[1px] font-mono text-[10px] text-muted">
               {selectedModel}
             </span>
           )}
-          {(sessionUsage.inputTokens > 0 || sessionUsage.outputTokens > 0) && (
-            <UsageChip usage={sessionUsage} modelId={selectedModel} size="xs" />
+          {onPlatform && aiStatus?.source === "platform" && aiStatus.remainingToday !== null && aiStatus.capToday !== null && aiStatus.resetAtUtc ? (
+            <FreeTierPill
+              remaining={aiStatus.remainingToday}
+              cap={aiStatus.capToday}
+              resetAtUtc={aiStatus.resetAtUtc}
+            />
+          ) : (
+            !onPlatform && (sessionUsage.inputTokens > 0 || sessionUsage.outputTokens > 0) && (
+              <UsageChip usage={sessionUsage} modelId={selectedModel} size="xs" />
+            )
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -182,10 +211,11 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
       </header>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {!configured && (
+        {!configured && !exhausted && (
           <TutorSetupWarning
             onOpenSettings={onOpenSettings}
             onDismiss={onCollapse}
+            reason={aiStatus?.source === "none" ? aiStatus.reason : undefined}
           />
         )}
 
@@ -280,7 +310,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
                     </div>
                   )}
                   <div className="flex items-center justify-end">
-                    {m.role === "assistant" && m.usage && (
+                    {m.role === "assistant" && m.usage && !onPlatform && (
                       <UsageChip usage={m.usage} modelId={selectedModel} />
                     )}
                   </div>
@@ -311,51 +341,61 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
       </div>
 
       <div className="border-t border-border bg-panel p-2">
-        {activeSelection && (
-          <SelectionPreview selection={activeSelection} onClear={() => setActiveSelection(null)} />
+        {exhausted && !exhaustionDismissed ? (
+          <ExhaustionCard
+            resetAtUtc={aiStatus?.resetAtUtc ?? null}
+            onOpenSettings={onOpenSettings}
+            onDismiss={() => setExhaustionDismissed(true)}
+          />
+        ) : (
+          <>
+            {activeSelection && (
+              <SelectionPreview selection={activeSelection} onClear={() => setActiveSelection(null)} />
+            )}
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={activeSelection ? "Ask about the selection…" : configured ? "Ask about this lesson..." : "Configure API key first"}
+              disabled={!configured}
+              rows={2}
+              aria-label="Ask the tutor"
+              className="w-full resize-none rounded-md border border-border bg-elevated px-2.5 py-2 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 disabled:cursor-not-allowed disabled:bg-elevated/40 disabled:opacity-50"
+            />
+            <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-faint">
+              <div
+                role="group"
+                aria-label="Keyboard shortcuts"
+                className="flex items-center gap-x-1"
+              >
+                <kbd className="kbd">↵</kbd>
+                <span>send</span>
+                <span aria-hidden="true" className="text-border">·</span>
+                <kbd className="kbd">{keys.newline}</kbd>
+                <span>newline</span>
+              </div>
+              {asking ? (
+                <button
+                  onClick={cancelAsk}
+                  title="Stop the current response"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-danger/15 px-3 py-1 text-[11px] font-semibold text-danger ring-1 ring-danger/30 transition hover:bg-danger/25"
+                >
+                  <span className="inline-block h-2 w-2 rounded-sm bg-danger" />
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubmit}
+                  disabled={!draft.trim() || !configured}
+                  className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-bg transition hover:bg-accentMuted disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
+                >
+                  Ask
+                </button>
+              )}
+            </div>
+          </>
         )}
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={activeSelection ? "Ask about the selection…" : configured ? "Ask about this lesson..." : "Configure API key first"}
-          disabled={!configured}
-          rows={2}
-          aria-label="Ask the tutor"
-          className="w-full resize-none rounded-md border border-border bg-elevated px-2.5 py-2 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 disabled:cursor-not-allowed disabled:bg-elevated/40 disabled:opacity-50"
-        />
-        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-faint">
-          <div
-            role="group"
-            aria-label="Keyboard shortcuts"
-            className="flex items-center gap-x-1"
-          >
-            <kbd className="kbd">↵</kbd>
-            <span>send</span>
-            <span aria-hidden="true" className="text-border">·</span>
-            <kbd className="kbd">{keys.newline}</kbd>
-            <span>newline</span>
-          </div>
-          {asking ? (
-            <button
-              onClick={cancelAsk}
-              title="Stop the current response"
-              className="inline-flex items-center gap-1.5 rounded-md bg-danger/15 px-3 py-1 text-[11px] font-semibold text-danger ring-1 ring-danger/30 transition hover:bg-danger/25"
-            >
-              <span className="inline-block h-2 w-2 rounded-sm bg-danger" />
-              Stop
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={!draft.trim() || !configured}
-              className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-bg transition hover:bg-accentMuted disabled:cursor-not-allowed disabled:bg-elevated disabled:text-faint"
-            >
-              Ask
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );

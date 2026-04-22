@@ -7,6 +7,8 @@ import { useAuthStore } from "../auth/authStore";
 import type { Persona } from "../types";
 import { useThemePref, type ThemePref } from "../util/theme";
 import { DeleteAccountModal } from "./DeleteAccountModal";
+import { PaidAccessInterestButton } from "./PaidAccessInterestButton";
+import { useAIStatus } from "../state/useAIStatus";
 
 type Tab = "account" | "ai" | "appearance";
 
@@ -607,7 +609,73 @@ function AITab() {
           </span>
         </div>
       </section>
+
+      <hr className="border-border" />
+
+      <PaidInterestSection />
     </>
+  );
+}
+
+// Round 5: Settings is the one surface that always shows the paid-interest
+// state, regardless of hasShownPaidInterest. Before click → the CTA.
+// After click → "Interest recorded" + a Remove link that deletes the row
+// and re-opens the door on every other surface. Contextual surfaces
+// (ExhaustionCard, TutorSetupWarning) still hide-after-click; this is the
+// user's recovery path.
+function PaidInterestSection() {
+  const { status, refetch } = useAIStatus();
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+
+  const hasShown = status?.hasShownPaidInterest === true;
+  // Round 6: denylisted users can click — backend accepts the upsert and
+  // flags the row with `denylisted_at_click=true` so the operator sees the
+  // context when reviewing. A past abuser willing to pay is still a lead.
+
+  const handleWithdraw = async () => {
+    setWithdrawing(true);
+    setWithdrawError(null);
+    try {
+      await api.withdrawPaidAccessInterest();
+      refetch();
+    } catch (err) {
+      setWithdrawError((err as Error).message ?? "try again");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-semibold text-ink">Paid plan interest</h3>
+      {hasShown ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[11px] text-muted" role="status" aria-live="polite">
+            <span className="text-success">●</span> Interest recorded. Clicked
+            by mistake?
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleWithdraw}
+              disabled={withdrawing}
+              className="self-start text-[11px] text-muted underline underline-offset-2 transition hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {withdrawing ? "Removing…" : "Remove my interest"}
+            </button>
+            {withdrawError && (
+              <span className="text-[11px] text-danger">× {withdrawError}</span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <PaidAccessInterestButton
+          tone="neutral"
+          leadIn="Interested in a managed paid plan? One click, no form — we'll log your interest."
+        />
+      )}
+    </section>
   );
 }
 

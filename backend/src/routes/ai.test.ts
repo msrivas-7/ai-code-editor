@@ -16,6 +16,45 @@ vi.mock("../db/preferences.js", () => ({
   getOpenAIKey: vi.fn(),
 }));
 
+// Phase 20-P4: the route writes a ledger row on finish. In unit tests
+// there's no DATABASE_URL; the route's safeWriteUsage catches and logs,
+// but we mock it here so the spec output stays clean.
+vi.mock("../db/usageLedger.js", () => ({
+  writeUsageRow: vi.fn(async () => undefined),
+}));
+
+// Credential resolver depends on the ledger + denylist. Mock to a passthrough
+// that returns BYOK when getOpenAIKey has a value and `no_key` when null,
+// so existing tests keep their KEY_MISSING / success expectations.
+vi.mock("../services/ai/credential.js", async () => {
+  const { getOpenAIKey } = await import("../db/preferences.js");
+  return {
+    resolveAICredential: vi.fn(async (userId: string) => {
+      const key = await getOpenAIKey(userId);
+      if (key) {
+        return {
+          source: "byok" as const,
+          key,
+          remainingToday: null,
+          capToday: null,
+          allowedModels: null,
+          resetAtUtc: null,
+        };
+      }
+      return {
+        source: "none" as const,
+        reason: "no_key" as const,
+        remainingToday: null,
+        capToday: null,
+        allowedModels: null,
+        resetAtUtc: null,
+      };
+    }),
+    invalidateUsageCaches: vi.fn(),
+    markPlatformAuthFailed: vi.fn(),
+  };
+});
+
 vi.mock("../middleware/aiRateLimit.js", () => ({
   aiRateLimit: (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
 }));

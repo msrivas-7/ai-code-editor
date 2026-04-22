@@ -111,6 +111,26 @@ export const config = {
   // users would have to re-enter theirs in Settings.
   byokEncryptionKey: process.env.BYOK_ENCRYPTION_KEY,
 
+  // Phase 20-P4: free AI tier on the operator's OpenAI key. Default OFF so
+  // a fresh deployment doesn't start burning the operator's $ on first boot
+  // — the flag is flipped to "1" only after the 24h post-merge soak shows
+  // metrics are clean. See /Users/mehul/.claude/plans/hazy-wishing-wren.md.
+  freeTier: {
+    enabled: process.env.ENABLE_FREE_TIER === "1",
+    dailyQuestions: num(process.env.FREE_TIER_DAILY_QUESTIONS, 30),
+    // Per-user $ caps bound one account's blast radius even if the daily-
+    // question counter is bypassed by a bug or a concurrent-tab race.
+    dailyUsdPerUser: Number(process.env.FREE_TIER_DAILY_USD_PER_USER ?? "0.10"),
+    lifetimeUsdPerUser: Number(process.env.FREE_TIER_LIFETIME_USD_PER_USER ?? "1.00"),
+    // Global circuit breaker: once the product-wide daily spend crosses this
+    // all platform calls short-circuit. Sized at 20x headroom for 5 DAU.
+    dailyUsdCap: Number(process.env.FREE_TIER_DAILY_USD_CAP ?? "2.00"),
+    // Operator's OpenAI key used when the learner has no BYOK and free tier
+    // is enabled. Required when freeTier.enabled is true — assertConfigValid
+    // fails fast otherwise so a misconfig doesn't land as a 500-per-request.
+    platformOpenaiApiKey: process.env.PLATFORM_OPENAI_API_KEY,
+  },
+
   // Phase 20-P3: shared secret for `/api/metrics`. When set, the Prometheus
   // endpoint requires `Authorization: Bearer <METRICS_TOKEN>`; when unset,
   // `/api/metrics` only accepts loopback requests (127.0.0.1 / ::1), so the
@@ -130,6 +150,7 @@ delete process.env.BYOK_ENCRYPTION_KEY;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 delete process.env.DATABASE_URL;
 delete process.env.METRICS_TOKEN;
+delete process.env.PLATFORM_OPENAI_API_KEY;
 
 export function assertConfigValid(): void {
   if (!config.supabase.url || config.supabase.url.trim() === "") {
@@ -168,5 +189,34 @@ export function assertConfigValid(): void {
     throw new Error(
       `[config] BYOK_ENCRYPTION_KEY must be valid base64: ${(err as Error).message}`,
     );
+  }
+  if (config.freeTier.enabled) {
+    const key = config.freeTier.platformOpenaiApiKey;
+    if (!key || key.trim() === "") {
+      throw new Error(
+        "[config] ENABLE_FREE_TIER=1 requires PLATFORM_OPENAI_API_KEY to be set.",
+      );
+    }
+    const caps = config.freeTier;
+    if (!Number.isFinite(caps.dailyUsdPerUser) || caps.dailyUsdPerUser <= 0) {
+      throw new Error(
+        `[config] FREE_TIER_DAILY_USD_PER_USER must be a positive number (got ${caps.dailyUsdPerUser}).`,
+      );
+    }
+    if (!Number.isFinite(caps.lifetimeUsdPerUser) || caps.lifetimeUsdPerUser <= 0) {
+      throw new Error(
+        `[config] FREE_TIER_LIFETIME_USD_PER_USER must be a positive number (got ${caps.lifetimeUsdPerUser}).`,
+      );
+    }
+    if (!Number.isFinite(caps.dailyUsdCap) || caps.dailyUsdCap <= 0) {
+      throw new Error(
+        `[config] FREE_TIER_DAILY_USD_CAP must be a positive number (got ${caps.dailyUsdCap}).`,
+      );
+    }
+    if (!Number.isInteger(caps.dailyQuestions) || caps.dailyQuestions <= 0) {
+      throw new Error(
+        `[config] FREE_TIER_DAILY_QUESTIONS must be a positive integer (got ${caps.dailyQuestions}).`,
+      );
+    }
   }
 }

@@ -8,6 +8,7 @@ import { createExecutionRouter } from "./routes/execution.js";
 import { createExecuteTestsRouter } from "./routes/executeTests.js";
 import { aiRouter } from "./routes/ai.js";
 import { userDataRouter } from "./routes/userData.js";
+import { aiStatusRouter } from "./routes/aiStatus.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { metricsRouter } from "./routes/metrics.js";
 import { csrfGuard } from "./middleware/csrfGuard.js";
@@ -205,6 +206,17 @@ async function main() {
     authMiddleware,
     mutationLimit,
     userDataRouter,
+  );
+
+  // Phase 20-P4: /ai-status, /ai-exhaustion-click, /paid-access-interest.
+  // Small surface; reuses the same middleware chain as /api/user.
+  app.use(
+    "/api/user",
+    bodyLimit(4 * 1024),
+    csrfGuard,
+    authMiddleware,
+    mutationLimit,
+    aiStatusRouter,
   );
 
   // Phase 20-P1: user-reported feedback (bug / idea / other + opt-in
