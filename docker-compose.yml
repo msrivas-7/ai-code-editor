@@ -53,6 +53,15 @@ services:
       SESSION_CREATE_RATE_LIMIT_MAX: "${SESSION_CREATE_RATE_LIMIT_MAX:-500}"
       MUTATION_RATE_LIMIT_MAX: "${MUTATION_RATE_LIMIT_MAX:-2000}"
       AI_RATE_LIMIT_MAX: "${AI_RATE_LIMIT_MAX:-500}"
+      # Phase 20-P3: session caps. Empty default → config.ts fallback (2/20/8).
+      # E2E CI overrides these to loose values because Playwright cycles test
+      # pages faster than `pagehide`-driven session cleanup reaches the
+      # backend, and a tight per-user cap blocks the next test for the full
+      # sweeper interval. Prod stays on config.ts defaults (no env override
+      # from cloud-init).
+      MAX_SESSIONS_PER_USER: "${MAX_SESSIONS_PER_USER:-}"
+      MAX_SESSIONS_GLOBAL: "${MAX_SESSIONS_GLOBAL:-}"
+      DOCKER_EXEC_CONCURRENCY: "${DOCKER_EXEC_CONCURRENCY:-}"
       # Supabase — required. No default: failing fast beats pointing at the
       # wrong project. Populate .env from .env.example.
       SUPABASE_URL: "${SUPABASE_URL}"
