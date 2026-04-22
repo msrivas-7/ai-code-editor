@@ -93,7 +93,15 @@ function defineThemes(monaco: Monaco) {
 }
 
 export function MonacoPane() {
-  const { activeFile, files, setContent, pendingReveal } = useProjectStore();
+  // P-C1: scoped selectors — a no-arg `useProjectStore()` re-renders on every
+  // file-tree reorder / tab change, dragging Monaco through a full re-render
+  // storm on navigation. Files map is shallow-compared so only content edits
+  // to the ACTIVE file trigger a pass (Monaco's own model is still the source
+  // of truth during typing; we read files[activeFile] only on file switch).
+  const activeFile = useProjectStore((s) => s.activeFile);
+  const files = useProjectStore((s) => s.files);
+  const setContent = useProjectStore((s) => s.setContent);
+  const pendingReveal = useProjectStore((s) => s.pendingReveal);
   const setActiveSelection = useAIStore((s) => s.setActiveSelection);
   const bumpFocusComposer = useAIStore((s) => s.bumpFocusComposer);
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
@@ -145,15 +153,37 @@ export function MonacoPane() {
     // move the caret) is NOT treated as a clear — otherwise clicking into the
     // composer to type would drop the context the student just picked. Use the
     // × on the selection chip to dismiss explicitly.
-    editor.onDidChangeCursorSelection(() => {
+    //
+    // P-M5: rAF-throttle the capture path. Monaco fires onDidChangeCursorSelection
+    // on every pixel of a drag-select, which previously triggered one aiStore
+    // update per fire (and a re-render of every component subscribed to the
+    // store). Coalescing to once-per-frame is imperceptible to the user and
+    // drops the update rate by ~60x on a fast selection. The trailing blur
+    // event forces a final flush so the last state is always captured.
+    let pendingSelectionRaf: number | null = null;
+    const scheduleCapture = (): void => {
+      if (pendingSelectionRaf != null) return;
+      pendingSelectionRaf = requestAnimationFrame(() => {
+        pendingSelectionRaf = null;
+        captureSelection();
+      });
+    };
+    const flushCapture = (): void => {
+      if (pendingSelectionRaf != null) {
+        cancelAnimationFrame(pendingSelectionRaf);
+        pendingSelectionRaf = null;
+      }
       captureSelection();
-    });
+    };
+    editor.onDidChangeCursorSelection(scheduleCapture);
+    editor.onDidBlurEditorWidget(flushCapture);
 
     // Cmd/Ctrl-K: pull focus to the composer, carrying the current selection
     // (if any) along. A keyboard-only path for students who want to ask without
-    // reaching for the mouse.
+    // reaching for the mouse. Flush any pending rAF so the composer sees the
+    // very latest selection rather than the one-frame-stale value.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
-      captureSelection();
+      flushCapture();
       bumpFocusComposer();
     });
   };

@@ -15,7 +15,20 @@ interface ProjectSnapshot {
   openTabs: string[];
 }
 
+// P-M4: LRU cap mirrors chatCache — see aiStore.ts rationale. Project
+// snapshots are larger (full files map) so the ceiling matters more here.
+const PROJECT_CACHE_MAX = 10;
 const projectCache = new Map<string, ProjectSnapshot>();
+
+function touchProject(key: string, snap: ProjectSnapshot): void {
+  if (projectCache.has(key)) projectCache.delete(key);
+  projectCache.set(key, snap);
+  while (projectCache.size > PROJECT_CACHE_MAX) {
+    const oldest = projectCache.keys().next().value;
+    if (oldest === undefined) break;
+    projectCache.delete(oldest);
+  }
+}
 
 // Signal MonacoPane uses to move the cursor after a jump (e.g. clicking a
 // file:line reference in the output or tutor). The ticket makes repeated
@@ -119,7 +132,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           activeFile: remote.activeFile,
           openTabs: remote.openTabs,
         };
-        projectCache.set("editor", snapshot);
+        touchProject("editor", snapshot);
         // Only apply to the live store if we're not already inside a lesson
         // (projectContext !== "editor" and !== null means lesson); on the
         // StartPage the context is null so it's safe to pre-seed.
@@ -246,7 +259,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   switchProjectContext: (contextKey, defaults) => {
     const state = get();
     if (state.projectContext) {
-      projectCache.set(state.projectContext, {
+      touchProject(state.projectContext, {
         language: state.language,
         files: state.files,
         order: state.order,
@@ -257,7 +270,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     if (state.projectContext === contextKey) return;
 
+    // Read also promotes (see aiStore.ts switchChatContext for rationale).
     const saved = projectCache.get(contextKey);
+    if (saved) {
+      projectCache.delete(contextKey);
+      projectCache.set(contextKey, saved);
+    }
 
     if (saved) {
       set({

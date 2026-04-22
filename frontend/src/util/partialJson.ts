@@ -25,37 +25,49 @@ const STRING_KEYS = [
  * Handles JSON string escapes (\n, \t, \", \\, \uXXXX). Unknown escapes pass
  * through as the escaped character.
  */
+// P-L1: memoize the most recent result. parsePartialTutor is invoked from a
+// throttled path (see useTutorAsk.ts) so repeated calls with the same raw
+// buffer are rare — but the throttled trailing flush + abort-path commit can
+// fire with identical input. Returning the cached object lets shallow
+// equality in store selectors skip a re-render.
+let cachedInput: string | null = null;
+let cachedOutput: TutorSections | null = null;
+
 export function parsePartialTutor(raw: string): TutorSections {
   if (!raw) return {};
-  // Fast path: fully parseable JSON.
-  try {
-    return JSON.parse(raw) as TutorSections;
-  } catch {
-    /* fall through to best-effort */
-  }
+  if (cachedInput === raw && cachedOutput) return cachedOutput;
 
-  const out: TutorSections = {};
-  for (const key of STRING_KEYS) {
-    const value = extractStringField(raw, key);
-    if (value !== null) {
-      // intent is the only enum string; validate before assigning so we don't
-      // render a garbled partial ("de" before "debug" finishes streaming).
-      if (key === "intent") {
-        if (
-          value === "debug" ||
-          value === "concept" ||
-          value === "howto" ||
-          value === "walkthrough" ||
-          value === "checkin"
-        ) {
-          out.intent = value;
+  // Fast path: fully parseable JSON.
+  let out: TutorSections;
+  try {
+    out = JSON.parse(raw) as TutorSections;
+  } catch {
+    out = {};
+    for (const key of STRING_KEYS) {
+      const value = extractStringField(raw, key);
+      if (value !== null) {
+        // intent is the only enum string; validate before assigning so we don't
+        // render a garbled partial ("de" before "debug" finishes streaming).
+        if (key === "intent") {
+          if (
+            value === "debug" ||
+            value === "concept" ||
+            value === "howto" ||
+            value === "walkthrough" ||
+            value === "checkin"
+          ) {
+            out.intent = value;
+          }
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (out as any)[key] = value;
         }
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (out as any)[key] = value;
       }
     }
   }
+
+  cachedInput = raw;
+  cachedOutput = out;
   return out;
 }
 

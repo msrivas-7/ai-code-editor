@@ -125,12 +125,31 @@ interface ChatSnapshot {
   sessionUsage: TokenUsage;
 }
 
+// P-M4: bound the chat-cache to the 10 most-recently-touched conversations.
+// Without this, navigating across many lessons accumulates a full history
+// per visited lesson for the life of the tab — each turn's AIMessage carries
+// raw string content + sections, so memory grows unbounded. 10 matches the
+// upper bound of "lessons the user is juggling in one session" observed in
+// the audit; anything older is re-hydrateable from the server on revisit.
+const CHAT_CACHE_MAX = 10;
 const chatCache = new Map<string, ChatSnapshot>();
+
+function touchChat(key: string, snap: ChatSnapshot): void {
+  // Map preserves insertion order; delete-then-set promotes the entry to
+  // the end so eviction always targets the least-recently-written key.
+  if (chatCache.has(key)) chatCache.delete(key);
+  chatCache.set(key, snap);
+  while (chatCache.size > CHAT_CACHE_MAX) {
+    const oldest = chatCache.keys().next().value;
+    if (oldest === undefined) break;
+    chatCache.delete(oldest);
+  }
+}
 
 function saveChatToCache(get: () => AIState): void {
   const { chatContext, history, conversationSummary, summarizedThrough, sessionUsage } = get();
   if (!chatContext) return;
-  chatCache.set(chatContext, { history, conversationSummary, summarizedThrough, sessionUsage });
+  touchChat(chatContext, { history, conversationSummary, summarizedThrough, sessionUsage });
 }
 
 export const useAIStore = create<AIState>((set, get) => ({
@@ -273,7 +292,7 @@ export const useAIStore = create<AIState>((set, get) => ({
   switchChatContext: (contextKey) => {
     const state = get();
     if (state.chatContext) {
-      chatCache.set(state.chatContext, {
+      touchChat(state.chatContext, {
         history: state.history,
         conversationSummary: state.conversationSummary,
         summarizedThrough: state.summarizedThrough,
@@ -283,7 +302,13 @@ export const useAIStore = create<AIState>((set, get) => ({
 
     if (state.chatContext === contextKey) return;
 
+    // Read also promotes — the target we're about to switch to is obviously
+    // the most-recently-used entry and should not be next to be evicted.
     const saved = chatCache.get(contextKey);
+    if (saved) {
+      chatCache.delete(contextKey);
+      chatCache.set(contextKey, saved);
+    }
 
     set({
       chatContext: contextKey,

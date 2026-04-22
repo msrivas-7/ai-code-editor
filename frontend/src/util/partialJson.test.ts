@@ -103,4 +103,16 @@ describe("parsePartialTutor", () => {
     expect(out.checkQuestions).toEqual(["a", "b"]);
     expect(out.citations).toEqual([]);
   });
+
+  it("returns the same reference when called twice with the same raw buffer", () => {
+    // Memoization (P-L1) lets shallow-equality selectors skip re-renders when
+    // the throttled trailing flush + abort-path commit fire back-to-back with
+    // identical input. A fresh input invalidates the cache.
+    const raw = '{"intent":"debug","summary":"done"}';
+    const a = parsePartialTutor(raw);
+    const b = parsePartialTutor(raw);
+    expect(b).toBe(a);
+    const c = parsePartialTutor('{"intent":"concept","summary":"fresh"}');
+    expect(c).not.toBe(a);
+  });
 });

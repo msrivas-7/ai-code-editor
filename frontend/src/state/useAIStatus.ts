@@ -104,6 +104,36 @@ export function invalidateAIStatus(): void {
   void fetchFresh();
 }
 
+// P-H6: optimistically decrement the cached remainingToday after a platform
+// ask completes. Previously every panel unconditionally re-polled /ai-status
+// after `asking` flipped false, which added a round-trip to the end of every
+// turn. Because the backend counter is authoritative and cheap to re-verify
+// on the NEXT 30 s cache expiry, we can safely mirror the -1 locally. If the
+// user switches to BYOK / the ledger write fails, the next fresh fetch
+// corrects us.
+//
+// Exception: when the decrement would cross into 0, skip the local mirror and
+// refetch instead. The server is the only place that knows the full exhausted
+// state shape (source:"none", reason:"free_exhausted", resetAtUtc), and the
+// ExhaustionCard gates on `source === "none"` — a stale `{source:"platform",
+// remainingToday:0}` would leave the composer on-screen until the 30 s TTL
+// expires. This is the one turn per day where the round-trip is worth paying.
+export function notePlatformQuestionConsumed(): void {
+  if (!cached) return;
+  const v = cached.value;
+  if (v.source !== "platform") return;
+  if (v.remainingToday === null) return;
+  const next = Math.max(0, v.remainingToday - 1);
+  if (next === v.remainingToday) return;
+  if (next === 0) {
+    cached = null;
+    inflight = null;
+    void fetchFresh();
+    return;
+  }
+  setGlobal({ ...v, remainingToday: next });
+}
+
 export function useAIStatus(): {
   status: AIStatusResponse | null;
   refetch: () => void;

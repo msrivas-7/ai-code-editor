@@ -61,7 +61,10 @@ export const config = {
   // Deadline for a single AI call to finish. Bounds how long we hold an
   // OpenAI response slot and keep a user's tokens burning if the upstream
   // stalls or the client disappears. Covers both /ask and /ask/stream.
-  aiRequestTimeoutMs: num(process.env.AI_REQUEST_TIMEOUT_MS, 90_000),
+  // P-L5: 45s matches the frontend's 30s-no-chunk watchdog + recovery
+  // margin; nano-family responses finish well inside this, and a non-
+  // streaming call that hasn't returned in 45s is almost certainly stuck.
+  aiRequestTimeoutMs: num(process.env.AI_REQUEST_TIMEOUT_MS, 45_000),
 
   // Phase 17 / H-A2: per-IP throttle on the mutating routes (session
   // lifecycle, snapshot, execute). Session creation is tighter because it's

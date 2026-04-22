@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import { useSearchParams } from "react-router-dom";
-import confetti from "canvas-confetti";
+import type { Options as ConfettiOptions } from "canvas-confetti";
 import type { FunctionTest, Lesson, TestReport, ValidationResult } from "../types";
 import { useProjectStore } from "../../../state/projectStore";
 import { useRunStore } from "../../../state/runStore";
@@ -20,10 +20,14 @@ import {
 // Phase 20-P1: confetti respects `prefers-reduced-motion`. Lifted out of
 // the page when LessonPage was split — validator is the only place left
 // that celebrates lesson/practice completion.
-function celebrate(options: confetti.Options) {
+// P-L2: import canvas-confetti on demand. It's ~30 KB and only fires when a
+// lesson completes, so paying for it at page load is waste — hoisting the
+// import into celebrate() lets the chunk fetch overlap with the completion
+// animation itself, and reduced-motion users never fetch it at all.
+function celebrate(options: ConfettiOptions) {
   if (typeof window === "undefined") return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  confetti(options);
+  void import("canvas-confetti").then((m) => m.default(options));
 }
 
 export interface UseLessonValidatorArgs {

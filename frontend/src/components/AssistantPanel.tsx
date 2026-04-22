@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
@@ -22,33 +23,58 @@ import { SelectionPreview } from "./SelectionPreview";
 import { useShortcutLabels } from "../util/platform";
 
 export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: () => void; onOpenSettings?: () => void }) {
+  // P-C1: scoped selector + shallow equality. A no-arg `useAIStore()` re-renders
+  // on every store mutation (noteEdit/noteRun each run fires the whole panel
+  // tree). Shallow-comparing only the slice we actually consume keeps the
+  // stream-delta loop from thrashing history + pending + usage every chunk.
   const {
     selectedModel,
     history,
     asking,
     askError,
     pending,
-    setAskError,
-    clearConversation,
     runsSinceLastTurn,
     editsSinceLastTurn,
     pendingAsk,
-    setPendingAsk,
     persona,
     conversationSummary,
     summarizedThrough,
     summarizing,
-    commitSummary,
-    setSummarizing,
     activeSelection,
-    setActiveSelection,
     focusComposerNonce,
     sessionUsage,
-  } = useAIStore();
-  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
-  const { status: aiStatus, refetch: refetchAIStatus } = useAIStatus();
+  } = useAIStore(
+    useShallow((s) => ({
+      selectedModel: s.selectedModel,
+      history: s.history,
+      asking: s.asking,
+      askError: s.askError,
+      pending: s.pending,
+      runsSinceLastTurn: s.runsSinceLastTurn,
+      editsSinceLastTurn: s.editsSinceLastTurn,
+      pendingAsk: s.pendingAsk,
+      persona: s.persona,
+      conversationSummary: s.conversationSummary,
+      summarizedThrough: s.summarizedThrough,
+      summarizing: s.summarizing,
+      activeSelection: s.activeSelection,
+      focusComposerNonce: s.focusComposerNonce,
+      sessionUsage: s.sessionUsage,
+    })),
+  );
+  // Actions are stable function refs, so individual selectors don't re-render.
+  const setAskError = useAIStore((s) => s.setAskError);
+  const clearConversation = useAIStore((s) => s.clearConversation);
+  const setPendingAsk = useAIStore((s) => s.setPendingAsk);
+  const commitSummary = useAIStore((s) => s.commitSummary);
+  const setSummarizing = useAIStore((s) => s.setSummarizing);
+  const setActiveSelection = useAIStore((s) => s.setActiveSelection);
 
-  const { activeFile, language } = useProjectStore();
+  const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
+  const { status: aiStatus } = useAIStatus();
+
+  const activeFile = useProjectStore((s) => s.activeFile);
+  const language = useProjectStore((s) => s.language);
   const lastRun = useRunStore((s) => s.result);
   const stdin = useRunStore((s) => s.stdin);
 
@@ -72,13 +98,10 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
     if (!exhausted) setExhaustionDismissed(false);
   }, [exhausted]);
 
-  // Keep the free-tier counter fresh: after every assistant turn finishes
-  // (asking goes true → false), re-pull status so the pill drops.
-  const prevAsking = useRef(asking);
-  useEffect(() => {
-    if (prevAsking.current && !asking) refetchAIStatus();
-    prevAsking.current = asking;
-  }, [asking, refetchAIStatus]);
+  // P-H6: the post-ask /ai-status refetch is no longer needed — useTutorAsk
+  // calls notePlatformQuestionConsumed() on success, which patches the
+  // cached remainingToday in place and broadcasts to subscribers (including
+  // the FreeTierPill). The 30s TTL + next natural fetch reconciles drift.
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });

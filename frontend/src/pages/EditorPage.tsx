@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { StatusBadge } from "../components/StatusBadge";
 import { FileTree } from "../components/FileTree";
-import { MonacoPane } from "../components/MonacoPane";
+// P-H2: Monaco is ~1.5 MB of JS + workers. Dynamic-importing splits it into
+// its own chunk that the landing / lesson-intro screens don't pay for on
+// first load; the editor pulls it in when the page actually mounts.
+const MonacoPane = lazy(() =>
+  import("../components/MonacoPane").then((m) => ({ default: m.MonacoPane })),
+);
 import { EditorTabs } from "../components/EditorTabs";
 import { OutputPanel } from "../components/OutputPanel";
 import { Toolbar } from "../components/Toolbar";
@@ -172,7 +177,9 @@ export default function EditorPage() {
         <section ref={editorRef} className="flex min-w-0 flex-1 flex-col">
           <EditorTabs />
           <div className="min-h-0 flex-1">
-            <MonacoPane />
+            <Suspense fallback={<div className="p-4 text-sm text-muted">Loading editor…</div>}>
+              <MonacoPane />
+            </Suspense>
           </div>
           <Splitter
             orientation="horizontal"

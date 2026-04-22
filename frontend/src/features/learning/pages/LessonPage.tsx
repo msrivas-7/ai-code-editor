@@ -1,9 +1,14 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { LessonInstructionsPanel } from "../components/LessonInstructionsPanel";
 import { PracticeInstructionsView } from "../components/PracticeInstructionsView";
 import { GuidedTutorPanel } from "../components/GuidedTutorPanel";
-import { MonacoPane } from "../../../components/MonacoPane";
+// P-H2: dynamic-import keeps Monaco out of the lesson page's initial JS until
+// the editor mounts (the instructions/intro column loads first). The editor
+// chunk is shared with EditorPage via Vite's default chunking.
+const MonacoPane = lazy(() =>
+  import("../../../components/MonacoPane").then((m) => ({ default: m.MonacoPane })),
+);
 import { EditorTabs } from "../../../components/EditorTabs";
 import { OutputPanel } from "../../../components/OutputPanel";
 import { Splitter } from "../../../components/Splitter";
@@ -373,7 +378,9 @@ export default function LessonPage() {
             )}
             <EditorTabs />
             <div className="min-h-0 flex-1">
-              <MonacoPane />
+              <Suspense fallback={<div className="p-4 text-sm text-muted">Loading editor…</div>}>
+                <MonacoPane />
+              </Suspense>
             </div>
             <Splitter
               orientation="horizontal"

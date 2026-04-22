@@ -61,7 +61,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
     sessionUsage,
   } = useAIStore();
   const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
-  const { status: aiStatus, refetch: refetchAIStatus } = useAIStatus();
+  const { status: aiStatus } = useAIStatus();
 
   const { activeFile } = useProjectStore();
   const lastRun = useRunStore((s) => s.result);
@@ -86,11 +86,10 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
   useEffect(() => {
     if (!exhausted) setExhaustionDismissed(false);
   }, [exhausted]);
-  const prevAsking = useRef(asking);
-  useEffect(() => {
-    if (prevAsking.current && !asking) refetchAIStatus();
-    prevAsking.current = asking;
-  }, [asking, refetchAIStatus]);
+  // P-H6: post-ask /ai-status refetch dropped — useTutorAsk's onDone calls
+  // notePlatformQuestionConsumed() which patches cached remainingToday + fans
+  // out to subscribers in-process. The 30s TTL reconciles drift on the next
+  // natural poll.
 
   const configured = onPlatform || (hasKey && !!selectedModel);
 
