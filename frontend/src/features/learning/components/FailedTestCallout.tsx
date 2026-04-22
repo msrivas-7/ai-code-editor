@@ -56,6 +56,7 @@ function isUserTyping(): boolean {
  */
 export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAskTutor }: FailedTestCalloutProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isUserTyping()) {
       // preventScroll: otherwise default focus behavior scrolls ancestors
@@ -63,6 +64,14 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
       // page-level scrollbar to appear and the whole editor to jump up.
       headingRef.current?.focus({ preventScroll: true });
     }
+    // Scroll the callout into view inside the instructions panel's own
+    // overflow-y-auto container. `block: "nearest"` means we only scroll
+    // when the callout is off-screen, and it doesn't disturb the editor's
+    // scroll state because the Monaco container isn't an ancestor of this
+    // element. Replaces the old toolbar-row-2 banner that lived below the
+    // editor — fail feedback is now anchored to where the learner is
+    // already reading.
+    containerRef.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
 
   const canAsk = consecutiveFails >= 2 && !!onAskTutor;
@@ -74,6 +83,7 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
   if (failure.hidden) {
     return (
       <div
+        ref={containerRef}
         className="mt-3 rounded-xl border border-warn/30 bg-warn/5 p-3"
         role="status"
         aria-live="polite"
@@ -122,6 +132,7 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
 
   return (
     <div
+      ref={containerRef}
       className={`mt-3 rounded-xl border p-3 ${tone}`}
       role="status"
       aria-live="polite"

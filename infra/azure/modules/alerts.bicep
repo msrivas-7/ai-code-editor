@@ -149,6 +149,44 @@ resource oomAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
   }
 }
 
+// Phase 20-P3: VM heartbeat missing. The AMA on the VM posts a `Heartbeat` row
+// every minute. If we haven't seen one in the last 10 minutes, either (a) the
+// VM rebooted, (b) the AMA process died, or (c) CPU starvation is so bad that
+// even the agent can't schedule — all of which silence the compose stack too.
+// This is the cheap-and-reliable stand-in for the full audit ask (Application
+// Insights availability test + 5xx KQL + per-container restart-count). Those
+// pieces need App Insights deployed + container log → Log Analytics plumbing
+// that we don't have yet; shipping the heartbeat piece closes the biggest
+// "we'd never know the site was down" gap for ~$1.50/mo.
+resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'codetutor-vm-heartbeat-missing'
+  location: location
+  tags: tags
+  properties: {
+    enabled: true
+    severity: 1
+    scopes: [ workspaceId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: 'Heartbeat | where TimeGenerated > ago(15m) | summarize lastBeat = max(TimeGenerated) by Computer | where lastBeat < ago(10m)'
+          timeAggregation: 'Count'
+          operator: 'GreaterThanOrEqual'
+          threshold: 1
+          failingPeriods: {
+            minFailingPeriodsToAlert: 1
+            numberOfEvaluationPeriods: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: actions
+  }
+}
+
 // Phase 20-P2: ACS Email delivery failures. `DeliveryStatusUpdate` fires once
 // per outbound message with a `MessageStatus` dimension (Delivered / Failed /
 // Expanded / Quarantined / Suppressed / OutForDelivery). A single Failed is

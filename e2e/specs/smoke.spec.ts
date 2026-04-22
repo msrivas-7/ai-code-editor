@@ -9,7 +9,7 @@
 
 import { expect, test } from "../fixtures/auth";
 
-import { clearAppStorage } from "../fixtures/profiles";
+import { clearAppStorage, loadProfile, markOnboardingDone } from "../fixtures/profiles";
 import { mockAllAI } from "../fixtures/aiMocks";
 import { waitForMonacoReady } from "../fixtures/monaco";
 
@@ -39,6 +39,28 @@ test.describe("smoke", () => {
     await expect(
       page.getByRole("heading", { name: /guided learning/i })
     ).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("StartPage renders ResumeLearningCard for a returning learner", async ({ page }) => {
+    // Phase 20-P3: returning learners with in-progress courseProgress see
+    // a Resume card above the cold 2-card grid. mid-course-healthy has 5
+    // Python lessons completed → the next unfinished lesson is "functions"
+    // (order 6). Either Python or JS can win the updatedAt tiebreak in the
+    // seeder, so we pattern-match on the shared "Continue <course>" copy
+    // and the Resume button.
+    await mockAllAI(page);
+    await loadProfile(page, "mid-course-healthy");
+    await markOnboardingDone(page);
+    await page.goto("/");
+
+    const resumeBtn = page.getByRole("button", { name: /^resume$/i });
+    await expect(resumeBtn).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/continue\s+(python|javascript)/i)).toBeVisible();
+
+    await resumeBtn.click();
+    await expect(page).toHaveURL(
+      /\/learn\/course\/(python-fundamentals|javascript-fundamentals)\/lesson\/[a-z0-9-]+$/,
+    );
   });
 
   test("clearAppStorage wipes owned localStorage keys", async ({ page }) => {

@@ -5,6 +5,7 @@ import path from "node:path";
 import Docker from "dockerode";
 import { PassThrough } from "node:stream";
 import { safeResolve } from "../../project/snapshot.js";
+import { createSemaphore, type Semaphore } from "../concurrency.js";
 import type {
   ExecOptions,
   ExecResult,
@@ -32,15 +33,22 @@ export interface LocalDockerBackendOptions {
   };
   /** Optional bare-metal-dev override; skips self-inspect discovery when set. */
   hostWorkspaceRootOverride?: string;
+  /**
+   * Phase 20-P3: cap on concurrent `docker exec` invocations across the
+   * whole backend process. Defaults to 8 when unset (matches config.ts).
+   */
+  dockerExecConcurrency?: number;
 }
 
 export class LocalDockerBackend implements ExecutionBackend {
   readonly kind = "local-docker";
   private docker: Docker;
   private hostWorkspaceRoot: string | null = null;
+  private execSem: Semaphore;
 
   constructor(private readonly opts: LocalDockerBackendOptions) {
     this.docker = new Docker();
+    this.execSem = createSemaphore(opts.dockerExecConcurrency ?? 8);
   }
 
   async ping(): Promise<void> {
@@ -60,6 +68,14 @@ export class LocalDockerBackend implements ExecutionBackend {
     // runs on graceful SIGTERM). Purge them so the bind-mount doesn't grow
     // forever. Empty/missing root is a no-op.
     await purgeOrphanWorkspaces(this.opts.workspaceRoot);
+    // Phase 20-P3: also reap any `codetutor-ai-session-*` containers left
+    // alive from a hard-killed prior backend. AutoRemove handles graceful
+    // destroy() paths, but a SIGKILL / OOM of the backend process itself
+    // leaves the runner containers running until manual cleanup — and at
+    // boot they would silently consume RAM against the global cap without
+    // ever mapping back to a session record. Fail-soft: log and continue
+    // if the docker socket is unreachable (ensureReady is best-effort).
+    await purgeOrphanRunnerContainers(this.docker);
 
     try {
       await this.docker.getImage(this.opts.runnerImage).inspect();
@@ -183,61 +199,69 @@ export class LocalDockerBackend implements ExecutionBackend {
     timeoutMs: number,
     options: ExecOptions = {},
   ): Promise<ExecResult> {
-    const h = this.cast(handle);
-    const container = this.docker.getContainer(h.containerId);
-    const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
-    const wrapped = `timeout --signal=KILL ${timeoutSec}s sh -c ${shellQuote(command)}`;
-    const attachStdin = options.stdin !== undefined;
+    // Phase 20-P3: semaphore-gate every exec. The whole body runs through
+    // this.execSem so the timeoutMs budget includes semaphore wait time —
+    // a caller asking for 10s of exec time shouldn't end up spending 30s
+    // just waiting for a slot. That's a feature: under saturation the
+    // excess requests fail fast (via `timeout --signal=KILL`) instead of
+    // piling up and spiking memory.
+    return this.execSem.run(async () => {
+      const h = this.cast(handle);
+      const container = this.docker.getContainer(h.containerId);
+      const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
+      const wrapped = `timeout --signal=KILL ${timeoutSec}s sh -c ${shellQuote(command)}`;
+      const attachStdin = options.stdin !== undefined;
 
-    const envArr = options.env
-      ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`)
-      : undefined;
+      const envArr = options.env
+        ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`)
+        : undefined;
 
-    const exec = await container.exec({
-      Cmd: ["sh", "-c", wrapped],
-      AttachStdin: attachStdin,
-      AttachStdout: true,
-      AttachStderr: true,
-      WorkingDir: "/workspace",
-      User: "runner",
-      Tty: false,
-      Env: envArr,
+      const exec = await container.exec({
+        Cmd: ["sh", "-c", wrapped],
+        AttachStdin: attachStdin,
+        AttachStdout: true,
+        AttachStderr: true,
+        WorkingDir: "/workspace",
+        User: "runner",
+        Tty: false,
+        Env: envArr,
+      });
+
+      const started = Date.now();
+      const stream = await exec.start({ hijack: true, stdin: attachStdin });
+
+      if (attachStdin) {
+        stream.write(options.stdin ?? "");
+        stream.end();
+      }
+
+      const stdoutBuf = new PassThrough();
+      const stderrBuf = new PassThrough();
+      this.docker.modem.demuxStream(stream, stdoutBuf, stderrBuf);
+
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      stdoutBuf.on("data", (c: Buffer) => stdoutChunks.push(c));
+      stderrBuf.on("data", (c: Buffer) => stderrChunks.push(c));
+
+      await new Promise<void>((resolve) => {
+        stream.on("end", () => resolve());
+        stream.on("close", () => resolve());
+      });
+
+      const info = await exec.inspect();
+      const exitCode = info.ExitCode ?? -1;
+      // `timeout` exits 137 (128 + SIGKILL) when it kills the child.
+      const timedOut = exitCode === 137;
+
+      return {
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        exitCode,
+        timedOut,
+        durationMs: Date.now() - started,
+      };
     });
-
-    const started = Date.now();
-    const stream = await exec.start({ hijack: true, stdin: attachStdin });
-
-    if (attachStdin) {
-      stream.write(options.stdin ?? "");
-      stream.end();
-    }
-
-    const stdoutBuf = new PassThrough();
-    const stderrBuf = new PassThrough();
-    this.docker.modem.demuxStream(stream, stdoutBuf, stderrBuf);
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    stdoutBuf.on("data", (c: Buffer) => stdoutChunks.push(c));
-    stderrBuf.on("data", (c: Buffer) => stderrChunks.push(c));
-
-    await new Promise<void>((resolve) => {
-      stream.on("end", () => resolve());
-      stream.on("close", () => resolve());
-    });
-
-    const info = await exec.inspect();
-    const exitCode = info.ExitCode ?? -1;
-    // `timeout` exits 137 (128 + SIGKILL) when it kills the child.
-    const timedOut = exitCode === 137;
-
-    return {
-      stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-      stderr: Buffer.concat(stderrChunks).toString("utf8"),
-      exitCode,
-      timedOut,
-      durationMs: Date.now() - started,
-    };
   }
 
   async writeFiles(
@@ -470,6 +494,43 @@ async function purgeOrphanWorkspaces(workspaceRoot: string): Promise<void> {
     }),
   );
   console.log(`[local-docker] purged ${entries.length} orphan workspace(s) from prior run`);
+}
+
+/**
+ * Phase 20-P3: force-remove any `codetutor-ai-session-*` containers left
+ * over from a prior backend process. AutoRemove covers our own
+ * destroy() path, but a SIGKILL / OOM / docker-compose-down-t-0 of the
+ * backend leaves these containers alive with no session record — they
+ * eat RAM against the global cap and never map back to a learner.
+ * Reaping at boot is safe because sessions are in-memory only: if the
+ * process is starting fresh, by definition nothing owns these containers.
+ */
+async function purgeOrphanRunnerContainers(docker: Docker): Promise<void> {
+  let containers: Docker.ContainerInfo[];
+  try {
+    containers = await docker.listContainers({
+      all: true,
+      filters: { name: ["codetutor-ai-session-"] },
+    });
+  } catch (err) {
+    console.warn(
+      `[local-docker] purgeOrphanRunnerContainers list failed (docker socket unreachable?): ${(err as Error).message}`,
+    );
+    return;
+  }
+  if (containers.length === 0) return;
+  await Promise.all(
+    containers.map(async (info) => {
+      try {
+        await docker.getContainer(info.Id).remove({ force: true });
+      } catch (err) {
+        console.warn(
+          `[local-docker] could not purge orphan container ${info.Id}: ${(err as Error).message}`,
+        );
+      }
+    }),
+  );
+  console.log(`[local-docker] purged ${containers.length} orphan runner container(s) from prior run`);
 }
 
 /**

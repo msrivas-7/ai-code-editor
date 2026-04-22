@@ -19,6 +19,7 @@ export function makeExecutionBackend(): ExecutionBackend {
           nanoCpus: config.runner.nanoCpus,
         },
         hostWorkspaceRootOverride: config.hostWorkspaceRootOverride,
+        dockerExecConcurrency: config.dockerExecConcurrency,
       });
     default:
       throw new Error(

@@ -1,14 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { WelcomeOverlay } from "../components/WelcomeOverlay";
 import { UserMenu } from "../components/UserMenu";
 import { FeedbackButton } from "../components/FeedbackButton";
 import { usePreferencesStore } from "../state/preferencesStore";
+import { useProgressStore } from "../features/learning/stores/progressStore";
+import { listPublicCourses, loadAllLessonMetas } from "../features/learning/content/courseLoader";
+import { ResumeLearningCard } from "../features/learning/components/ResumeLearningCard";
+import type { Course, CourseProgress, LessonMeta } from "../features/learning/types";
+
+interface ResumeTarget {
+  course: Course;
+  progress: CourseProgress;
+  nextLesson: LessonMeta | null;
+}
 
 export default function StartPage() {
   const nav = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
   const welcomeDone = usePreferencesStore((s) => s.welcomeDone);
+  const courseProgressMap = useProgressStore((s) => s.courseProgress);
 
   useEffect(() => {
     if (!welcomeDone) {
@@ -19,6 +30,59 @@ export default function StartPage() {
   const headerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLButtonElement>(null);
   const guidedRef = useRef<HTMLButtonElement>(null);
+
+  // Pick the most-recently-updated, not-yet-completed course id from the
+  // already-hydrated progress store. HydrationGate guarantees this map is
+  // populated before StartPage renders. Completed courses fall through so
+  // returning learners who just finished Python still get the cold 2-card
+  // grid rather than a redundant "Resume Python" where everything is done.
+  const resumeCourseId = useMemo(() => {
+    let bestId: string | null = null;
+    let bestTs = 0;
+    for (const [id, p] of Object.entries(courseProgressMap)) {
+      if (!p || p.status === "completed" || !p.updatedAt) continue;
+      const t = new Date(p.updatedAt).getTime();
+      if (!Number.isFinite(t)) continue;
+      if (t > bestTs) {
+        bestTs = t;
+        bestId = id;
+      }
+    }
+    return bestId;
+  }, [courseProgressMap]);
+
+  const [resumeTarget, setResumeTarget] = useState<ResumeTarget | null>(null);
+  useEffect(() => {
+    if (!resumeCourseId) {
+      setResumeTarget(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [courses, lessons] = await Promise.all([
+          listPublicCourses(),
+          loadAllLessonMetas(resumeCourseId),
+        ]);
+        if (cancelled) return;
+        const course = courses.find((c) => c.id === resumeCourseId);
+        const progress = courseProgressMap[resumeCourseId];
+        if (!course || !progress) {
+          setResumeTarget(null);
+          return;
+        }
+        const nextLesson =
+          lessons.find((l) => !progress.completedLessonIds.includes(l.id)) ??
+          null;
+        setResumeTarget({ course, progress, nextLesson });
+      } catch {
+        if (!cancelled) setResumeTarget(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeCourseId, courseProgressMap]);
 
   return (
     <div className="relative flex h-full flex-col bg-bg text-ink">
@@ -37,6 +101,21 @@ export default function StartPage() {
             all in the browser.
           </p>
         </div>
+
+        {resumeTarget && resumeTarget.nextLesson && (
+          <div className="mb-6 w-full max-w-2xl">
+            <ResumeLearningCard
+              courseTitle={resumeTarget.course.title}
+              progress={resumeTarget.progress}
+              nextLesson={resumeTarget.nextLesson}
+              onResume={() =>
+                nav(
+                  `/learn/course/${resumeTarget.course.id}/lesson/${resumeTarget.nextLesson!.id}`,
+                )
+              }
+            />
+          </div>
+        )}
 
         <div className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
           <button

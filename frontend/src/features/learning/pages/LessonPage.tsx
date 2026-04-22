@@ -576,8 +576,19 @@ export default function LessonPage() {
                   )}
                 </div>
               </div>
-              {/* Row 2 — Validation feedback (own row so it never collides with primary actions). Caps height so long hints can't push the toolbar off-screen. */}
-              {!practiceMode && validator.validation && !validator.validation.passed && (
+              {/* Row 2 — Validation feedback. For lessons WITH function_tests,
+                  the FailedTestCallout in the instructions panel is the
+                  authoritative fail surface (it auto-scrolls into view and
+                  auto-switches to the Examples tab). Keeping the banner
+                  there duplicated the message; hide it in that case. For
+                  lessons without function_tests (e.g., expected_stdout
+                  only), the banner is still the immediate fail signal, so
+                  keep rendering it. Caps height so long hints can't push
+                  the toolbar off-screen. */}
+              {!practiceMode
+                && validator.validation
+                && !validator.validation.passed
+                && validator.functionTests.length === 0 && (
                 <div
                   role="alert"
                   className="mx-4 mt-1.5 flex max-h-24 flex-col gap-0.5 overflow-y-auto rounded-lg bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger"

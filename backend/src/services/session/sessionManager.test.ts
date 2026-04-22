@@ -158,6 +158,38 @@ describe("sessionManager ownership", () => {
   });
 });
 
+describe("session caps (Phase 20-P3)", () => {
+  it("rejects the 3rd session per user with 429", async () => {
+    // Default MAX_SESSIONS_PER_USER=2 in config.ts.
+    await startSession("heavy-user");
+    await startSession("heavy-user");
+    await expect(startSession("heavy-user")).rejects.toMatchObject({
+      status: 429,
+    });
+  });
+
+  it("lets the same user start again after one of their sessions ends", async () => {
+    const s1 = await startSession("heavy-user");
+    await startSession("heavy-user");
+    // 3rd rejected...
+    await expect(startSession("heavy-user")).rejects.toMatchObject({
+      status: 429,
+    });
+    // ...but if we free a slot, the next call succeeds.
+    await endSession(s1.id, "heavy-user");
+    const s3 = await startSession("heavy-user");
+    expect(s3.userId).toBe("heavy-user");
+  });
+
+  it("does not charge one user's cap against another user's sessions", async () => {
+    await startSession("user-a");
+    await startSession("user-a");
+    // user-a at cap — but user-b is independent.
+    const b = await startSession("user-b");
+    expect(b.userId).toBe("user-b");
+  });
+});
+
 describe("destroyUserSessions (Phase 20-P0 #9)", () => {
   it("tears down every session owned by the given user and leaves other users' sessions alone", async () => {
     const a1 = await startSession("user-a");
@@ -199,5 +231,118 @@ describe("destroyUserSessions (Phase 20-P0 #9)", () => {
     const killed = await destroyUserSessions("user-flaky");
     expect(killed).toEqual([s.id]);
     expect(getSession(s.id)).toBeUndefined();
+  });
+});
+
+// Phase 20-P3: a dead/zombie container (OOM-kill, docker crash, daemon
+// restart) still occupies a session record until the 45s sweeper tick —
+// which under the per-user cap of 2 can lock a real user out of their own
+// account for up to 2 minutes. These specs lock in that we self-heal by
+// inspecting `isAlive` on the cap-rejection path and on getSessionStatus.
+describe("zombie session reaping (Phase 20-P3)", () => {
+  // A fake backend whose container liveness is script-controllable, so a
+  // test can "kill" a handle without touching Docker.
+  function makeControlledBackend() {
+    const live = new Set<string>();
+    const destroyed = new Set<string>();
+    const backend: ExecutionBackend = {
+      kind: "test-fake",
+      async ensureReady() {},
+      async ping() {},
+      async createSession(spec) {
+        live.add(spec.sessionId);
+        return { sessionId: spec.sessionId, __kind: "fake" } as SessionHandle;
+      },
+      async isAlive(h) {
+        return live.has(h.sessionId);
+      },
+      async destroy(h) {
+        live.delete(h.sessionId);
+        destroyed.add(h.sessionId);
+      },
+      async exec() {
+        return { stdout: "", stderr: "", exitCode: 0, timedOut: false, durationMs: 0 };
+      },
+      async writeFiles() {},
+      async removeFiles() {},
+      async fileExists() {
+        return false;
+      },
+      async replaceSnapshot() {},
+    };
+    return { backend, live, destroyed };
+  }
+
+  it("startSession reaps dead zombies before rejecting on the per-user cap", async () => {
+    const { backend, live, destroyed } = makeControlledBackend();
+    initSessionManager(backend);
+
+    const s1 = await startSession("victim");
+    const s2 = await startSession("victim");
+    // Container for s1 dies out of band (OOM, docker crash). The record
+    // is still in the map so the cap would block a 3rd session.
+    live.delete(s1.id);
+
+    // Without reaping this would throw 429. With reaping, the zombie is
+    // purged and the 3rd session succeeds.
+    const s3 = await startSession("victim");
+    expect(s3.userId).toBe("victim");
+    expect(getSession(s1.id)).toBeUndefined();
+    expect(destroyed.has(s1.id)).toBe(true);
+    // s2 is still alive and still owned.
+    expect(getSession(s2.id)?.userId).toBe("victim");
+  });
+
+  it("startSession still throws 429 if all of the user's sessions are alive", async () => {
+    const { backend } = makeControlledBackend();
+    initSessionManager(backend);
+    await startSession("heavy");
+    await startSession("heavy");
+    // Both alive → reaper frees nothing → still 429.
+    await expect(startSession("heavy")).rejects.toMatchObject({ status: 429 });
+  });
+
+  it("getSessionStatus purges the record when the container is dead", async () => {
+    const { backend, live, destroyed } = makeControlledBackend();
+    initSessionManager(backend);
+
+    const s = await startSession("alice");
+    live.delete(s.id); // container dies out of band
+
+    const status = await getSessionStatus(s.id, "alice");
+    expect(status).toEqual({
+      alive: false,
+      containerAlive: false,
+      lastSeen: expect.any(Number),
+    });
+    // Record is gone — a subsequent rebind will mint a fresh container
+    // under the same id without waiting for the sweeper.
+    expect(getSession(s.id)).toBeUndefined();
+    expect(destroyed.has(s.id)).toBe(true);
+  });
+
+  it("getSessionStatus does not purge a record whose container is still alive", async () => {
+    const { backend } = makeControlledBackend();
+    initSessionManager(backend);
+    const s = await startSession("alice");
+    const status = await getSessionStatus(s.id, "alice");
+    expect(status.containerAlive).toBe(true);
+    expect(getSession(s.id)).toBeDefined();
+  });
+
+  it("rebind after a zombie status check mints a fresh session under the same id", async () => {
+    const { backend, live } = makeControlledBackend();
+    initSessionManager(backend);
+
+    const s = await startSession("alice");
+    live.delete(s.id);
+    await getSessionStatus(s.id, "alice"); // purges the zombie
+
+    // The frontend retries with the same id — rebind should succeed and
+    // (because startSession honors requestedId when free) keep the same id.
+    const { record, reused } = await rebindSession(s.id, "alice");
+    expect(reused).toBe(false);
+    expect(record.id).toBe(s.id);
+    expect(record.userId).toBe("alice");
   });
 });

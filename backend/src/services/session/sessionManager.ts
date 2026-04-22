@@ -51,10 +51,86 @@ function requireBackend(): ExecutionBackend {
 // pushing a path-traversal string into the workspace path.
 const ID_RE = /^[A-Za-z0-9_-]{8,32}$/;
 
+function countPerUser(userId: string): number {
+  let n = 0;
+  for (const s of sessions.values()) if (s.userId === userId) n++;
+  return n;
+}
+
+/**
+ * Phase 20-P3: sweep sessions whose container is no longer running (OOM kill,
+ * docker daemon restart, crash during cleanup) and purge the in-memory
+ * record. Under the per-user / global caps, a dead container still occupies
+ * a slot until the 45s sweeper tick notices idle — which locks the real
+ * user out of their own account. We only call this in the cap-rejection
+ * path, so inspect cost is bounded to that rare case.
+ *
+ * Ownership scope is caller-chosen:
+ *   - `{ userId }`: only sessions for that user (per-user cap rescue)
+ *   - `undefined`: every session (global cap rescue)
+ */
+async function reapDeadSessions(
+  scope?: { userId: string },
+): Promise<number> {
+  const b = requireBackend();
+  const candidates = [...sessions.values()].filter(
+    (s) => !scope || s.userId === scope.userId,
+  );
+  const deadness = await Promise.all(
+    candidates.map(async (s) => {
+      if (!s.handle) return s; // no handle → treat as dead
+      const alive = await b.isAlive(s.handle).catch(() => false);
+      return alive ? null : s;
+    }),
+  );
+  let reaped = 0;
+  for (const s of deadness) {
+    if (!s) continue;
+    sessions.delete(s.id);
+    if (s.handle) await b.destroy(s.handle).catch(() => {});
+    reaped++;
+  }
+  if (reaped) {
+    console.log(
+      `[session] reaped ${reaped} zombie session(s)` +
+        (scope ? ` for user ${scope.userId}` : " globally"),
+    );
+  }
+  return reaped;
+}
+
 export async function startSession(
   userId: string,
   requestedId?: string,
 ): Promise<SessionRecord> {
+  // Phase 20-P3: cap enforcement before any container work. Per-user first
+  // (the common abusive case — one learner spamming refresh), then global
+  // (protects the VM even if caps bypass via many users). 429 lets the
+  // frontend retry after a session is reaped by the sweeper; 503 signals
+  // capacity exhaustion that won't resolve by retry. Both throw before we
+  // touch Docker, so a rejected request is cheap.
+  //
+  // Before rejecting, do a one-shot reap of dead zombies: an OOM-killed or
+  // crashed container would otherwise occupy a cap slot until the 45s
+  // sweeper tick, locking the real user out of their own account. This is
+  // the only place we inspect Docker synchronously per request, so cost
+  // stays bounded to the would-be-rejection path.
+  if (countPerUser(userId) >= config.session.maxPerUser) {
+    await reapDeadSessions({ userId });
+    if (countPerUser(userId) >= config.session.maxPerUser) {
+      throw new HttpError(
+        429,
+        `session limit reached: max ${config.session.maxPerUser} per account`,
+      );
+    }
+  }
+  if (sessions.size >= config.session.maxGlobal) {
+    await reapDeadSessions();
+    if (sessions.size >= config.session.maxGlobal) {
+      throw new HttpError(503, "server at capacity, try again shortly");
+    }
+  }
+
   // If the frontend asks to reuse an ID (orphan recovery), honor it as long
   // as it's not already live — keeps logs coherent and the UI badge stable.
   const canReuse = requestedId && ID_RE.test(requestedId) && !sessions.has(requestedId);
@@ -157,6 +233,19 @@ export async function getSessionStatus(id: string, userId: string) {
   if (!s) return { alive: false, containerAlive: false, lastSeen: 0 };
   if (s.userId !== userId) throw new HttpError(403, "session not owned by caller");
   const containerAlive = s.handle ? await requireBackend().isAlive(s.handle) : false;
+  if (!containerAlive) {
+    // Phase 20-P3: the container died out from under us (OOM, docker
+    // restart, crashed teardown). Purge the record now so the caller's
+    // heartbeat triggers a clean rebind immediately, and the freed slot
+    // isn't charged against the cap. Without this the learner can be
+    // locked out of their own account for up to 2 minutes waiting for
+    // the sweeper to notice idle.
+    sessions.delete(id);
+    if (s.handle) {
+      await requireBackend().destroy(s.handle).catch(() => {});
+    }
+    return { alive: false, containerAlive: false, lastSeen: s.lastSeen };
+  }
   return { alive: true, containerAlive, lastSeen: s.lastSeen };
 }
 

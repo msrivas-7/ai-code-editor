@@ -252,20 +252,24 @@ async function main() {
   process.on("SIGINT", () => shutdown("SIGINT", 0));
   process.on("SIGTERM", () => shutdown("SIGTERM", 0));
 
-  // Phase 20-P1: catch-all for async errors nothing above caught. Without
-  // these, an unhandled dockerode or postgres rejection crashes the VM
-  // immediately and orphans running sessions. Log structured, then exit
-  // via the shutdown path so `docker compose restart-policy` picks us back
-  // up and the next Caddy request just sees a brief 502.
+  // Phase 20-P3: unhandledRejection is log-and-continue, not fatal. Prior
+  // behavior (process.exit(1)) was net-negative: one stray unawaited promise
+  // — even in a non-load-bearing path — took the backend down, and
+  // `restart: unless-stopped` brought it back only to catch the same
+  // rejection seconds later, yielding a crashloop that cost learners their
+  // in-flight sessions. A rejection represents an async error we failed to
+  // attach a `.catch` to; it does NOT necessarily mean heap corruption or
+  // an invariant break. Log it structured (so the restart-count alert can
+  // pick it up if it IS looping) and keep serving.
   //
-  // These never throw a second time on their own — the handler must be
-  // defensive; a panic inside the panic handler would loop.
+  // uncaughtException stays fatal. A synchronous throw that propagated all
+  // the way to the event-loop top is a much stronger signal that an
+  // invariant is broken — continuing risks serving torn state.
   process.on("unhandledRejection", (reason) => {
     const message = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
     console.error(
       JSON.stringify({ level: "error", t: new Date().toISOString(), err: "unhandledRejection", message }),
     );
-    void shutdown("unhandledRejection", 1);
   });
   process.on("uncaughtException", (err) => {
     console.error(

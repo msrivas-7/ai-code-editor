@@ -37,6 +37,7 @@ write_files:
 
       KV_NAME="{{KV_NAME}}"
       ENV_FILE=/opt/codetutor/.env
+      COMPOSE_DIR=/opt/codetutor
       TMP=$(mktemp)
       chmod 0600 "$TMP"
 
@@ -90,7 +91,47 @@ write_files:
       } > "$TMP"
 
       chown codetutor:codetutor "$TMP"
+
+      # Phase 20-P3: detect env changes and force-recreate the backend when
+      # something rotated. Docker compose `up -d` (without --force-recreate)
+      # is a no-op for containers whose compose-level config is unchanged —
+      # .env var diffs don't trigger a restart on their own. Without this,
+      # rotating BYOK_ENCRYPTION_KEY in Key Vault would silently do nothing
+      # until a VM reboot, and the next boot's freshly-recreated container
+      # would come up with the new master key → every stored ciphertext
+      # suddenly undecryptable. Force-recreate on change closes that gap.
+      #
+      # Only fires when the backend is already running (codetutor-ai.service
+      # up). During first boot the containers don't exist yet; the main
+      # compose-up in codetutor-ai.service will pick up the fresh env
+      # directly — no need to recreate anything.
+      old_hash=""
+      if [ -f "$ENV_FILE" ]; then
+        old_hash=$(sha256sum "$ENV_FILE" | awk '{print $1}')
+      fi
+      new_hash=$(sha256sum "$TMP" | awk '{print $1}')
+
       mv "$TMP" "$ENV_FILE"
+
+      if [ "$old_hash" != "$new_hash" ] && [ -n "$old_hash" ]; then
+        echo "[refresh-env] env changed (old=${old_hash:0:8} new=${new_hash:0:8})"
+        # Only recreate if the stack is actually up — if this runs during a
+        # shutdown window, skip and let the next main-service start handle it.
+        if sudo -u codetutor docker compose \
+          -f "$COMPOSE_DIR/docker-compose.yml" \
+          -f "$COMPOSE_DIR/docker-compose.prod.yml" \
+          --env-file "$ENV_FILE" ps --status running --quiet backend | grep -q .; then
+          echo "[refresh-env] force-recreating backend to pick up new env"
+          sudo -u codetutor docker compose \
+            -f "$COMPOSE_DIR/docker-compose.yml" \
+            -f "$COMPOSE_DIR/docker-compose.prod.yml" \
+            --env-file "$ENV_FILE" up -d --force-recreate --no-deps backend
+        else
+          echo "[refresh-env] backend not running; skipping recreate"
+        fi
+      else
+        echo "[refresh-env] env unchanged (hash=${new_hash:0:8})"
+      fi
 
   - path: /etc/systemd/system/codetutor-ai.service
     permissions: '0644'

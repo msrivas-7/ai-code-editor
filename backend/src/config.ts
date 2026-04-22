@@ -27,7 +27,22 @@ export const config = {
   session: {
     idleTimeoutMs: num(process.env.SESSION_IDLE_TIMEOUT_MS, 2 * 60 * 1000),
     sweepIntervalMs: num(process.env.SESSION_SWEEP_INTERVAL_MS, 45 * 1000),
+    // Phase 20-P3: session caps. One abusive tab-spammer can otherwise
+    // saturate the B2s (8 × 512 MB runners > 4 GB total). Per-user ceiling
+    // keeps any single account from monopolizing capacity; global ceiling
+    // bounds total exposure. Both emit 429 with Retry-After so the frontend
+    // can show a friendly message. Defaults are conservative relative to
+    // current usage (low single-digits); raise in env when scaling vertically.
+    maxPerUser: num(process.env.MAX_SESSIONS_PER_USER, 2),
+    maxGlobal: num(process.env.MAX_SESSIONS_GLOBAL, 20),
   },
+
+  // Phase 20-P3: semaphore on concurrent `docker exec` calls. Each exec
+  // spikes CPU + filesystem IO, and dockerode doesn't queue under load —
+  // it happily fires N parallel execs that all stall on the socket. Capping
+  // in-flight execs at a value below B2s CPU limits keeps interactive
+  // latency stable when many sessions are running tests simultaneously.
+  dockerExecConcurrency: num(process.env.DOCKER_EXEC_CONCURRENCY, 8),
 
   runner: {
     memoryBytes: num(process.env.RUNNER_MEMORY_BYTES, 512 * 1024 * 1024),

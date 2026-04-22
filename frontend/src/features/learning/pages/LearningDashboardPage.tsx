@@ -45,7 +45,21 @@ export default function LearningDashboardPage() {
       .finally(() => setLoading(false));
   }, [learnerId, loadCourseProgress]);
 
-  const activeCourse = courses[0] ?? null;
+  // Pick the course the learner most recently touched. Before: `courses[0]`
+  // silently pinned the dashboard to Python even for learners who were deep
+  // into JavaScript. Sort by courseProgress.updatedAt desc; untouched courses
+  // fall to the end and we fall back to `courses[0]` only when nobody has
+  // started anything.
+  const activeCourse = useMemo(() => {
+    if (courses.length === 0) return null;
+    const ts = (id: string): number => {
+      const p = courseProgressMap[id];
+      if (!p?.updatedAt) return 0;
+      const t = new Date(p.updatedAt).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    return [...courses].sort((a, b) => ts(b.course.id) - ts(a.course.id))[0];
+  }, [courses, courseProgressMap]);
   const activeProgress: CourseProgress | null =
     activeCourse ? courseProgressMap[activeCourse.course.id] ?? null : null;
 
