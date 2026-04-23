@@ -41,6 +41,19 @@ test.describe("smoke", () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
+  test("/courses/registry.json serves JSON, not the SPA fallback", async ({ page }) => {
+    // Regression: Vite's publicDir hides any `_`-prefixed file, so a manifest
+    // named `_registry.json` would silently 200 with index.html (SPA fallback).
+    // That shadowed the dashboard in CI even though the file existed on disk.
+    // Keep the top-level registry URL on a non-underscore name forever.
+    const res = await page.request.get("/courses/registry.json");
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"] ?? "").toMatch(/application\/json/);
+    const body = await res.json();
+    expect(Array.isArray(body.courses)).toBe(true);
+    expect(body.courses.length).toBeGreaterThan(0);
+  });
+
   test("StartPage renders ResumeLearningCard for a returning learner", async ({ page }) => {
     // Phase 20-P3: returning learners with in-progress courseProgress see
     // a Resume card above the cold 2-card grid. mid-course-healthy has 5

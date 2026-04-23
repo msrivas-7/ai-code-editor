@@ -70,7 +70,7 @@ describe("listAllCourses — displayOrder sort", () => {
   it("sorts by displayOrder ascending; missing values go last, tie-break on title", async () => {
     const { listAllCourses: freshListAll } = await import("./courseLoader");
     fetchHandler = async (url) => {
-      if (url.endsWith("/courses/_registry.json")) {
+      if (url.endsWith("/courses/registry.json")) {
         return jsonResponse({
           courses: [
             { id: "python-fundamentals" },
@@ -139,7 +139,7 @@ describe("listAllCourses — displayOrder sort", () => {
   it("swallows a single corrupt course — the rest still render on the dashboard", async () => {
     const { listAllCourses: freshListAll } = await import("./courseLoader");
     fetchHandler = async (url) => {
-      if (url.endsWith("/courses/_registry.json")) {
+      if (url.endsWith("/courses/registry.json")) {
         return jsonResponse({
           courses: [{ id: "good" }, { id: "broken" }],
         });

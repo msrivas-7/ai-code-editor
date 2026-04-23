@@ -21,10 +21,14 @@ export class LessonLoaderError extends Error {
   }
 }
 
-// QA-M1: the registry is derived from `public/courses/_registry.json`, which
+// QA-M1: the registry is derived from `public/courses/registry.json`, which
 // is written at dev-server start + at build start by the courseRegistryPlugin
 // in scripts/vitePluginCourseRegistry.ts. Authors drop a new folder with a
 // valid course.json and it shows up automatically — no TS edit required.
+//
+// Filename does NOT start with `_` because Vite's publicDir hides those, so
+// an underscore-prefixed file is shadowed by the SPA history-fallback in dev
+// and comes back as index.html.
 //
 // The registry fetch is cached per module load. `listAllCourses()` returns
 // every entry; `listPublicCourses()` strips `internal: true`. Learner-facing
@@ -33,11 +37,19 @@ export class LessonLoaderError extends Error {
 let cachedRegistry: string[] | null = null;
 async function loadCourseRegistry(): Promise<string[]> {
   if (cachedRegistry) return cachedRegistry;
-  const res = await fetch(`${COURSE_BASE}/_registry.json`);
+  const res = await fetch(`${COURSE_BASE}/registry.json`);
   if (!res.ok) {
     // Registry missing means the vite plugin never ran (e.g. a prod build
     // shipped without it) — fall back to an empty list rather than crashing
     // the learning dashboard.
+    cachedRegistry = [];
+    return cachedRegistry;
+  }
+  // Dev-server history fallback returns `text/html` for any unknown path;
+  // defend against that so we don't explode on json parse and collapse the
+  // dashboard.
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) {
     cachedRegistry = [];
     return cachedRegistry;
   }

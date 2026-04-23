@@ -6,14 +6,19 @@ import type { Plugin } from "vite";
 // has no way to enumerate the folder at runtime. Before this plugin, adding
 // a course directory meant touching a hardcoded TS array in courseLoader and
 // hoping content-linter caught the miss. Now the plugin scans on build /
-// dev-server start and writes `_registry.json` next to the courses — a plain
+// dev-server start and writes `registry.json` next to the courses — a plain
 // JSON manifest the loader fetches like any other static asset.
 //
+// Filename intentionally does NOT start with `_`: Vite's publicDir serve
+// filters out `_`-prefixed paths (treats them as internal), so a file named
+// `_registry.json` would be shadowed by the SPA history-fallback in dev and
+// return index.html — silently breaking the dashboard.
+//
 // The scan is tolerant: a folder without a valid `course.json` is skipped
-// (with a warning) rather than breaking the build. Stale `_registry.json`
+// (with a warning) rather than breaking the build. Stale `registry.json`
 // entries don't accumulate because we always overwrite.
 
-const MANIFEST_NAME = "_registry.json";
+const MANIFEST_NAME = "registry.json";
 
 interface ManifestEntry {
   id: string;
@@ -56,6 +61,19 @@ function writeManifest(coursesDir: string, logger: { info: (m: string) => void; 
 
 export function courseRegistryPlugin(): Plugin {
   const coursesDir = join(process.cwd(), "public", "courses");
+  // Write the manifest synchronously at plugin construction — i.e. the moment
+  // vite.config.ts is evaluated — so the file exists on disk before Vite's
+  // static-serve middleware (sirv) caches its directory index. If we only
+  // wrote in `configureServer`, a freshly booted dev server sometimes indexed
+  // the public/courses dir before our hook ran, causing /courses/registry.json
+  // to fall through to the SPA history-fallback (200 text/html) until a
+  // restart. buildStart + configureServer still run on rebuild/hmr so the
+  // manifest stays up to date when folders change.
+  const bootLogger = {
+    info: (m: string) => console.log(m),
+    warn: (m: string) => console.warn(m),
+  };
+  writeManifest(coursesDir, bootLogger);
   return {
     name: "codetutor:course-registry",
     buildStart() {

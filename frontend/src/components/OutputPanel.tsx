@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRunStore } from "../state/runStore";
 import { useProjectStore } from "../state/projectStore";
 import { linkifyRefs } from "../util/linkifyRefs";
@@ -29,6 +29,17 @@ export function OutputPanel() {
   const [tab, setTab] = useState<Tab>("combined");
   const [copied, setCopied] = useState(false);
   const keys = useShortcutLabels();
+
+  // When a Run starts while the stdin tab is active, jump to combined so the
+  // learner sees output rather than their input buffer. The ref guards against
+  // double-switching mid-run and against firing on the initial mount.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (running && !wasRunning.current && tab === "stdin") {
+      setTab("combined");
+    }
+    wasRunning.current = running;
+  }, [running, tab]);
 
   const hasResult = Boolean(result);
 

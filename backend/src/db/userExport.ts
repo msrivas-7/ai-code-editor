@@ -57,8 +57,9 @@ export async function buildUserExport(userId: string): Promise<UserExportBundle>
   ] = await Promise.all([
     sql`
       SELECT persona, openai_model, theme, welcome_done, workspace_coach_done,
-             editor_coach_done, ui_layout, has_openai_key, updated_at,
-             paid_access_shown_at
+             editor_coach_done, ui_layout,
+             (openai_api_key_cipher IS NOT NULL) AS has_openai_key,
+             updated_at, paid_access_shown_at
         FROM public.user_preferences
        WHERE user_id = ${userId}
     `,

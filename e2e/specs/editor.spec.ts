@@ -72,6 +72,27 @@ test.describe("editor", () => {
     await expectStdoutContains(page, "hello and world");
   });
 
+  test("Run from the stdin tab auto-switches to combined so output is visible", async ({ page }) => {
+    // Regression: before this, pressing Run while the stdin tab was selected
+    // left the learner staring at their input buffer with no indication the
+    // program had produced output.
+    await page.goto("/editor");
+    await waitForMonacoReady(page);
+    await expect(S.runButton(page)).toBeEnabled({ timeout: 30_000 });
+
+    await S.stdinTab(page).click();
+    await expect(S.stdinTab(page)).toHaveAttribute("aria-selected", "true");
+
+    await setMonacoValue(page, "print('switched')\n");
+    await S.runButton(page).click();
+
+    // As soon as a run starts, focus should land on the combined tab.
+    await expect(S.outputTab(page)).toHaveAttribute("aria-selected", "true", {
+      timeout: 5_000,
+    });
+    await expectStdoutContains(page, "switched");
+  });
+
   test("language switch shows confirm modal + cancel preserves code", async ({ page }) => {
     await page.goto("/editor");
     await waitForMonacoReady(page);

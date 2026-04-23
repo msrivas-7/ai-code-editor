@@ -306,3 +306,50 @@ describe("DELETE /api/user/account (Phase 20-P0 #9)", () => {
     expect(supabaseAdmin.adminDeleteUser).toHaveBeenCalledOnce();
   });
 });
+
+describe("GET /api/user/export", () => {
+  // Regression: the bucket-8 ship SELECTed `has_openai_key` as a real column,
+  // but it's a computed boolean (`openai_api_key_cipher IS NOT NULL`). The
+  // route 500'd in prod before anyone noticed. This test hits every SELECT in
+  // buildUserExport against a real schema — any column rename/removal that
+  // breaks the export blows up here.
+  it("returns a 200 bundle whose shape matches the export contract", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    // Seed a preferences row via the public endpoint so has_openai_key has a
+    // row to compute against. This mirrors the production flow — the user's
+    // first interaction always hits /preferences before Settings.
+    const seedRes = await req(userId, "/api/user/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ theme: "light" }),
+    });
+    expect(seedRes.status).toBe(200);
+
+    const res = await req(userId, "/api/user/export");
+    expect(res.status).toBe(200);
+    const bundle = await res.json();
+    expect(bundle.userId).toBe(userId);
+    expect(bundle).toHaveProperty("exportedAt");
+    // has_openai_key is the computed flag the export contract promises.
+    expect(bundle.preferences).not.toBeNull();
+    expect(bundle.preferences).toHaveProperty("has_openai_key", false);
+    // Array-shaped tables exist even when empty.
+    expect(Array.isArray(bundle.courseProgress)).toBe(true);
+    expect(Array.isArray(bundle.lessonProgress)).toBe(true);
+    expect(Array.isArray(bundle.aiUsageLedger)).toBe(true);
+    expect(Array.isArray(bundle.feedback)).toBe(true);
+    // Nullable singletons are null when absent, not undefined.
+    expect(bundle.editorProject).toBeNull();
+    expect(bundle.paidAccessInterest).toBeNull();
+    expect(bundle.platformDenylist).toBeNull();
+  });
+
+  it("serves as an attachment with a dated filename", async () => {
+    if (!dbReachable) return;
+    const userId = await mkUser();
+    const res = await req(userId, "/api/user/export");
+    expect(res.status).toBe(200);
+    const cd = res.headers.get("content-disposition") ?? "";
+    expect(cd).toMatch(/attachment; filename="codetutor-export-\d{4}-\d{2}-\d{2}\.json"/);
+  });
+});

@@ -77,14 +77,14 @@ describe("buildRegistry", () => {
   });
 
   it("ignores hidden (dot-prefixed) entries and the manifest file itself", () => {
-    // A `.DS_Store` or `_registry.json` from a previous run must not be read
+    // A `.DS_Store` or `registry.json` from a previous run must not be read
     // as a course folder.
     scaffold(".DS_Store", "no-json");
-    writeFileSync(join(workDir, "_registry.json"), "{}");
+    writeFileSync(join(workDir, "registry.json"), "{}");
     scaffold("ok", { id: "ok" });
     const { entries, skipped } = buildRegistry(workDir);
     expect(entries.map((e) => e.id)).toEqual(["ok"]);
     expect(skipped.some((s) => s.startsWith("."))).toBe(false);
-    expect(skipped.some((s) => s.startsWith("_registry.json"))).toBe(false);
+    expect(skipped.some((s) => s.startsWith("registry.json"))).toBe(false);
   });
 });
