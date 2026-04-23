@@ -46,6 +46,12 @@ export function useLessonRunner({
 
   const handleRun = useCallback(async () => {
     if (!sessionId || sessionPhase !== "active" || running || !courseId || !lessonId || !lesson) return;
+    // QA-C2: block Run while Check is executing. The frontend Check button is
+    // `disabled={runningTests}`, but Cmd+Enter fires at the window level via
+    // `capture:true` and bypasses that. Without this guard, a Cmd+Enter during
+    // "Checking…" fires a fresh snapshot that wipes the workspace the test
+    // harness is still reading.
+    if (useRunStore.getState().runningTests) return;
     setRunning(true);
     setRunError(null);
     try {

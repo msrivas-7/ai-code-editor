@@ -145,6 +145,43 @@ test.describe("editor", () => {
     await expectStdoutContains(page, "🎉 π=3.14159");
   });
 
+  test("runaway print loop caps at 1 MB with a truncation marker, no browser freeze", async ({
+    page,
+  }) => {
+    // Audit-v2 fix #7: a curious learner running `while True: print(...)`
+    // used to flood ~100 MB of stdout into the backend Node heap and the
+    // eventual JSON response, freezing the browser and blowing the docker
+    // json-file log / Log Analytics cap. `localDocker.exec` now caps each
+    // stream at 1 MB and appends a truncation marker. This test proves:
+    //   1. The runner still exits (10s wall-clock kill via `timeout`),
+    //   2. The response is bounded (≤ ~1.1 MB, not 100 MB),
+    //   3. The learner sees the truncation marker so they know output was cut.
+    await page.goto("/editor");
+    await waitForMonacoReady(page);
+    await expect(S.runButton(page)).toBeEnabled({ timeout: 30_000 });
+
+    // Each line is ~101 bytes (100 x's + newline). A few thousand lines cross
+    // the 1 MB cap well within the 10s wall-clock.
+    await setMonacoValue(
+      page,
+      "line='x'*100\nwhile True:\n    print(line)\n",
+    );
+    await S.runButton(page).click();
+
+    // Truncation marker renders verbatim in the output panel.
+    await expect(page.getByText(/\[output truncated at 1 MB\]/)).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Output panel body stays bounded — we don't assert exact bytes because
+    // the DOM wraps/styles the text, but it must NOT contain 10+ MB worth of
+    // content. A simple ceiling: the inner text is less than 2 MB.
+    const bodyText = await page.locator("#output-panel-body").innerText();
+    expect(bodyText.length, "output truncated to near the 1 MB cap").toBeLessThan(
+      2 * 1024 * 1024,
+    );
+  });
+
   test("language switch shows confirm modal + cancel preserves code", async ({ page }) => {
     await page.goto("/editor");
     await waitForMonacoReady(page);

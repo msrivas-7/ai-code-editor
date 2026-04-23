@@ -84,6 +84,15 @@ export function useLessonValidator({
   const [practiceValidation, setPracticeValidation] = useState<ValidationResult | null>(null);
   const [testReport, setTestReport] = useState<TestReport | null>(null);
   const [runningTests, setRunningTests] = useState(false);
+  // Mirror the local `runningTests` flag into runStore so the global
+  // Cmd+Enter handler in useLessonRunner can see it. Without this, Cmd+Enter
+  // while the test harness is mid-run triggers a fresh snapshot that wipes
+  // the workspace under the harness's feet (torn stdout, spurious test
+  // failures, or worst case a pass the learner didn't earn).
+  useEffect(() => {
+    useRunStore.setState({ runningTests });
+    return () => useRunStore.setState({ runningTests: false });
+  }, [runningTests]);
   const [lastFailedName, setLastFailedName] = useState<string | null>(null);
   const [sameFailStreak, setSameFailStreak] = useState(0);
   const [resetNonce, setResetNonce] = useState(0);

@@ -136,7 +136,11 @@ export function validateLesson(
         break;
       }
       case "custom_validator": {
-        feedback.push("Custom validation is not yet supported.");
+        // Fail-closed: an unimplemented validator must never silently auto-pass
+        // a lesson. Until custom_validator is wired, treat the whole rule as
+        // unsatisfied so the learner isn't marked complete.
+        feedback.push("Custom validation isn't implemented yet — please report this lesson.");
+        allPassed = false;
         break;
       }
     }

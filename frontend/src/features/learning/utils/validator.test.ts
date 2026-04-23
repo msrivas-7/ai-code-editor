@@ -126,12 +126,15 @@ describe("validateLesson", () => {
     expect(result.passed).toBe(false);
   });
 
-  it("handles custom_validator gracefully", () => {
+  it("handles custom_validator gracefully (fail-closed per QA-H4)", () => {
+    // Formerly asserted passed=true on the assumption the branch was a
+    // no-op. That auto-passed any lesson an author shipped with this rule —
+    // covered by the fail-closed fix. See the dedicated describe block below.
     const rules: CompletionRule[] = [
       { type: "custom_validator" },
     ];
     const result = validateLesson(okRun, files, rules);
-    expect(result.passed).toBe(true);
+    expect(result.passed).toBe(false);
   });
 
   it("returns nextHints when validation fails", () => {
@@ -320,6 +323,45 @@ describe("validateLesson", () => {
       ];
       const result = validateLesson(okRun, withFor, rules);
       expect(result.passed).toBe(true);
+    });
+  });
+
+  describe("custom_validator fail-closed (QA-H4)", () => {
+    // The custom_validator branch is an unimplemented placeholder. Until it's
+    // wired to a real validator it MUST fail closed — a lesson whose only
+    // rule is `custom_validator` must NOT be marked complete on an arbitrary
+    // Check click. Previously this branch returned allPassed=true by accident
+    // (the `break` didn't flip the flag), meaning any lesson an author
+    // shipped with that rule would auto-pass → silent prereq unlock, bad
+    // data that survives refresh.
+    it("does not auto-pass when custom_validator is the only rule", () => {
+      const rules: CompletionRule[] = [{ type: "custom_validator" }];
+      const files: ProjectFile[] = [{ path: "main.py", content: "pass\n" }];
+      const result = validateLesson(okRun, files, rules);
+      expect(result.passed).toBe(false);
+      expect(result.feedback.join(" ")).toMatch(/isn't implemented/i);
+    });
+
+    it("does not auto-pass even on a successful run with empty code", () => {
+      const rules: CompletionRule[] = [{ type: "custom_validator" }];
+      const files: ProjectFile[] = [{ path: "main.py", content: "" }];
+      const result = validateLesson(okRun, files, rules);
+      expect(result.passed).toBe(false);
+    });
+
+    it("stays failed when paired with a satisfiable rule", () => {
+      // If any rule in the set fails, the whole lesson fails. The
+      // custom_validator branch must contribute its failure even when its
+      // companions would have passed on their own.
+      const rules: CompletionRule[] = [
+        { type: "expected_stdout", value: "Hello, World!" },
+        { type: "custom_validator" },
+      ];
+      const files: ProjectFile[] = [
+        { path: "main.py", content: 'print("Hello, World!")\n' },
+      ];
+      const result = validateLesson(okRun, files, rules);
+      expect(result.passed).toBe(false);
     });
   });
 });

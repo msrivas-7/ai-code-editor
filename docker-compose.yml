@@ -36,6 +36,16 @@ services:
       interval: 5s
       timeout: 2s
       retries: 10
+    # Audit-v2 SRE-C3 (companion to the runner LogConfig in localDocker.ts):
+    # cap every long-running service's json-file log so a bursty error loop
+    # can't fill the VM disk and blackhole the Log Analytics daily cap. 10 MB
+    # × 3 files is enough to read during a normal incident; past that we'd
+    # rely on the App Insights / LA pipeline anyway.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build:
@@ -110,6 +120,14 @@ services:
         condition: service_completed_successfully
       socket-proxy:
         condition: service_healthy
+    # SRE-C3 (companion): cap backend's own json-file log. A tight error
+    # loop in a handler or a stacktrace-per-request attack would otherwise
+    # grow this log unbounded until /var/lib/docker fills the OS disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
@@ -144,3 +162,9 @@ services:
       - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - backend
+    # SRE-C3 (companion): cap frontend's json-file log.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

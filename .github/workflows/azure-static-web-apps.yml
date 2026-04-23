@@ -57,7 +57,8 @@ jobs:
           # then uploads output_location's contents.
           app_location: "frontend"
           output_location: "dist"
-          skip_api_build: true
+          # No API to build — api_location unset means Oryx skips that phase.
+          # `skip_api_build` isn't a valid input on this action; IDE errors.
 
   close-pr:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -69,3 +70,6 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: close
+          # action: close ignores app_location at runtime, but the action
+          # schema marks it required — passing it silences the IDE error.
+          app_location: "frontend"

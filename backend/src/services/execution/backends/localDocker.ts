@@ -167,6 +167,17 @@ export class LocalDockerBackend implements ExecutionBackend {
         Tmpfs: { "/tmp": "rw,exec,nosuid,nodev,size=64m,mode=1777" },
         Ulimits: [{ Name: "nofile", Soft: 256, Hard: 256 }],
         SecurityOpt: ["no-new-privileges"],
+        // Cap docker json-file log size per container. Without this, a learner
+        // running `while True: print(...)` fills /var/lib/docker/containers/
+        // at 10s × ~10 MB/s ≈ 100 MB per run; the AMA DCR tails that into
+        // Log Analytics and blows the 1 GB/day cap in 2–3 runs, silencing
+        // every alert that queries ContainerLog_CL for the rest of the UTC
+        // day. 10 MB × 1 file is enough to debug a crash without letting one
+        // learner's stdout blackhole prod observability.
+        LogConfig: {
+          Type: "json-file",
+          Config: { "max-size": "10m", "max-file": "1" },
+        },
       },
     });
     await container.start();
@@ -250,10 +261,45 @@ export class LocalDockerBackend implements ExecutionBackend {
       const stderrBuf = new PassThrough();
       this.docker.modem.demuxStream(stream, stdoutBuf, stderrBuf);
 
+      // Cap each stream at 1 MB. Without this, `while True: print("x")` at
+      // ~10 MB/s × 10s ≈ 100 MB accumulates in Node heap as `stdoutChunks`,
+      // then gets serialized into a 100+ MB HTTP response that freezes the
+      // learner's browser. 1 MB is enough for any legitimate CLI output (the
+      // 10s wall-clock timeout also kills the process before realistic code
+      // can write that much). Once the cap is hit, we stop pushing chunks
+      // and mark the stream truncated; the exec still terminates on its own
+      // clock so we don't need to kill upstream.
+      const OUTPUT_CAP_BYTES = 1 * 1024 * 1024;
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
-      stdoutBuf.on("data", (c: Buffer) => stdoutChunks.push(c));
-      stderrBuf.on("data", (c: Buffer) => stderrChunks.push(c));
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
+      stdoutBuf.on("data", (c: Buffer) => {
+        if (stdoutBytes >= OUTPUT_CAP_BYTES) return;
+        const remaining = OUTPUT_CAP_BYTES - stdoutBytes;
+        if (c.length <= remaining) {
+          stdoutChunks.push(c);
+          stdoutBytes += c.length;
+        } else {
+          stdoutChunks.push(c.subarray(0, remaining));
+          stdoutBytes = OUTPUT_CAP_BYTES;
+          stdoutTruncated = true;
+        }
+      });
+      stderrBuf.on("data", (c: Buffer) => {
+        if (stderrBytes >= OUTPUT_CAP_BYTES) return;
+        const remaining = OUTPUT_CAP_BYTES - stderrBytes;
+        if (c.length <= remaining) {
+          stderrChunks.push(c);
+          stderrBytes += c.length;
+        } else {
+          stderrChunks.push(c.subarray(0, remaining));
+          stderrBytes = OUTPUT_CAP_BYTES;
+          stderrTruncated = true;
+        }
+      });
 
       await new Promise<void>((resolve) => {
         stream.on("end", () => resolve());
@@ -265,9 +311,17 @@ export class LocalDockerBackend implements ExecutionBackend {
       // `timeout` exits 137 (128 + SIGKILL) when it kills the child.
       const timedOut = exitCode === 137;
 
+      const truncationMarker = "\n[output truncated at 1 MB]\n";
+      const stdout =
+        Buffer.concat(stdoutChunks).toString("utf8") +
+        (stdoutTruncated ? truncationMarker : "");
+      const stderr =
+        Buffer.concat(stderrChunks).toString("utf8") +
+        (stderrTruncated ? truncationMarker : "");
+
       return {
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        stdout,
+        stderr,
         exitCode,
         timedOut,
         durationMs: Date.now() - started,
