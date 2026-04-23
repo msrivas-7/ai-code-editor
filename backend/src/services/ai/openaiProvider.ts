@@ -88,6 +88,25 @@ async function openaiFetch(path: string, key: string, init?: RequestInit): Promi
 // Node minors also surface the raw "aborted" message from undici — match
 // all three so callers can cleanly swallow abort without treating it as an
 // upstream failure.
+// SEC-C1 follow-up: when a client aborts mid-stream, OpenAI never emits a
+// terminal `usage` event — but we still need to record real cost so the
+// free-tier dollar caps see the spend. We can't call tiktoken from here
+// without adding a native dep, so use the OpenAI-recommended char/4 rough
+// estimate. For gpt-4.1-nano the error is ~10–15% (worst case biased slightly
+// high, which is the fail-safe direction for cap enforcement — cap trips
+// sooner under abuse, not later).
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+// Helper exposed for the /ask (non-stream) abort path. Callers compute an
+// estimated upper-bound cost without having to duplicate prompt-builder
+// logic at the route layer.
+export function estimateInputTokensForAsk(params: AIAskParams): number {
+  const { userTurn, instructions } = buildPromptInputs(params);
+  return estimateTokens(instructions) + estimateTokens(JSON.stringify(userTurn));
+}
+
 function isAbortError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as { name?: string; cause?: { name?: string }; message?: string };
@@ -390,6 +409,12 @@ export const openaiProvider: AIProvider = {
     } catch (err) {
       if (isAbortError(err)) {
         console.log(`[openai] stream aborted before headers`);
+        // Even pre-headers, OpenAI may have received the request body and
+        // billed input tokens. Record an estimated-cost ledger row.
+        handlers.onAbort?.("", {
+          inputTokens: estimateTokens(instructions) + estimateTokens(JSON.stringify(userTurn)),
+          outputTokens: 0,
+        });
         return;
       }
       handlers.onError((err as Error).message);
@@ -469,7 +494,14 @@ export const openaiProvider: AIProvider = {
       }
     } catch (err) {
       if (isAbortError(err)) {
-        console.log(`[openai] stream aborted after ${Date.now() - started}ms`);
+        console.log(`[openai] stream aborted after ${Date.now() - started}ms, raw=${raw.length} chars`);
+        // Input: full prompt is billed by OpenAI once the request was
+        // accepted. Output: what we actually received via delta events
+        // before the abort. Both are rough — see estimateTokens comment.
+        handlers.onAbort?.(raw, {
+          inputTokens: estimateTokens(instructions) + estimateTokens(JSON.stringify(userTurn)),
+          outputTokens: estimateTokens(raw),
+        });
         return;
       }
       handlers.onError((err as Error).message);

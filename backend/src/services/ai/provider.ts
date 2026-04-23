@@ -156,6 +156,15 @@ export interface AIStreamHandlers {
   // errors or parse failures where no status exists. Route handlers use
   // this to decide whether to trip the provider-auth kill flag.
   onError(message: string, status?: number): void;
+  // Fires when the client aborted (TCP close, request deadline) before a
+  // terminal `response.completed` / `response.failed` event arrived.
+  // Token counts are ESTIMATES (chars / 4): inputTokens = full prompt
+  // we sent (OpenAI bills input in full once the request is accepted),
+  // outputTokens = length of delta buffer accumulated pre-abort. The
+  // caller uses these to record a real-cost ledger row so the free-tier
+  // dollar caps (L2/L3/L4) still see the spend — even though the abort
+  // row doesn't count against the 30/day question quota.
+  onAbort?(raw: string, estimatedUsage: TokenUsage): void;
 }
 
 // Error class thrown by the AI provider when an upstream HTTP call fails.

@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { openaiProvider } from "../services/ai/openaiProvider.js";
+import { estimateInputTokensForAsk, openaiProvider } from "../services/ai/openaiProvider.js";
 import { languageSchema } from "../services/execution/commands.js";
 import {
   validateKeyUserRateLimit,
@@ -390,7 +390,51 @@ aiRouter.post("/ask", async (req, res, next) => {
     }
     // Client-close: response is already gone, no point forwarding to the
     // error handler. Timeout: pass through so the client sees a 5xx.
-    if (abort.reason() === "client-close") return;
+    // SEC-C1 follow-up (audit-v2): before returning on client-close,
+    // estimate the cost and write a ledger row. OpenAI bills input tokens
+    // once the request is accepted, even if the response is never read.
+    // `countsTowardQuota: false` — learner saw nothing useful, so the
+    // visible 30/day counter doesn't drain. But L2/L3/L4 dollar caps
+    // SEE the spend via SUM(cost_usd).
+    if (abort.reason() === "client-close") {
+      const estInputTokens = estimateInputTokensForAsk({
+        key: cred.key,
+        model: parsed.data.model,
+        fundingSource: cred.source,
+        question: parsed.data.question,
+        files: parsed.data.files,
+        activeFile: parsed.data.activeFile,
+        language: parsed.data.language,
+        lastRun: parsed.data.lastRun ?? null,
+        history: parsed.data.history,
+        stdin: parsed.data.stdin ?? null,
+        diffSinceLastTurn: parsed.data.diffSinceLastTurn ?? null,
+        runsSinceLastTurn: parsed.data.runsSinceLastTurn,
+        editsSinceLastTurn: parsed.data.editsSinceLastTurn,
+        persona: parsed.data.persona,
+        selection: parsed.data.selection ?? null,
+        lessonContext: parsed.data.lessonContext ?? null,
+      });
+      const { costUsd, priceVersion } = safePrice(
+        parsed.data.model,
+        estInputTokens,
+        0,
+        cred.source,
+      );
+      await safeWriteUsage(userId, {
+        model: parsed.data.model,
+        fundingSource: cred.source,
+        route: "ask",
+        countsTowardQuota: false,
+        inputTokens: estInputTokens,
+        outputTokens: 0,
+        costUsd,
+        priceVersion,
+        status: "aborted",
+        requestId,
+      });
+      return;
+    }
     next(err);
   } finally {
     abort.cleanup();
@@ -516,14 +560,39 @@ aiRouter.post("/ask/stream", async (req, res) => {
           send({ error: message });
           done();
         },
+        onAbort: async (_raw, estUsage) => {
+          // SEC-C1 follow-up (audit-v2): OpenAI bills input tokens once the
+          // request is accepted, plus any output tokens it emitted before
+          // we aborted. Previously this path wrote cost=0 which let
+          // abort-spam bypass the L2/L3/L4 dollar caps. Now we record
+          // real estimated cost. `countsTowardQuota: false` is deliberate
+          // — the learner saw nothing useful, so the visible 30/day
+          // counter doesn't drain. But the dollar caps SEE the spend.
+          terminalFired = true;
+          const { costUsd, priceVersion } = safePrice(
+            parsed.data.model,
+            estUsage.inputTokens,
+            estUsage.outputTokens,
+            cred.source,
+          );
+          await safeWriteUsage(userId, {
+            model: parsed.data.model,
+            fundingSource: cred.source,
+            route: "ask_stream",
+            countsTowardQuota: false,
+            inputTokens: estUsage.inputTokens,
+            outputTokens: estUsage.outputTokens,
+            costUsd,
+            priceVersion,
+            status: "aborted",
+            requestId,
+          });
+        },
       }
     );
-    // QA-H4: provider returned without firing a terminal handler. That's
-    // the abort path — either the client disconnected (res close) or the
-    // backend deadline fired. Write an aborted ledger row so the request
-    // is accounted for. countsTowardQuota=false because the learner
-    // didn't actually receive help; zero tokens because OpenAI doesn't
-    // emit partial usage on abort.
+    // Backstop: provider returned without firing any handler. Shouldn't
+    // happen now that onAbort covers both abort paths, but write a
+    // zero-cost marker so the request is traceable if it ever does.
     if (!terminalFired) {
       await safeWriteUsage(userId, {
         model: parsed.data.model,
