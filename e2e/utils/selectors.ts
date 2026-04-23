@@ -21,13 +21,19 @@ export const userMenuTrigger = (page: Page): Locator =>
 
 export const openSettings = async (
   page: Page,
-  tab?: "account" | "ai" | "appearance",
+  tab?: "account" | "ai" | "appearance" | "data",
 ): Promise<void> => {
   await userMenuTrigger(page).first().click();
   await page.getByRole("menuitem", { name: /^settings$/i }).click();
   if (tab) {
     const labelRegex =
-      tab === "account" ? /^account$/i : tab === "ai" ? /^ai$/i : /^appearance$/i;
+      tab === "account"
+        ? /^account$/i
+        : tab === "ai"
+          ? /^ai$/i
+          : tab === "appearance"
+            ? /^appearance$/i
+            : /^data$/i;
     await page
       .locator('nav[aria-label="Settings sections"]')
       .getByRole("button", { name: labelRegex })

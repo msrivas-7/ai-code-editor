@@ -97,7 +97,7 @@ export default function CourseOverviewPage() {
       </header>
 
       <AmbientGlyphField />
-      <div className="relative z-10 flex-1 overflow-y-auto">
+      <div className="relative flex-1 overflow-y-auto">
         {loading ? (
           <div
             className="mx-auto max-w-2xl px-6 py-6"

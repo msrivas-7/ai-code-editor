@@ -10,12 +10,13 @@ import { DeleteAccountModal } from "./DeleteAccountModal";
 import { PaidAccessInterestButton } from "./PaidAccessInterestButton";
 import { useAIStatus } from "../state/useAIStatus";
 
-type Tab = "account" | "ai" | "appearance";
+type Tab = "account" | "ai" | "appearance" | "data";
 
 const TAB_LABEL: Record<Tab, string> = {
   account: "Account",
   ai: "AI",
   appearance: "Appearance",
+  data: "Data",
 };
 
 const THEME_LABEL: Record<ThemePref, string> = {
@@ -40,7 +41,7 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   const [tab, setTab] = useState<Tab>("account");
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
           Settings
@@ -55,7 +56,7 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         )}
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex min-h-0 flex-1 gap-4">
         <nav
           aria-label="Settings sections"
           className="flex w-28 shrink-0 flex-col gap-0.5"
@@ -80,10 +81,11 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
           })}
         </nav>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div className="flex min-w-0 min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
           {tab === "account" && <AccountTab onClose={onClose} />}
           {tab === "ai" && <AITab />}
           {tab === "appearance" && <AppearanceTab />}
+          {tab === "data" && <DataTab />}
         </div>
       </div>
     </div>
@@ -119,8 +121,6 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
   const [showDelete, setShowDelete] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [replayErr, setReplayErr] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportErr, setExportErr] = useState<string | null>(null);
 
   // Auto-dismiss the save status after ~2.5s. Using a timer (not CSS) so the
   // message can also be cleared early on next save. The effect's cleanup
@@ -158,18 +158,6 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
       setSaveMsg({ kind: "error", text: (e as Error).message });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDownloadData = async () => {
-    setExportErr(null);
-    setExporting(true);
-    try {
-      await api.downloadUserExport();
-    } catch (e) {
-      setExportErr((e as Error).message);
-    } finally {
-      setExporting(false);
     }
   };
 
@@ -319,34 +307,6 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
       <hr className="border-border" />
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-ink">Your data</h3>
-        {exportErr && (
-          <div
-            role="alert"
-            className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger"
-          >
-            {exportErr}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={handleDownloadData}
-          disabled={exporting}
-          aria-busy={exporting}
-          className="self-start rounded-md border border-border bg-elevated px-3 py-1 text-[11px] font-semibold text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {exporting ? "Preparing…" : "Download my data"}
-        </button>
-        <p className="text-[10px] leading-relaxed text-faint">
-          A JSON file with your preferences, progress, saved projects, AI
-          usage history, and feedback. Your encrypted OpenAI key is not
-          included.
-        </p>
-      </section>
-
-      <hr className="border-border" />
-
-      <section className="flex flex-col gap-2">
         <h3 className="text-xs font-semibold text-ink">Danger zone</h3>
         <button
           type="button"
@@ -364,6 +324,51 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
         <DeleteAccountModal onClose={() => setShowDelete(false)} />
       )}
     </>
+  );
+}
+
+function DataTab() {
+  const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState<string | null>(null);
+
+  const handleDownloadData = async () => {
+    setExportErr(null);
+    setExporting(true);
+    try {
+      await api.downloadUserExport();
+    } catch (e) {
+      setExportErr((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-semibold text-ink">Export</h3>
+      {exportErr && (
+        <div
+          role="alert"
+          className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger"
+        >
+          {exportErr}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={handleDownloadData}
+        disabled={exporting}
+        aria-busy={exporting}
+        className="self-start rounded-md border border-border bg-elevated px-3 py-1 text-[11px] font-semibold text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {exporting ? "Preparing…" : "Download my data"}
+      </button>
+      <p className="text-[10px] leading-relaxed text-faint">
+        A JSON file with your preferences, progress, saved projects, AI
+        usage history, and feedback. Your encrypted OpenAI key is not
+        included.
+      </p>
+    </section>
   );
 }
 
