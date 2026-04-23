@@ -10,6 +10,7 @@ import { AmbientGlyphField } from "../../../components/AmbientGlyphField";
 import { StaggerReveal, StaggerItem } from "../../../components/StaggerReveal";
 import { UserMenu } from "../../../components/UserMenu";
 import { FeedbackButton } from "../../../components/FeedbackButton";
+import { Wordmark } from "../../../components/Wordmark";
 import { pickShakyLessons, formatTimeSpent } from "../utils/mastery";
 
 interface CourseData {
@@ -132,10 +133,9 @@ export default function LearningDashboardPage() {
         >
           ← Home
         </button>
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-accent to-violet text-[11px] font-bold text-bg shadow-glow">
-          AI
-        </div>
-        <h1 className="text-sm font-semibold tracking-tight">Guided Learning</h1>
+        <Wordmark size="sm" />
+        <span className="h-4 w-px bg-border" aria-hidden="true" />
+        <h1 className="text-[14px] font-medium tracking-tight text-ink">Guided Learning</h1>
         <div className="ml-auto flex items-center gap-2">
           <FeedbackButton />
           <UserMenu />
@@ -184,13 +184,10 @@ export default function LearningDashboardPage() {
             <StaggerReveal>
               {/* First-visit welcome — shown when no course has been started */}
               {activeCourse && (!activeProgress || activeProgress.status === "not_started") && (
-                <StaggerItem className="mb-8 rounded-xl border border-violet/20 bg-gradient-to-br from-violet/5 to-accent/5 p-6">
+                <StaggerItem className="mb-8 rounded-xl border border-border bg-panel p-6">
                   <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet text-sm font-bold text-bg shadow-glow">
-                      AI
-                    </div>
                     <div>
-                      <h2 className="text-base font-bold text-ink">Ready to start coding?</h2>
+                      <h2 className="text-[18px] font-semibold tracking-tight text-ink">Ready to start coding?</h2>
                       <p className="mt-1 text-sm leading-relaxed text-muted">
                         Pick a course below to begin. Each lesson has step-by-step instructions, a code editor, and an AI tutor to help you along the way. No experience needed.
                       </p>

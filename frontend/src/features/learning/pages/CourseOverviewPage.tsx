@@ -6,10 +6,10 @@ import { useProgressStore } from "../stores/progressStore";
 import { useAuthStore } from "../../../auth/authStore";
 import { LessonList } from "../components/LessonList";
 import { AnimatedProgressBar } from "../components/AnimatedProgressBar";
-import { AmbientGlyphField } from "../../../components/AmbientGlyphField";
 import { StaggerReveal, StaggerItem } from "../../../components/StaggerReveal";
 import { UserMenu } from "../../../components/UserMenu";
 import { FeedbackButton } from "../../../components/FeedbackButton";
+import { Wordmark } from "../../../components/Wordmark";
 import { Modal } from "../../../components/Modal";
 import type { ProgressStatus } from "../types";
 
@@ -84,10 +84,9 @@ export default function CourseOverviewPage() {
         >
           ← Courses
         </button>
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-accent to-violet text-[11px] font-bold text-bg shadow-glow">
-          AI
-        </div>
-        <h1 className="text-sm font-semibold tracking-tight">
+        <Wordmark size="sm" />
+        <span className="h-4 w-px bg-border" aria-hidden="true" />
+        <h1 className="truncate text-[14px] font-medium tracking-tight text-ink">
           {course?.title ?? "Course"}
         </h1>
         <div className="ml-auto flex items-center gap-2">
@@ -96,7 +95,6 @@ export default function CourseOverviewPage() {
         </div>
       </header>
 
-      <AmbientGlyphField />
       <div className="relative flex-1 overflow-y-auto">
         {loading ? (
           <div
@@ -170,6 +168,7 @@ export default function CourseOverviewPage() {
                 fillClassName="bg-violet"
                 trackClassName="bg-elevated"
                 ariaLabel={`Course progress: ${completedIds.length} of ${lessons.length} lessons completed`}
+                shimmerKey={courseId ? `course:${courseId}:lessons` : undefined}
               />
               {practiceGrandTotal > 0 && (
                 <div className="mt-1.5" title={`${practiceDoneTotal}/${practiceGrandTotal} practice exercises`}>
@@ -179,6 +178,7 @@ export default function CourseOverviewPage() {
                     fillClassName="bg-gradient-to-r from-violet/70 to-accent/70"
                     trackClassName="bg-elevated/60"
                     ariaLabel={`Practice progress: ${practiceDoneTotal} of ${practiceGrandTotal} exercises done`}
+                    shimmerKey={courseId ? `course:${courseId}:practice` : undefined}
                   />
                 </div>
               )}

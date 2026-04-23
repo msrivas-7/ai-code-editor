@@ -61,7 +61,16 @@ export function useLessonLoader({
   // `initialized` gates one-shot effects (first project hydration, edit
   // detector, test-report invalidation). Kept on a ref so the loader can
   // expose it to the runner + validator without tripping React state churn.
-  const initializedRef = useRef(false);
+  // Tracks WHICH lesson-id has been hydrated into the project store, not
+  // just "has init run." A plain boolean ref broke the next-lesson flow:
+  // when the URL flips A → B, Effect 1 resets the ref and kicks off the
+  // lesson-B fetch, but Effect 2 fires in the same render tick before
+  // `lesson` state updates to B — so init runs with lesson=A but
+  // lessonId=B, writing A's starterFiles under B's storage key. The
+  // learner lands on B still seeing A's code until they click Reset.
+  // Keying by "${courseId}/${lessonId}" means Effect 2 waits for
+  // `lesson.id === lessonId` AND only inits once per lesson identity.
+  const initializedForRef = useRef<string | null>(null);
   const resumedTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const startLesson = useProgressStore((s) => s.startLesson);
@@ -87,7 +96,6 @@ export function useLessonLoader({
   useEffect(() => {
     if (!courseId || !lessonId) return;
     let cancelled = false;
-    initializedRef.current = false;
     setLoading(true);
     setLoadError(null);
     onResetPerLessonState?.();
@@ -153,8 +161,16 @@ export function useLessonLoader({
   }, [courseId, lessonId, learnerId, startLesson]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!lesson || !courseId || !lessonId || initializedRef.current) return;
-    initializedRef.current = true;
+    if (!lesson || !courseId || !lessonId) return;
+    // Guard against stale `lesson` state. Effect 1 initiates the
+    // lesson-B fetch when the URL flips, but this effect's `lesson`
+    // closure may still point to lesson A until `setLesson(B)` lands.
+    // Running init with a mismatched lesson writes A's starterFiles
+    // under B's storage key — the "old code in new lesson" bug.
+    if (lesson.id !== lessonId) return;
+    const key = `${courseId}/${lessonId}`;
+    if (initializedForRef.current === key) return;
+    initializedForRef.current = key;
 
     const savedCode = loadSavedCode(courseId, lessonId);
 
@@ -195,7 +211,16 @@ export function useLessonLoader({
   // writes to `practiceExerciseCode[exerciseId]` so switching exercises
   // doesn't clobber the main lesson buffer.
   useEffect(() => {
-    if (!courseId || !lessonId || !initializedRef.current) return;
+    // Only auto-save once we've actually hydrated THIS lesson's files
+    // into the store. Using the same key the init effect stamps on
+    // success — if it doesn't match, we'd risk saving another lesson's
+    // buffer under this lesson's key.
+    if (
+      !courseId ||
+      !lessonId ||
+      initializedForRef.current !== `${courseId}/${lessonId}`
+    )
+      return;
     const timer = setTimeout(() => {
       const snap = useProjectStore.getState().snapshot();
       if (snap.length === 0) return;
@@ -269,6 +294,6 @@ export function useLessonLoader({
     loading,
     resumed,
     loadError,
-    initializedRef,
+    initializedForRef,
   };
 }

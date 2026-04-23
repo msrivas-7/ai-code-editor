@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
@@ -315,10 +316,34 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
             </div>
           );
         })}
+        {/* Thinking → streaming crossfade. `mode="wait"` ensures the
+            skeleton fully exits before the response mounts — the tutor's
+            first-token moment deserves an actual transition, not a
+            DOM swap. Key differentiates the two children so
+            AnimatePresence runs exit then enter on the flip. */}
         {asking && (
-          pending && hasTutorContent(pending.sections)
-            ? <TutorResponseView sections={pending.sections} disabled streaming />
-            : <ThinkingSkeleton />
+          <AnimatePresence mode="wait" initial={false}>
+            {pending && hasTutorContent(pending.sections) ? (
+              <motion.div
+                key="response"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <TutorResponseView sections={pending.sections} disabled streaming />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="thinking"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <ThinkingSkeleton />
+              </motion.div>
+            )}
+          </AnimatePresence>
         )}
         {askError && (
           <AskErrorView

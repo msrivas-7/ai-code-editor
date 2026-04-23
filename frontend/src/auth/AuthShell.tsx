@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Wordmark } from "../components/Wordmark";
 
 // Shared layout for /login, /signup, /reset-password, /auth/callback. Keeps
 // the header branding + card chrome consistent across auth routes so the
@@ -19,13 +20,11 @@ export function AuthShell({
     <div className="flex min-h-screen flex-col bg-bg text-ink">
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm">
-          <div className="mb-6 flex flex-col items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet text-sm font-bold text-bg shadow-glow">
-              AI
-            </div>
-            <h1 className="text-lg font-bold tracking-tight">{title}</h1>
+          <div className="mb-6 flex flex-col items-center gap-3">
+            <Wordmark size="lg" />
+            <h2 className="text-[15px] font-medium tracking-tight text-ink">{title}</h2>
             {subtitle && (
-              <p className="text-center text-xs text-muted">{subtitle}</p>
+              <p className="text-center text-[13px] leading-relaxed text-muted">{subtitle}</p>
             )}
           </div>
           <div className="rounded-xl border border-border bg-panel p-5 shadow-sm">

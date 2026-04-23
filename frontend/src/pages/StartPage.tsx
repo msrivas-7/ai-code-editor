@@ -6,6 +6,7 @@ import { UserMenu } from "../components/UserMenu";
 import { FeedbackButton } from "../components/FeedbackButton";
 import { AmbientGlyphField } from "../components/AmbientGlyphField";
 import { StaggerReveal, StaggerItem } from "../components/StaggerReveal";
+import { Wordmark } from "../components/Wordmark";
 import { usePreferencesStore } from "../state/preferencesStore";
 import { useProgressStore } from "../features/learning/stores/progressStore";
 import { listPublicCourses, loadAllLessonMetas } from "../features/learning/content/courseLoader";
@@ -96,14 +97,12 @@ export default function StartPage() {
       </div>
       <StaggerReveal className="flex flex-1 flex-col items-center justify-center px-6">
         <StaggerItem>
-          <div ref={headerRef} className="mb-10 flex flex-col items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet text-lg font-bold text-bg shadow-glow">
-              AI
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">CodeTutor AI</h1>
-            <p className="max-w-md text-center text-sm text-muted">
-              Write code, run it in a sandbox, and learn with an AI tutor —
-              all in the browser.
+          <div ref={headerRef} className="mb-10 flex flex-col items-center gap-4">
+            <Wordmark size="hero" />
+            <p className="max-w-lg text-center text-[15px] leading-relaxed text-muted">
+              Learn to code with a tutor who has all day for you. Write real
+              Python, JavaScript, or Go in your browser — run it in a sandbox,
+              ask questions, build understanding.
             </p>
           </div>
         </StaggerItem>

@@ -15,6 +15,7 @@ import { Splitter } from "../../../components/Splitter";
 import { SettingsModal } from "../../../components/SettingsModal";
 import { UserMenu } from "../../../components/UserMenu";
 import { FeedbackButton } from "../../../components/FeedbackButton";
+import { Wordmark } from "../../../components/Wordmark";
 import { SessionErrorBanner } from "../../../components/SessionErrorBanner";
 import { SessionRestartBanner } from "../../../components/SessionRestartBanner";
 import { SessionReplacedModal } from "../../../components/SessionReplacedModal";
@@ -78,7 +79,7 @@ export default function LessonPage() {
     courseId,
     lessonId,
     practiceMode,
-    initializedRef: loader.initializedRef,
+    initializedRef: loader.initializedForRef,
     tutorCollapsed: layout.tutorCollapsed,
     setTutorCollapsed: layout.setTutorCollapsed,
   });
@@ -90,7 +91,7 @@ export default function LessonPage() {
     totalLessons: loader.totalLessons,
     sessionId: runner.sessionId,
     sessionPhase: runner.sessionPhase,
-    initializedRef: loader.initializedRef,
+    initializedRef: loader.initializedForRef,
     practiceMode,
     setPracticeMode,
     practiceIndex,
@@ -145,11 +146,10 @@ export default function LessonPage() {
         >
           ← Back
         </button>
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-accent to-violet text-[11px] font-bold text-bg shadow-glow">
-          AI
-        </div>
+        <Wordmark size="sm" />
+        <span className="h-4 w-px bg-border" aria-hidden="true" />
         <h1
-          className="truncate text-sm font-semibold tracking-tight"
+          className="truncate text-[14px] font-medium tracking-tight text-ink"
           title={lesson ? `Lesson ${lesson.order}: ${lesson.title}` : undefined}
         >
           Lesson {lesson?.order}: {lesson?.title ?? "Loading..."}

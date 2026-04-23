@@ -38,7 +38,9 @@ export interface UseLessonValidatorArgs {
   totalLessons: number;
   sessionId: string | null;
   sessionPhase: string;
-  initializedRef: RefObject<boolean>;
+  // Holds the "${courseId}/${lessonId}" key once the loader has hydrated
+  // this lesson's files into the project store. Consumers truthy-check it.
+  initializedRef: RefObject<string | null>;
   // Practice-mode state lives on the page so the loader (for auto-save
   // keying) and the validator (for the check/run/enter-practice flows)
   // share one source of truth without re-deriving it.

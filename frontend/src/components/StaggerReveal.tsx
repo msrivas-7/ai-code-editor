@@ -9,23 +9,28 @@ import type { ReactNode } from "react";
 //
 // `prefers-reduced-motion` is honored automatically by framer-motion.
 
+// Timings tuned after staff-UX review — original values (stagger 0.14s,
+// duration 0.62s) pushed "All Courses" header ~800 ms past hydration
+// finish, which read as latency rather than choreography. Halved the
+// stagger + duration; content-assembles-itself feel survives, the
+// perceived-latency cost halves.
 const containerVariants: Variants = {
   hidden: {},
   show: {
     transition: {
-      staggerChildren: 0.14,
-      delayChildren: 0.12,
+      staggerChildren: 0.06,
+      delayChildren: 0.06,
     },
   },
 };
 
 const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 14, scale: 0.985 },
+  hidden: { opacity: 0, y: 8, scale: 0.99 },
   show: {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { duration: 0.62, ease: [0.22, 1, 0.36, 1] as const },
+    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const },
   },
 };
 

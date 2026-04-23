@@ -12,7 +12,11 @@ export interface UseLessonRunnerArgs {
   courseId: string | undefined;
   lessonId: string | undefined;
   practiceMode: boolean;
-  initializedRef: RefObject<boolean>;
+  // Holds the "${courseId}/${lessonId}" key of the lesson whose files are
+  // currently hydrated into the project store (or null before first
+  // hydrate). Consumers truthy-check it to know "init ran" — the key
+  // content is only meaningful inside the loader hook that owns it.
+  initializedRef: RefObject<string | null>;
   // Controls the tutor pane's collapsed state from outside; "Explain Error"
   // needs to expand it when the tutor is hidden.
   tutorCollapsed: boolean;

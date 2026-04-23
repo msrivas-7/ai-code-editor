@@ -41,6 +41,25 @@ export default {
           "monospace",
         ],
       },
+      // Typography scale — named tokens with paired line-height + letter-
+      // spacing so authoring has a grammar beyond reflexive `text-xs`/
+      // `text-[10px]`. Use these for headings and prominent copy; keep
+      // Tailwind's stock scale for incidental utility text.
+      //
+      //   text-display  — marketing hero (StartPage)
+      //   text-h1       — page title
+      //   text-h2       — section title
+      //   text-body     — paragraph copy
+      //   text-meta     — metadata, timestamps, small labels
+      //   text-micro    — eyebrow/label annotations only (never body)
+      fontSize: {
+        display: ["48px", { lineHeight: "1.05", letterSpacing: "-0.02em", fontWeight: "600" }],
+        h1: ["28px", { lineHeight: "1.2", letterSpacing: "-0.015em", fontWeight: "600" }],
+        h2: ["20px", { lineHeight: "1.3", letterSpacing: "-0.01em", fontWeight: "600" }],
+        body: ["14px", { lineHeight: "1.5" }],
+        meta: ["12px", { lineHeight: "1.4", fontWeight: "500" }],
+        micro: ["10px", { lineHeight: "1.3", letterSpacing: "0.04em", fontWeight: "600" }],
+      },
       boxShadow: {
         glow: "0 0 0 1px rgb(56 189 248 / 0.35), 0 0 20px -4px rgb(56 189 248 / 0.35)",
         soft: "0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px 0 rgb(0 0 0 / 0.4)",

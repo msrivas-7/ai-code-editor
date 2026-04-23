@@ -7,6 +7,7 @@ import {
   useTransform,
 } from "framer-motion";
 import { AmbientGlyphField } from "../components/AmbientGlyphField";
+import { Wordmark } from "../components/Wordmark";
 
 // Shared loader shown during the auth-resolve → store-hydrate sequence.
 // RequireAuth renders it first (waiting for `useAuthStore.loading`); the
@@ -15,43 +16,42 @@ import { AmbientGlyphField } from "../components/AmbientGlyphField";
 // the 150-300ms visual flicker we'd otherwise get from swapping one
 // skeleton for another.
 //
-// Visual choreography ("big reveal" pass):
+// Visual choreography (trimmed pass, post-review):
 //
 //   ENTER (mount):
 //    - Backdrop fades in with breathing radial gradients
 //    - Big-bang ring expands once from dead center
-//    - Constellation of code glyphs drifts upward in the backdrop
-//    - Three ripple rings pulse outward in a staggered loop
-//    - Three orbiting dots circle at different radii / periods
+//    - Ambient code glyphs drift upward in the backdrop (hero density)
 //    - Progress ring wraps the badge (determinate fill or indeterminate spin)
-//    - Badge scales in with a spring overshoot
-//    - Label fades up; detail crossfades on change
+//    - Badge scales in with a spring overshoot (one-shot, no loop)
+//    - Headline cycles through two phases (blur-crossfade)
 //
 //   EXIT (when parent is ready + min duration elapsed):
-//    - Ripples fire one final big expansion and fade
-//    - Orbits accelerate outward and fade off their rings
-//    - Badge zooms toward camera (scale 1.4) and fades
-//    - Backdrop + glyphs fade
-//    - Label fades up and out
+//    - Badge zooms toward camera (scale 1.45) and fades
+//    - Backdrop + glyphs fade with the parent opacity
 //    - onMinDurationReached fires at the END of the exit — parent waits
 //      for this signal before unmounting so the reveal plays in full.
+//
+// Previous revisions layered ripples, orbiting dots, and an infinite
+// badge pulse on top of the above. Review feedback: eight simultaneous
+// motion elements read as a demo reel, not a loader. Keeping the four
+// that serve a purpose (hero feel, progress encoding, headline copy,
+// orchestrated exit); dropping the decoration.
 //
 // Accessibility: framer-motion honors `prefers-reduced-motion` — every
 // transition short-circuits to 0ms when the OS flag is set. role +
 // aria-live behaviour is identical to previous versions.
 
-const MIN_VISIBLE_MS = 6_000;
-const EXIT_DURATION_MS = 900;
+// Fast hydrate shouldn't pay a 6s tax. 1.8s is enough for the big-bang
+// ring + badge spring + two headline phases to play; a quick hydrate
+// exits right as the second phase settles.
+const MIN_VISIBLE_MS = 2_500;
+const EXIT_DURATION_MS = 600;
 
-// Cycle the headline through a few reassuring phases during the
-// minimum-visible window. Beats a static "Setting up your workspace"
-// that sits untouched for 4 seconds — pairs the time-based progress
-// sweep with a matching sequence of narrative beats so the wait feels
-// intentional rather than padded. Each phase dwells ~900ms, with a
-// crossfade between them.
+// Two phases — first frames the wait, second signals imminent resolution.
+// Blur-crossfade between them over MIN_VISIBLE_MS / 2 (~900ms dwell).
 const HEADLINE_PHASES = [
   "Setting up your workspace",
-  "Loading your progress",
   "Almost ready",
 ];
 const HEADLINE_INTERVAL_MS = Math.floor(MIN_VISIBLE_MS / HEADLINE_PHASES.length);
@@ -225,7 +225,7 @@ export function AuthLoader({
       />
 
       <div className="relative z-10 flex w-full max-w-xs flex-col items-center gap-7">
-        {/* Badge cluster: progress ring + ripples + orbits + badge. */}
+        {/* Badge cluster: progress ring + badge. */}
         <motion.div
           className="relative flex items-center justify-center"
           style={{ width: RING_SIZE, height: RING_SIZE }}
@@ -237,32 +237,6 @@ export function AuthLoader({
             ease: [0.22, 1, 0.36, 1],
           }}
         >
-          {/* Ripple rings — three staggered pulses outward. On exit,
-              one big final expansion + fade. */}
-          {[0, 0.8, 1.6].map((delay, i) => (
-            <motion.span
-              key={i}
-              className="absolute inset-0 rounded-full border border-accent/40"
-              initial={{ scale: 0.55, opacity: 0.8 }}
-              animate={
-                exiting
-                  ? { scale: 2.4, opacity: 0 }
-                  : { scale: 1.25, opacity: 0 }
-              }
-              transition={
-                exiting
-                  ? { duration: 0.6, ease: "easeOut", delay: i * 0.05 }
-                  : {
-                      duration: 2.4,
-                      delay,
-                      repeat: Infinity,
-                      ease: "easeOut",
-                    }
-              }
-              aria-hidden="true"
-            />
-          ))}
-
           {/* Progress ring — determinate fills, indeterminate spins. */}
           {hasProgress ? (
             <svg
@@ -352,91 +326,28 @@ export function AuthLoader({
             </motion.svg>
           )}
 
-          {/* Orbiting dots — three at different radii. Accelerate + fade outward on exit. */}
-          {[
-            { radius: RING_RADIUS + 8, duration: 3.6, color: "bg-accent" },
-            { radius: RING_RADIUS - 2, duration: 5.2, color: "bg-violet" },
-            { radius: RING_RADIUS + 2, duration: 4.4, color: "bg-accent/70" },
-          ].map((orbit, i) => (
-            <motion.div
-              key={i}
-              className="absolute inset-0"
-              animate={
-                exiting
-                  ? { rotate: 720, opacity: 0, scale: 1.6 }
-                  : { rotate: 360, opacity: 1, scale: 1 }
-              }
-              transition={
-                exiting
-                  ? { duration: 0.6, ease: "easeOut" }
-                  : {
-                      rotate: {
-                        duration: orbit.duration,
-                        repeat: Infinity,
-                        ease: "linear",
-                        delay: i * -0.6,
-                      },
-                    }
-              }
-              aria-hidden="true"
-            >
-              <span
-                className={`absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${orbit.color} shadow-glow`}
-                style={{ top: `calc(50% - ${orbit.radius}px - 3px)` }}
-              />
-            </motion.div>
-          ))}
-
-          {/* Badge — scales in spring overshoot, zooms toward camera on exit. */}
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0, rotate: -8 }}
-            animate={
-              exiting
-                ? { scale: 1.45, opacity: 0, rotate: 0 }
-                : { scale: 1, opacity: 1, rotate: 0 }
-            }
-            transition={
-              exiting
-                ? { duration: 0.6, ease: [0.22, 1, 0.36, 1] }
-                : {
-                    scale: {
-                      type: "spring",
-                      stiffness: 220,
-                      damping: 12,
-                      delay: 0.15,
-                    },
-                    opacity: { duration: 0.4, delay: 0.15 },
-                    rotate: {
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 14,
-                      delay: 0.15,
-                    },
-                  }
-            }
-            className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-violet text-2xl font-bold text-bg shadow-glow"
-          >
-            <motion.span
-              animate={exiting ? { scale: 1 } : { scale: [1, 1.05, 1] }}
-              transition={
-                exiting
-                  ? { duration: 0.3 }
-                  : { duration: 2, repeat: Infinity, ease: "easeInOut" }
-              }
-            >
-              AI
-            </motion.span>
-          </motion.div>
-
-          {/* Percentage ticker — overlaid below ring in determinate mode. */}
+          {/* Ring center — determinate mode shows the pct readout; indeterminate
+              mode leaves the center empty so the spinning track carries the
+              attention on its own. Brand identity lives in the Wordmark
+              BELOW the ring (consistent with every other surface), not
+              inside it — putting a wordmark inside a circle never fits
+              geometrically and a monogram-in-a-circle was review-flagged
+              as Figma placeholder energy. */}
           {hasProgress && (
             <motion.div
-              className="pointer-events-none absolute inset-x-0 -bottom-7 text-center"
-              animate={exiting ? { opacity: 0, y: -4 } : { opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={
+                exiting ? { opacity: 0, scale: 1.05 } : { opacity: 1, scale: 1 }
+              }
+              transition={{
+                duration: exiting ? 0.35 : 0.4,
+                delay: exiting ? 0 : 0.2,
+                ease: [0.22, 1, 0.36, 1],
+              }}
             >
               <motion.span
-                className="text-[10px] font-semibold tabular-nums text-faint"
+                className="text-[32px] font-semibold tabular-nums leading-none tracking-tight text-ink"
                 aria-hidden="true"
               >
                 {pctLabel}
@@ -445,21 +356,36 @@ export function AuthLoader({
           )}
         </motion.div>
 
+        {/* Wordmark — the single brand anchor, consistent with the
+            sizing + treatment used on all authenticated page headers. */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={
+            exiting ? { opacity: 0, y: -4 } : { opacity: 1, y: 0 }
+          }
+          transition={{
+            duration: exiting ? 0.35 : 0.45,
+            delay: exiting ? 0 : 0.25,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        >
+          <Wordmark size="lg" />
+        </motion.div>
+
         {/* Label block — mt-8 gives the headline proper breathing room
             below the badge cluster. min-w-[360px] breaks out of the
             parent's max-w-xs so text-base phrases fit on one line. */}
         <div className="mt-8 flex min-w-[360px] min-h-[44px] flex-col items-center gap-1.5 text-center">
           {/* Single-motion.p AnimatePresence — keyed on currentHeadline so
-              each phase change triggers a clean exit → enter. Headline
-              uses the same accent→violet gradient as the badge, clipped
-              to the text — sits harmoniously against the gradient backdrop
-              instead of stark text-ink. Size trimmed from text-lg to
-              text-base for a more refined, less shouty feel. */}
+              each phase change triggers a clean exit → enter. Plain ink
+              color (the gradient is reserved for intentional emphasis
+              only — review note). The blur-crossfade carries the
+              attention. */}
           <div className="relative h-6 w-full overflow-hidden">
             <AnimatePresence mode="wait" initial={false}>
               <motion.p
                 key={currentHeadline}
-                className="absolute inset-0 whitespace-nowrap bg-gradient-to-r from-accent via-ink to-violet bg-clip-text text-center text-base font-medium tracking-[-0.01em] text-transparent"
+                className="absolute inset-0 whitespace-nowrap text-center text-base font-medium tracking-[-0.01em] text-ink"
                 style={{ fontFeatureSettings: '"ss01", "cv11"' }}
                 initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}

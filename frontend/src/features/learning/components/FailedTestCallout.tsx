@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import type { FunctionTest, TestCaseResult } from "../types";
 
 interface FailedTestCalloutProps {
@@ -57,6 +58,26 @@ function isUserTyping(): boolean {
 export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAskTutor }: FailedTestCalloutProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+
+  // Reveal motion + first-fail shake. Motion encodes meaning here — the
+  // verdict ARRIVES, not just appears. Shake is gated on the FIRST fail
+  // so repeated attempts don't keep getting jostled (the reveal alone
+  // carries the "new result" signal on subsequent tries).
+  const revealProps = reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.15 } }
+    : {
+        initial: { opacity: 0, y: 6 },
+        animate:
+          consecutiveFails === 1
+            ? { opacity: 1, y: 0, x: [0, -4, 4, -2, 2, 0] }
+            : { opacity: 1, y: 0 },
+        transition: {
+          duration: 0.32,
+          ease: [0.22, 1, 0.36, 1] as const,
+          x: { duration: 0.28, delay: 0.08, ease: "easeOut" as const },
+        },
+      };
   useEffect(() => {
     if (!isUserTyping()) {
       // preventScroll: otherwise default focus behavior scrolls ancestors
@@ -82,8 +103,9 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
 
   if (failure.hidden) {
     return (
-      <div
+      <motion.div
         ref={containerRef}
+        {...revealProps}
         className="mt-3 rounded-xl border border-warn/30 bg-warn/5 p-3"
         role="status"
         aria-live="polite"
@@ -119,7 +141,7 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
             If the next try still struggles, you'll be able to ask the tutor to walk through it.
           </p>
         ) : null}
-      </div>
+      </motion.div>
     );
   }
 
@@ -131,8 +153,9 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
   const errorSummary = isError ? lastTracebackLine(failure.error ?? "") : "";
 
   return (
-    <div
+    <motion.div
       ref={containerRef}
+      {...revealProps}
       className={`mt-3 rounded-xl border p-3 ${tone}`}
       role="status"
       aria-live="polite"
@@ -181,6 +204,6 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
           If the next try still struggles, you'll be able to ask the tutor to walk through it.
         </p>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
