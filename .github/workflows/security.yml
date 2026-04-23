@@ -1,0 +1,145 @@
+name: Security suite
+
+# Claims-verification harness that runs adversarial user code through
+# the real execution backend and asserts our documented security posture
+# actually holds. One scenario per claim, one claim per scenario —
+# see e2e/security-suite/README.md for the matrix.
+#
+# Kept separate from e2e.yml because:
+#  - It runs with privileged tcpdump for the host sentinel (egress observer)
+#  - It needs serial execution of resource tests (fork bombs + sentinel
+#    baselines don't mix with parallel workers)
+#  - It's gated to paths that can change security posture, so most PRs
+#    don't pay the ~5-8 min cost
+#
+# Failure here is never a flake to retry out — a green run is the
+# contract that `--network=none`, `CapDrop: [ALL]`, per-line caps, and
+# HMAC-signed grading envelopes are all working as claimed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/src/services/execution/**'
+      - 'backend/src/routes/execution.ts'
+      - 'backend/src/routes/executeTests.ts'
+      - 'backend/src/routes/project.ts'
+      - 'backend/src/routes/session.ts'
+      - 'backend/src/services/session/**'
+      - 'backend/src/middleware/csrfGuard.ts'
+      - 'runner-image/**'
+      - 'docker-compose*.yml'
+      - 'e2e/security-suite/**'
+      - '.github/workflows/security.yml'
+  pull_request:
+    paths:
+      - 'backend/src/services/execution/**'
+      - 'backend/src/routes/execution.ts'
+      - 'backend/src/routes/executeTests.ts'
+      - 'backend/src/routes/project.ts'
+      - 'backend/src/routes/session.ts'
+      - 'backend/src/services/session/**'
+      - 'backend/src/middleware/csrfGuard.ts'
+      - 'runner-image/**'
+      - 'docker-compose*.yml'
+      - 'e2e/security-suite/**'
+      - '.github/workflows/security.yml'
+  schedule:
+    # Nightly run catches drift from upstream base-image updates that
+    # don't touch our files (kernel CVE patches, etc.).
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: Security scenarios (localDocker backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BYOK_ENCRYPTION_KEY: ${{ secrets.BYOK_ENCRYPTION_KEY }}
+      METRICS_TOKEN: e2e-test-metrics-token
+      # Match the e2e worker-level session caps — security scenarios
+      # exercise fewer sessions but we don't want to trip generic rate
+      # limits during the suite.
+      MAX_SESSIONS_PER_USER: "60"
+      MAX_SESSIONS_GLOBAL: "200"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install tcpdump for the host sentinel
+        # tcpdump is preinstalled on ubuntu-latest. This step is a
+        # belt-and-suspenders no-op on the default runner; keeps the
+        # workflow portable to any runner image that strips it.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tcpdump >/dev/null
+          sudo -n tcpdump --version
+
+      - name: Boot docker-compose stack
+        run: docker compose up -d backend frontend
+
+      - name: Install e2e deps
+        working-directory: e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('e2e/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright (no browser — API context only)
+        working-directory: e2e
+        run: npx playwright install-deps
+
+      - name: Run security suite
+        working-directory: e2e
+        # Use the suite-specific config so we don't pick up UI specs.
+        # Sudo is pre-authorized on ubuntu-latest for tcpdump.
+        env:
+          SECURITY_SUITE_BRIDGE_IFACE: docker0
+        run: npx playwright test --config=security-suite/playwright.config.ts
+
+      - name: Dump docker-compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=400
+
+      - name: Upload suite report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-suite-report
+          path: e2e/security-suite/playwright-report
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload suite traces/videos
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-suite-traces
+          path: e2e/security-suite/test-results
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Tear down docker-compose
+        if: always()
+        run: docker compose down -v

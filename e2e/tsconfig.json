@@ -11,5 +11,11 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["specs/**/*", "fixtures/**/*", "utils/**/*", "scripts/**/*"]
+  "include": [
+    "specs/**/*",
+    "fixtures/**/*",
+    "utils/**/*",
+    "scripts/**/*",
+    "security-suite/**/*"
+  ]
 }
