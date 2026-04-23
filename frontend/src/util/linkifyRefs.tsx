@@ -21,12 +21,38 @@ function resolvePath(candidate: string, knownPaths: string[]): string | null {
   return byBase.length === 1 ? byBase[0] : null;
 }
 
+// Safety net for pathological outputs. REF_REGEX scans the whole string
+// and has nested quantifiers (`[\w.\\/-]*` followed by more character
+// classes) — on very long single-line strings (e.g. a user doing
+// `sys.stderr.write("E" * 1_000_000)`) the backtracking cost spikes and
+// the main thread stalls long enough to freeze the tab. Backend now
+// per-line-caps at 8 KB, but we still defend here: if the total payload
+// blows this bound or any single line is wildly out of range for real
+// stack traces, skip the regex pass and render plain text.
+const MAX_LINKIFY_TOTAL_BYTES = 200 * 1024;
+const MAX_LINKIFY_LINE_BYTES = 16 * 1024;
+
+function hasOversizedLine(text: string): boolean {
+  let lineStart = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10 /* \n */) {
+      if (i - lineStart > MAX_LINKIFY_LINE_BYTES) return true;
+      lineStart = i + 1;
+    }
+  }
+  return text.length - lineStart > MAX_LINKIFY_LINE_BYTES;
+}
+
 export function linkifyRefs(
   text: string,
   knownPaths: string[],
   onJump: (path: string, line: number, column?: number) => void,
 ): ReactNode {
   if (!text) return text;
+
+  if (text.length > MAX_LINKIFY_TOTAL_BYTES || hasOversizedLine(text)) {
+    return text;
+  }
 
   const out: ReactNode[] = [];
   let lastEnd = 0;

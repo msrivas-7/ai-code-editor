@@ -312,11 +312,31 @@ export class LocalDockerBackend implements ExecutionBackend {
       const timedOut = exitCode === 137;
 
       const truncationMarker = "\n[output truncated at 1 MB]\n";
+      // Per-line cap on top of the whole-stream cap. The 1 MB cap above
+      // alone isn't enough: `sys.stderr.write("E" * (2 * 1024 * 1024))`
+      // gets sliced to 1 MB but is still one giant line, and the frontend
+      // regex-over-all-output in linkifyRefs chokes on a 1 MB single-line
+      // string and freezes the tab. 8 KB is well above any real stack
+      // trace line; anything longer is either a pathological write or
+      // accidental payload dump and safe to truncate.
+      const MAX_LINE_BYTES = 8 * 1024;
+      const truncateLongLines = (text: string): string => {
+        if (text.length === 0) return text;
+        return text
+          .split("\n")
+          .map((line) =>
+            line.length > MAX_LINE_BYTES
+              ? line.slice(0, MAX_LINE_BYTES) +
+                `… [line truncated, ${line.length} bytes]`
+              : line,
+          )
+          .join("\n");
+      };
       const stdout =
-        Buffer.concat(stdoutChunks).toString("utf8") +
+        truncateLongLines(Buffer.concat(stdoutChunks).toString("utf8")) +
         (stdoutTruncated ? truncationMarker : "");
       const stderr =
-        Buffer.concat(stderrChunks).toString("utf8") +
+        truncateLongLines(Buffer.concat(stderrChunks).toString("utf8")) +
         (stderrTruncated ? truncationMarker : "");
 
       return {
