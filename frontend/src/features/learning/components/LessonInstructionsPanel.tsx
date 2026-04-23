@@ -58,6 +58,17 @@ export function LessonInstructionsPanel({
   const [tab, setTab] = useState<"instructions" | "examples">("instructions");
   const activeTab = hasExamples ? tab : "instructions";
 
+  // Auto-switch to Examples the moment CMW starts running, not just on
+  // fail. Covers two cases: (1) user clicks CMW while on Instructions —
+  // they should immediately see the tests about to run, (2) if the run
+  // passes, the Examples tab shows the green cards; if it fails, the
+  // failure callout renders in-place without another tab switch mid-
+  // read. The old behavior only switched on fail, which meant a passing
+  // run left the learner staring at Instructions with no acknowledgment.
+  useEffect(() => {
+    if (hasExamples && runningTests) setTab("examples");
+  }, [hasExamples, runningTests]);
+
   // When a Check My Work fails, auto-switch to the Examples tab so the callout
   // and the example list are both visible without the learner having to hunt.
   useEffect(() => {

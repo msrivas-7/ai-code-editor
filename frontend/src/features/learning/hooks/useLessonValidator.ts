@@ -276,7 +276,43 @@ export function useLessonValidator({
     }
     if (v.passed && !validation?.passed) {
       completeLesson(learnerId, courseId, lessonId, totalLessons);
-      celebrate({ particleCount: 120, spread: 70, origin: { y: 0.7 } });
+      // Lesson pass is THE moment in the product — treat it like one.
+      // Multi-wave confetti: a large center burst, then two side cannons
+      // crossing the screen a beat later. Colors tuned to the brand
+      // palette so the celebration doesn't look like a generic party
+      // dropped on top of our UI.
+      const brandColors = [
+        "#22c55e", // success green
+        "#3b82f6", // accent blue-ish
+        "#a855f7", // violet
+        "#eab308", // warm gold
+        "#f472b6", // rose pop
+      ];
+      celebrate({
+        particleCount: 220,
+        spread: 100,
+        startVelocity: 48,
+        origin: { y: 0.55 },
+        colors: brandColors,
+      });
+      window.setTimeout(() => {
+        celebrate({
+          particleCount: 100,
+          angle: 60,
+          spread: 70,
+          startVelocity: 58,
+          origin: { x: 0, y: 0.7 },
+          colors: brandColors,
+        });
+        celebrate({
+          particleCount: 100,
+          angle: 120,
+          spread: 70,
+          startVelocity: 58,
+          origin: { x: 1, y: 0.7 },
+          colors: brandColors,
+        });
+      }, 220);
       setShowComplete(true);
     }
   }, [lesson, courseId, lessonId, completeLesson, learnerId, totalLessons, validation, practiceMode, practiceIndex, completePracticeExercise, sessionId, functionTests, testReport, lastFailedName]);

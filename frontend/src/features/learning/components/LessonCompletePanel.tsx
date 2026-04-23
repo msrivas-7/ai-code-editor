@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "framer-motion";
 import type { LessonMeta } from "../types";
 import { formatTimeSpent, type MasteryLevel } from "../utils/mastery";
 import { Modal } from "../../../components/Modal";
@@ -39,20 +40,31 @@ export function LessonCompletePanel({
       position="center"
       panelClassName="mx-4 w-full max-w-md rounded-xl border border-success/30 bg-panel p-6 shadow-xl"
     >
-      <div>
+      <div className="relative">
+        <CelebrationHeader
+          orderLabel={`Lesson ${lesson.order}: ${lesson.title}`}
+        />
+        <div className="sr-only" id="lesson-complete-title">Lesson Complete!</div>
+        <div className="sr-only" id="lesson-complete-desc">
+          Lesson {lesson.order}: {lesson.title}
+        </div>
         <div className="mb-4 text-center">
-          <span aria-hidden="true" className="text-4xl">🎉</span>
-          <h2 id="lesson-complete-title" className="mt-2 text-lg font-bold text-success">Lesson Complete!</h2>
-          <p id="lesson-complete-desc" className="mt-1 text-sm text-muted">
-            Lesson {lesson.order}: {lesson.title}
-          </p>
+          {/* Heading + subtitle are rendered inside <CelebrationHeader>
+              for the animated version. These SR-only copies duplicate
+              them so labelledBy/describedBy still point at valid nodes
+              without assistive tech tripping over motion elements. */}
           {timeSpentMs !== undefined && timeSpentMs > 0 && (
-            <p className="mt-1.5 text-[11px] text-faint">
+            <motion.p
+              className="text-[11px] text-faint"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            >
               Time spent: <span className="font-medium text-muted">{formatTimeSpent(timeSpentMs)}</span>
               {lesson.estimatedMinutes > 0 && (
                 <span className="opacity-70"> (est. {lesson.estimatedMinutes}m)</span>
               )}
-            </p>
+            </motion.p>
           )}
         </div>
 
@@ -203,5 +215,145 @@ export function LessonCompletePanel({
         <LessonFeedbackChip lessonId={lesson.id} lessonTitle={lesson.title} />
       </div>
     </Modal>
+  );
+}
+
+/**
+ * The moment. A checkmark draws itself in, surrounded by expanding rings of
+ * light; the heading springs in with overshoot; the subtitle follows.
+ * Confetti is fired separately from useLessonValidator so the bursts
+ * start on the same frame as the modal's scale-in.
+ *
+ * Reduced-motion users get a static checkmark + still heading — the
+ * content is communicated, the choreography is not.
+ */
+function CelebrationHeader({ orderLabel }: { orderLabel: string }) {
+  const reduce = useReducedMotion();
+
+  return (
+    <div className="relative mb-5 flex flex-col items-center text-center">
+      {/* Ring cluster behind the check: three concentric rings expand
+          outward in a staggered loop. Sits absolute so it's layered
+          under the check SVG. pointer-events-none so the panel's own
+          focus/click handling isn't intercepted. */}
+      {!reduce && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 flex h-24 items-center justify-center"
+        >
+          {[0, 0.25, 0.5].map((delay, i) => (
+            <motion.span
+              key={i}
+              className="absolute h-16 w-16 rounded-full border border-success/60"
+              initial={{ scale: 0.4, opacity: 0.8 }}
+              animate={{ scale: 2.6, opacity: 0 }}
+              transition={{
+                duration: 1.4,
+                delay: 0.15 + delay,
+                ease: [0.22, 1, 0.36, 1],
+                repeat: 1,
+                repeatDelay: 0.2,
+              }}
+            />
+          ))}
+          {/* Soft glow disc — sits behind the rings, grows with the
+              first ring and lingers. Creates a halo feeling without
+              another hard-edged circle. */}
+          <motion.span
+            className="absolute h-24 w-24 rounded-full bg-success/30 blur-2xl"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1.1, opacity: 0.7 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </div>
+      )}
+
+      {/* SVG check — path draws in via pathLength. stroke-linecap:round so
+          the stroke doesn't look chopped when it's partway drawn. The
+          outer circle fills in first (a beat of anticipation), then the
+          check strokes in. */}
+      <motion.svg
+        viewBox="0 0 80 80"
+        width="72"
+        height="72"
+        className="relative z-10 mb-2"
+        aria-hidden="true"
+        initial={reduce ? { opacity: 0 } : { scale: 0.3, opacity: 0, rotate: -12 }}
+        animate={reduce ? { opacity: 1 } : { scale: 1, opacity: 1, rotate: 0 }}
+        transition={
+          reduce
+            ? { duration: 0.2 }
+            : {
+                scale: { type: "spring", stiffness: 260, damping: 14 },
+                opacity: { duration: 0.3 },
+                rotate: { type: "spring", stiffness: 200, damping: 14 },
+              }
+        }
+      >
+        {/* Filled circle backing — drawn fully on mount, dark-green
+            tinted disc that anchors the check against the backdrop. */}
+        <circle cx="40" cy="40" r="32" fill="rgb(var(--color-success) / 0.15)" />
+        {/* Stroke ring — draws around the disc as punctuation. */}
+        <motion.circle
+          cx="40"
+          cy="40"
+          r="32"
+          fill="none"
+          stroke="rgb(var(--color-success))"
+          strokeWidth="3"
+          strokeLinecap="round"
+          style={{ pathLength: reduce ? 1 : undefined }}
+          initial={reduce ? undefined : { pathLength: 0, rotate: -90 }}
+          animate={reduce ? undefined : { pathLength: 1, rotate: -90 }}
+          transition={reduce ? undefined : { duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          transform="rotate(-90 40 40)"
+        />
+        {/* The check — drawn last, overshooting into the circle with a
+            small pause for drama. The strokeDasharray: "auto" trick
+            lets pathLength drive reveal cleanly. */}
+        <motion.path
+          d="M25 42 L36 53 L56 30"
+          fill="none"
+          stroke="rgb(var(--color-success))"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ pathLength: reduce ? 1 : undefined }}
+          initial={reduce ? undefined : { pathLength: 0 }}
+          animate={reduce ? undefined : { pathLength: 1 }}
+          transition={reduce ? undefined : { duration: 0.45, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        />
+      </motion.svg>
+
+      {/* Heading — springs up with overshoot. Gradient fill is ONE of
+          the allowed accent→violet uses in the product — this is the
+          single most celebratory moment, it earns the treatment. */}
+      <motion.h2
+        className="mb-1 bg-gradient-to-r from-success via-accent to-violet bg-clip-text text-[24px] font-semibold leading-tight tracking-tight text-transparent"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 6 }}
+        animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+        transition={
+          reduce
+            ? { duration: 0.2 }
+            : {
+                type: "spring",
+                stiffness: 220,
+                damping: 16,
+                delay: 0.2,
+              }
+        }
+      >
+        Lesson Complete!
+      </motion.h2>
+
+      <motion.p
+        className="text-[13px] leading-relaxed text-muted"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
+        animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: reduce ? 0.1 : 0.55, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {orderLabel}
+      </motion.p>
+    </div>
   );
 }

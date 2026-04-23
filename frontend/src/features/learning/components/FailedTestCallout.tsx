@@ -60,18 +60,17 @@ export function FailedTestCallout({ failure, failingTest, consecutiveFails, onAs
   const containerRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
 
-  // Reveal motion + first-fail shake. Motion encodes meaning here — the
-  // verdict ARRIVES, not just appears. Shake is gated on the FIRST fail
-  // so repeated attempts don't keep getting jostled (the reveal alone
-  // carries the "new result" signal on subsequent tries).
+  // Reveal motion + shake on every fail. The verdict ARRIVES instead of
+  // just appearing. Each fail is its own re-mount (the key up-stream
+  // cycles on new failure), so the shake fires once per verdict — not
+  // a continuous shudder. Reveal carries "new result here," shake adds
+  // "and it didn't pass." Intentionally ungated: each attempt is a
+  // distinct signal the learner should feel.
   const revealProps = reduce
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.15 } }
     : {
         initial: { opacity: 0, y: 6 },
-        animate:
-          consecutiveFails === 1
-            ? { opacity: 1, y: 0, x: [0, -4, 4, -2, 2, 0] }
-            : { opacity: 1, y: 0 },
+        animate: { opacity: 1, y: 0, x: [0, -4, 4, -2, 2, 0] },
         transition: {
           duration: 0.32,
           ease: [0.22, 1, 0.36, 1] as const,

@@ -11,6 +11,13 @@ import { UserMenu } from "../../../components/UserMenu";
 import { FeedbackButton } from "../../../components/FeedbackButton";
 import { Wordmark } from "../../../components/Wordmark";
 import { Modal } from "../../../components/Modal";
+import {
+  CourseCompleteFlourish,
+  useCourseCompleteBurst,
+  clearCourseCelebratedFlag,
+} from "../components/CourseCompleteFlourish";
+import { CourseCompleteHero } from "../components/CourseCompleteHero";
+import { motion } from "framer-motion";
 import type { ProgressStatus } from "../types";
 
 export default function CourseOverviewPage() {
@@ -73,6 +80,13 @@ export default function CourseOverviewPage() {
     practiceGrandTotal > 0
       ? Math.round((practiceDoneTotal / practiceGrandTotal) * 100)
       : 0;
+  // "Complete" = every required lesson's progress row is `completed`.
+  // `lessons.length > 0` guards against the brief loading state where
+  // the list is empty and pct would be 0 — which we don't want to
+  // celebrate. Also guards against the flicker between setCourse and
+  // the first progress row landing.
+  const courseComplete = lessons.length > 0 && completedIds.length >= lessons.length;
+  useCourseCompleteBurst({ courseId, isComplete: courseComplete });
 
   return (
     <div className="relative flex h-full flex-col bg-bg text-ink">
@@ -89,11 +103,39 @@ export default function CourseOverviewPage() {
         <h1 className="truncate text-[14px] font-medium tracking-tight text-ink">
           {course?.title ?? "Course"}
         </h1>
+        {courseComplete && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{
+              type: "spring",
+              stiffness: 240,
+              damping: 18,
+              delay: 0.2,
+            }}
+            className="flex items-center gap-1 rounded-full border border-[rgb(234,179,8)]/40 bg-[rgb(234,179,8)]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[rgb(234,179,8)] shadow-[0_0_12px_rgba(234,179,8,0.25)]"
+            aria-label="Course complete"
+            title="Course complete — every lesson done"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="10"
+              height="10"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M6.5 11.5l-3-3 1-1 2 2 4.5-4.5 1 1z" />
+            </svg>
+            Complete
+          </motion.span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <FeedbackButton />
           <UserMenu />
         </div>
       </header>
+
+      {courseComplete && <CourseCompleteFlourish seed={courseId?.length ?? 1} />}
 
       <div className="relative flex-1 overflow-y-auto">
         {loading ? (
@@ -127,6 +169,17 @@ export default function CourseOverviewPage() {
           </div>
         ) : course ? (
           <StaggerReveal className="mx-auto max-w-2xl px-6 py-6">
+            {courseComplete && (
+              <StaggerItem>
+                <CourseCompleteHero
+                  courseTitle={course.title}
+                  completedLessons={completedIds.length}
+                  totalLessons={lessons.length}
+                  practiceDone={practiceDoneTotal}
+                  practiceTotal={practiceGrandTotal}
+                />
+              </StaggerItem>
+            )}
             <StaggerItem>
               <p className="mb-4 text-xs leading-relaxed text-muted">
                 {course.description}
@@ -165,7 +218,15 @@ export default function CourseOverviewPage() {
               <AnimatedProgressBar
                 pct={pct}
                 height={8}
-                fillClassName="bg-violet"
+                // Gold when course is complete — makes the bar itself
+                // read as "done, celebrated" rather than just "full".
+                // Violet fill otherwise so in-progress vs complete are
+                // distinct at a glance from across the page.
+                fillClassName={
+                  courseComplete
+                    ? "bg-gradient-to-r from-[rgb(234,179,8)] via-[rgb(250,204,21)] to-[rgb(245,158,11)] shadow-[0_0_10px_-2px_rgba(234,179,8,0.6)]"
+                    : "bg-violet"
+                }
                 trackClassName="bg-elevated"
                 ariaLabel={`Course progress: ${completedIds.length} of ${lessons.length} lessons completed`}
                 shimmerKey={courseId ? `course:${courseId}:lessons` : undefined}
@@ -236,6 +297,11 @@ export default function CourseOverviewPage() {
             <button
               onClick={() => {
                 resetCourseProgress(learnerId, courseId, course.lessonOrder);
+                // Clear the "already celebrated" flag so that if the
+                // learner re-completes this course, the confetti burst
+                // fires again. Persistent flourish comes back online
+                // automatically when pct climbs back to 100.
+                clearCourseCelebratedFlag(courseId);
                 setConfirmReset(false);
               }}
               className="flex-1 rounded-lg bg-danger/20 px-4 py-2 text-xs font-semibold text-danger ring-1 ring-danger/40 transition hover:bg-danger/30"
