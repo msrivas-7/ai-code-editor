@@ -354,7 +354,7 @@ describe("validateLesson", () => {
       // custom_validator branch must contribute its failure even when its
       // companions would have passed on their own.
       const rules: CompletionRule[] = [
-        { type: "expected_stdout", value: "Hello, World!" },
+        { type: "expected_stdout", expected: "Hello, World!" },
         { type: "custom_validator" },
       ];
       const files: ProjectFile[] = [
