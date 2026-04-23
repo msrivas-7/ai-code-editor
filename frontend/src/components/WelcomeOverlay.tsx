@@ -81,10 +81,19 @@ export function WelcomeOverlay({ refs, onDismiss }: WelcomeOverlayProps) {
     return () => window.removeEventListener("resize", update);
   }, [targetEl, step, onDismiss]);
 
+  // QA-M6: debounce double-fires (touch bounce, keyboard-spam, pointerdown +
+  // click both landing) without swallowing deliberate fast-advance. The ref
+  // resets on every step change so the first click on a fresh step is always
+  // immediate — only repeats *within* the same step are gated. 500ms is the
+  // distance between two intentional clicks, short enough that a user who
+  // actually meant to spam Next doesn't feel stuck.
   const lastAdvanceAt = useRef(0);
+  useEffect(() => {
+    lastAdvanceAt.current = 0;
+  }, [step]);
   const advance = useCallback(() => {
     const now = Date.now();
-    if (now - lastAdvanceAt.current < 200) return;
+    if (lastAdvanceAt.current !== 0 && now - lastAdvanceAt.current < 500) return;
     lastAdvanceAt.current = now;
     if (step >= STEPS.length - 1) {
       markWelcomeDone();

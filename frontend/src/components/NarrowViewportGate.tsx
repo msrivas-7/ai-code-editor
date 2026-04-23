@@ -8,20 +8,25 @@ import { useEffect, useState } from "react";
 // through on a phone can, that's their call. We just show a dismissible
 // banner that explains why a laptop is better.
 //
-// Dismissal is sessionStorage-scoped so the warning reappears next visit —
-// reminding the learner that the experience is better elsewhere is the right
-// default; silently respecting a stale dismiss would be more annoying than
-// useful.
+// QA-M5: dismissal is localStorage-scoped and keyed on screen-class ("phone"
+// / "tablet"). A tablet user who dismisses doesn't see the banner again in
+// any new tab; if they switch to a phone later, the phone-specific banner
+// still shows. Before, sessionStorage meant every new tab re-showed it.
 
-const PHONE_MAX_PX = 639;
-const TABLET_MAX_PX = 1023;
-const DISMISS_KEY = "ui:narrow-viewport-dismissed";
+export const PHONE_MAX_PX = 639;
+export const TABLET_MAX_PX = 1023;
+export const DISMISS_KEY_PREFIX = "ui:narrow-viewport-dismissed:";
 
-type Size = "phone" | "tablet" | "wide";
+export type Size = "phone" | "tablet" | "wide";
 
-function readSize(): Size {
-  if (typeof window === "undefined") return "wide";
-  const w = window.innerWidth;
+export function dismissKey(size: Size): string {
+  return `${DISMISS_KEY_PREFIX}${size}`;
+}
+
+export function readSize(widthPx?: number): Size {
+  const w = typeof widthPx === "number"
+    ? widthPx
+    : (typeof window === "undefined" ? Number.POSITIVE_INFINITY : window.innerWidth);
   if (w <= PHONE_MAX_PX) return "phone";
   if (w <= TABLET_MAX_PX) return "tablet";
   return "wide";
@@ -29,9 +34,13 @@ function readSize(): Size {
 
 export function NarrowViewportGate() {
   const [size, setSize] = useState<Size>(() => readSize());
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return sessionStorage.getItem(DISMISS_KEY) === "1";
+  const [dismissedSizes, setDismissedSizes] = useState<Set<Size>>(() => {
+    if (typeof window === "undefined") return new Set();
+    const next = new Set<Size>();
+    for (const s of ["phone", "tablet"] as const) {
+      if (localStorage.getItem(dismissKey(s)) === "1") next.add(s);
+    }
+    return next;
   });
 
   useEffect(() => {
@@ -40,11 +49,15 @@ export function NarrowViewportGate() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  if (size === "wide" || dismissed) return null;
+  if (size === "wide" || dismissedSizes.has(size)) return null;
 
   const onDismiss = () => {
-    sessionStorage.setItem(DISMISS_KEY, "1");
-    setDismissed(true);
+    localStorage.setItem(dismissKey(size), "1");
+    setDismissedSizes((prev) => {
+      const next = new Set(prev);
+      next.add(size);
+      return next;
+    });
   };
 
   const isPhone = size === "phone";

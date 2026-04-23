@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { courseRegistryPlugin } from "./scripts/vitePluginCourseRegistry";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), courseRegistryPlugin()],
   server: {
     port: 5173,
     proxy: {

@@ -94,6 +94,12 @@ export const courseSchema = z.object({
   // smoke-test course) without showing up on the learner dashboard. Dev-only
   // surfaces like ContentHealthPage still list them.
   internal: z.boolean().optional(),
+  // QA-M1: since the registry is now derived from the folder layout (see
+  // `courseRegistryPlugin`), folder names alphabetize in unpredictable ways
+  // (a course named `_internal-...` sorts before a learner-facing course).
+  // `displayOrder` lets each course pin its position; missing values sort
+  // last in stable fashion after the ordered ones.
+  displayOrder: z.number().optional(),
 });
 
 export type CourseSchemaInferred = z.infer<typeof courseSchema>;

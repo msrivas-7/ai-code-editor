@@ -50,3 +50,8 @@ supabase/.temp/
 ops/*
 !ops/README.md
 !ops/*.example.md
+
+# QA-M1: generated at dev-server start + build-start by
+# scripts/vitePluginCourseRegistry.ts. Source of truth is the folder layout
+# under frontend/public/courses/; this manifest is a cached enumeration.
+frontend/public/courses/_registry.json

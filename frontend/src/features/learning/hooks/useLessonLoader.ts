@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Lesson } from "../types";
-import { loadAllLessonMetas, loadCourse, loadFullLesson } from "../content/courseLoader";
+import {
+  loadAllLessonMetas,
+  loadCourse,
+  loadFullLesson,
+  LessonLoaderError,
+  type LessonLoadError,
+} from "../content/courseLoader";
 import { conceptsAvailableBefore } from "../content/conceptGraph";
 import { loadSavedCode, useProgressStore } from "../stores/progressStore";
 import {
@@ -47,6 +53,10 @@ export function useLessonLoader({
   const [priorConcepts, setPriorConcepts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [resumed, setResumed] = useState(false);
+  // QA-M2: null = no attempt or success. "not_found" = the static asset
+  // returned 404. "schema_error" = the JSON parsed but Zod refused it.
+  // Page shell renders different copy for each; dev console prints issues.
+  const [loadError, setLoadError] = useState<LessonLoadError | null>(null);
 
   // `initialized` gates one-shot effects (first project hydration, edit
   // detector, test-report invalidation). Kept on a ref so the loader can
@@ -79,6 +89,7 @@ export function useLessonLoader({
     let cancelled = false;
     initializedRef.current = false;
     setLoading(true);
+    setLoadError(null);
     onResetPerLessonState?.();
     Promise.all([
       loadFullLesson(courseId, lessonId),
@@ -114,9 +125,23 @@ export function useLessonLoader({
         setPriorConcepts(conceptsAvailableBefore(course, metaMap, lessonId));
         startLesson(learnerId, courseId, lessonId);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
         setLesson(null);
+        if (err instanceof LessonLoaderError) {
+          if (err.kind === "schema_error") {
+            setLoadError({ kind: "schema_error", message: err.message, issues: err.issues });
+            if (import.meta.env.DEV) {
+              console.error(`[content] ${err.message}`);
+              for (const issue of err.issues) console.error(`  • ${issue}`);
+            }
+          } else {
+            setLoadError({ kind: "not_found", message: err.message });
+          }
+        } else {
+          const message = err instanceof Error ? err.message : "Failed to load lesson";
+          setLoadError({ kind: "not_found", message });
+        }
       })
       .finally(() => {
         if (cancelled) return;
@@ -243,6 +268,7 @@ export function useLessonLoader({
     priorConcepts,
     loading,
     resumed,
+    loadError,
     initializedRef,
   };
 }

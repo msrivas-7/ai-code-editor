@@ -676,6 +676,27 @@ export default function LessonPage() {
             </>
           )}
         </main>
+      ) : loader.loadError?.kind === "schema_error" ? (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div
+            role="alert"
+            className="max-w-xl rounded-lg border border-warn/40 bg-warn/10 px-4 py-3 text-sm text-ink"
+          >
+            <p className="font-medium">This lesson's content file is malformed.</p>
+            <p className="mt-1 text-muted">
+              The lesson JSON parsed but did not match the schema. If you're an
+              author, check the browser console for the exact fields that
+              failed, then re-run <code className="font-mono">npm run lint:content</code>.
+            </p>
+            {import.meta.env.DEV && loader.loadError.issues.length > 0 && (
+              <ul className="mt-2 list-disc pl-5 font-mono text-[11px] text-muted">
+                {loader.loadError.issues.map((issue, i) => (
+                  <li key={i}>{issue}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted">
           Lesson not found

@@ -3,6 +3,7 @@
   "title": "Python Fundamentals",
   "description": "Learn Python from scratch — variables, control flow, functions, data structures, and debugging. No prior programming experience required.",
   "language": "python",
+  "displayOrder": 1,
   "lessonOrder": [
     "hello-world",
     "variables",

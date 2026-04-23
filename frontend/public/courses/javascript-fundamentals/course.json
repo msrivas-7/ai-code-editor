@@ -3,6 +3,7 @@
   "title": "JavaScript Fundamentals",
   "description": "Learn JavaScript from scratch — values, control flow, functions, arrays, and objects. No prior programming experience required.",
   "language": "javascript",
+  "displayOrder": 2,
   "baseVocabulary": [
     "identifiers",
     "expression",

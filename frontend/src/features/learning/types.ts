@@ -13,6 +13,8 @@ export interface Course {
   // for architecture-validation courses that aren't ready (or intended) to
   // ship. ContentHealthPage still lists them.
   internal?: boolean;
+  // QA-M1: dashboard ordering — lower wins; missing values sort last.
+  displayOrder?: number;
 }
 
 export interface FunctionTest {
