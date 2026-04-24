@@ -9,6 +9,11 @@ import {
   GREET_USER_DRIVEN,
   CELEBRATE_RUN,
   PRAISE_EDIT_RUN_AND_SEED,
+  WRONG_EDIT_CASE,
+  WRONG_EDIT_EMPTY,
+  WRONG_EDIT_ERROR,
+  WRONG_EDIT_GENERIC,
+  STRONGER_HINT,
 } from "./scriptedTurns";
 import {
   pushScriptedAssistant,
@@ -241,6 +246,39 @@ export function useFirstRunChoreography({
           return;
         }
 
+        if (step === "correctEdit") {
+          // Pick correction copy keyed to what actually went wrong.
+          // Detection precedence matches severity: a run that errored
+          // needs an error message first, an empty stdout means the
+          // print call got lost, and stdout that contains the right
+          // letters in the wrong case is the "capital W" nudge. The
+          // generic fallback covers the "typed something random"
+          // case. attempts >= 2 short-circuits the specific copy and
+          // drops the answer — we never leave the learner stranded.
+          const attempts = useFirstRunStore.getState().wrongEditAttempts;
+          const lastResult = useRunStore.getState().result;
+          let copy: string;
+          if (attempts >= 2) {
+            copy = STRONGER_HINT();
+          } else if (lastResult && lastResult.exitCode !== 0) {
+            copy = WRONG_EDIT_ERROR();
+          } else if (!lastResult?.stdout || lastResult.stdout.trim().length === 0) {
+            copy = WRONG_EDIT_EMPTY();
+          } else {
+            const lower = lastResult.stdout.toLowerCase();
+            copy =
+              lower.includes("hello") && lower.includes("world")
+                ? WRONG_EDIT_CASE()
+                : WRONG_EDIT_GENERIC();
+          }
+          const stream = pushScriptedAssistant(copy);
+          currentStreamRef.current = stream;
+          await stream.done;
+          if (cancelled) return;
+          setStep("awaitEdit");
+          return;
+        }
+
         if (step === "praiseEditRun") {
           // Celebrate the edit + run AND seed the "ask me anything /
           // try printing your name" invitation in the same beat. After
@@ -263,7 +301,11 @@ export function useFirstRunChoreography({
           // choreography exits cleanly; real tutor input is now
           // unlocked (no scripted turns gate, and
           // `welcomeDone === true` prevents the next LessonPage mount
-          // from re-running this hook).
+          // from re-running this hook). Check cancel BEFORE the await
+          // so a user who just skipped doesn't get a trailing server
+          // patch; check AGAIN after so a skip during the await
+          // aborts the setStep.
+          if (cancelled) return;
           await markFirstRunComplete();
           if (cancelled) return;
           setStep("done");
@@ -286,23 +328,43 @@ export function useFirstRunChoreography({
     }
   }, [enabled, skipped, step, runner.hasRun, runner.running, setStep]);
 
-  // Observer: after the learner edits + runs, check the stdout for
-  // the target output. We deliberately DON'T wait on
-  // `validator.validation.passed` here — that flag only flips on the
-  // separate "Check my work" button, and the scripted copy in the
-  // previous beat only asked for a Run. The next nudge (praiseEditRun)
-  // is what tells the learner to click Check.
+  // Observer: after the learner edits + runs, evaluate stdout.
+  //   - Match -> praiseEditRun (the real success path).
+  //   - Miss  -> correctEdit, which pushes a scripted correction
+  //              keyed to the specific kind of mistake. We do NOT
+  //              wait on validator.validation.passed here — that
+  //              only flips on the separate "Check my work" button,
+  //              and the previous beat only asked for a Run.
+  //
+  // lastEvaluatedResultRef guards against re-evaluating the same
+  // RunResult: runner.hasRun stays true after a run, so the
+  // dependency array alone would fire repeatedly. We key on the
+  // result reference — a fresh run produces a new object, which is
+  // the only real trigger we care about.
+  const lastEvaluatedResultRef = useRef<unknown>(null);
+  const bumpWrongEditAttempts = useFirstRunStore(
+    (s) => s.bumpWrongEditAttempts,
+  );
   useEffect(() => {
     if (!enabled || skipped) return;
     if (step !== "awaitEdit") return;
     if (!runner.hasEdited || runner.running || !runner.hasRun) return;
     const lastResult = useRunStore.getState().result;
+    if (!lastResult) return;
+    if (lastEvaluatedResultRef.current === lastResult) return;
+    lastEvaluatedResultRef.current = lastResult;
     const stdoutOk =
-      lastResult?.exitCode === 0 &&
+      lastResult.exitCode === 0 &&
       (lastResult.stdout ?? "").includes("Hello, World!");
     if (stdoutOk) {
       setStep("praiseEditRun");
+      return;
     }
+    // Wrong output — bump the attempt counter and route into the
+    // correction branch. Bump happens first so the step handler
+    // reads the updated count when it picks copy.
+    bumpWrongEditAttempts();
+    setStep("correctEdit");
   }, [
     enabled,
     skipped,
@@ -311,6 +373,7 @@ export function useFirstRunChoreography({
     runner.running,
     runner.hasRun,
     setStep,
+    bumpWrongEditAttempts,
   ]);
 
   // Observer: Check pass terminates the scripted choreography. The

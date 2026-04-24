@@ -173,9 +173,15 @@ export default function LessonPage() {
     isFirstRun &&
     (firstRunStep === "greet" ||
       firstRunStep === "celebrateRun" ||
+      firstRunStep === "correctEdit" ||
       firstRunStep === "praiseEditRun");
   const spotlightRun = isFirstRun && firstRunStep === "awaitRun";
   const spotlightCheck = isFirstRun && firstRunStep === "awaitCheck";
+  // During awaitEdit the tutor just said "change one word and run
+  // again." The editor is where the action happens — spotlight it
+  // so the learner knows where to put their attention instead of
+  // scanning the whole UI.
+  const spotlightEditor = isFirstRun && firstRunStep === "awaitEdit";
 
   // Lock the tutor composer + hint / action chips while the scripted
   // choreography is mid-sentence. The last scripted message is
@@ -190,6 +196,7 @@ export default function LessonPage() {
       firstRunStep === "awaitRun" ||
       firstRunStep === "celebrateRun" ||
       firstRunStep === "awaitEdit" ||
+      firstRunStep === "correctEdit" ||
       firstRunStep === "praiseEditRun");
 
   // Run + Check lock out so the learner can't skip ahead of the
@@ -884,6 +891,11 @@ export default function LessonPage() {
         targetRef={layout.checkBtnRef}
         active={spotlightCheck}
         size="small"
+      />
+      <FirstRunSpotlight
+        targetRef={layout.editorRef}
+        active={spotlightEditor}
+        size="large"
       />
       {validator.confirmResetLesson && (
         <Modal

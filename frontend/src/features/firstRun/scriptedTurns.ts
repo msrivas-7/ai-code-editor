@@ -37,3 +37,38 @@ export const GREET_USER_DRIVEN = (name: string): string =>
   `Hey ${name} — good to meet you. That little program on your screen? ` +
   `It's the simplest thing Python can do: print a message. ` +
   `Click the green Run button when you're ready — I'll wait.`;
+
+// Soft-correction turns fired when the learner's edit produces the
+// wrong output on their first try. Each is keyed to a specific kind
+// of mistake so the tutor reads like a person who actually looked
+// at what they wrote — not a form-letter "try again." The
+// observer picks one based on the stdout/exitCode shape; see
+// useFirstRunChoreography's correctEdit branch.
+//
+// Deliberately kept short (a sentence or two). The learner is
+// looking at their code right now, not at the panel — long
+// explanations break the loop.
+export const WRONG_EDIT_CASE = (): string =>
+  "Almost — Python cares about capitals. Make sure it's " +
+  "`'Hello, World!'` with a capital **W**, then run again.";
+
+export const WRONG_EDIT_EMPTY = (): string =>
+  "Hmm — nothing printed. Make sure you still have " +
+  "`print('...')` around the string. Tweak and run again.";
+
+export const WRONG_EDIT_ERROR = (): string =>
+  "Something errored out — have a look at the red text in " +
+  "the output panel, fix the line, and run it again.";
+
+export const WRONG_EDIT_GENERIC = (): string =>
+  "Close, but not quite. The output should read " +
+  "`Hello, World!` exactly — tweak the text inside the quotes " +
+  "and run again.";
+
+// Second-attempt rescue. The learner has guessed twice and the
+// output still doesn't match; give them the answer directly so
+// they don't end up stranded watching a cinematic that never
+// advances. Same spirit as a real tutor walking you through it.
+export const STRONGER_HINT = (): string =>
+  "Here it is line-for-line — change your print statement to " +
+  "`print('Hello, World!')` exactly, then run it.";

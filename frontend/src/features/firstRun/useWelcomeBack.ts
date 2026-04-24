@@ -79,6 +79,12 @@ export function useWelcomeBack(): UseWelcomeBackResult {
     if (lastWelcomeBackAt === null) return true; // never shown
     const last = Date.parse(lastWelcomeBackAt);
     if (Number.isNaN(last)) return true; // corrupt value — recover by showing
+    // Clock drift: if the stamp is in the future (device clock moved
+    // backwards, stale snapshot from a different time zone, etc.),
+    // `now - last` is negative so the 6-hour check returns false and
+    // the user would never see another welcome-back again. Treat any
+    // future timestamp as corrupt and show.
+    if (last > now) return true;
     if (now - last > SIX_HOURS_MS) return true;
     // Calendar-day check (local TZ): if the user welcomed at 10:30 PM
     // and comes back at 2 AM the same night, it's a new calendar day —

@@ -118,7 +118,13 @@ const CODE_LINE = '>>> print(f"Hi, {learner.name}!")';
 export function CinematicGreeting(props: CinematicGreetingProps) {
   const reduce = useReducedMotion();
   const [exiting, setExiting] = useState(false);
-  const completeFiredRef = useRef(false);
+  // Single terminal-handler guard: once either onComplete or onSkip
+  // has fired, both are ignored. Prevents the "Esc at second 14.18"
+  // race — without it, the natural onComplete timer and the Esc
+  // handler could both fire, double-navigating and double-patching
+  // preferences. completeFiredRef previously guarded only the
+  // onComplete path; the new name reflects that it covers both.
+  const terminalFiredRef = useRef(false);
 
   const total = props.mode === "full" ? FULL_TIMELINE.total : MINIMAL_TIMELINE.total;
 
@@ -131,13 +137,14 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
   // onComplete never fired, and the handoff to the lesson stalled.
   const onCompleteRef = useRef(props.onComplete);
   onCompleteRef.current = props.onComplete;
+  const onSkipRef = useRef(props.onSkip);
+  onSkipRef.current = props.onSkip;
 
-  // onComplete fires after the full timeline regardless of mode. Guard
-  // against double-fire (react strict-mode double-mount in dev).
+  // onComplete fires after the full timeline regardless of mode.
   useEffect(() => {
     const t = window.setTimeout(() => {
-      if (completeFiredRef.current) return;
-      completeFiredRef.current = true;
+      if (terminalFiredRef.current) return;
+      terminalFiredRef.current = true;
       setExiting(true);
       // Allow the exit blur / fade to breathe before unmounting.
       const exitMs = props.mode === "full" ? 300 : 400;
@@ -146,15 +153,29 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
     return () => window.clearTimeout(t);
   }, [total, props.mode]);
 
+  // Every terminal dismiss path — Esc key, Skip button, onComplete
+  // timer — routes through this so exactly one fires per mount. A
+  // user hitting Esc at second 14.19 of the cinematic would
+  // otherwise race the natural onComplete timer and double-nav /
+  // double-patch preferences.
+  const handleSkipOnce = () => {
+    if (terminalFiredRef.current) return;
+    if (!onSkipRef.current) return;
+    terminalFiredRef.current = true;
+    onSkipRef.current();
+  };
+
   // Esc listener — same dismiss as the Skip link.
   useEffect(() => {
-    if (!props.onSkip) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") props.onSkip?.();
+      if (e.key === "Escape") handleSkipOnce();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [props.onSkip]);
+    // handleSkipOnce is stable (reads from refs). Empty deps = one
+    // listener for the lifetime of the mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reduced-motion short-circuit: one opacity fade-up of just the hero
   // line + subtitle, no typewriter, no blur, no theatre. Still
@@ -165,6 +186,11 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
         heroLine={props.heroLine}
         subtitle={props.subtitle}
         onSkip={props.onSkip}
+        // Critical: pass onComplete through so learners who honor
+        // prefers-reduced-motion aren't stranded on /welcome. The
+        // fallback fires it after a short static reveal — same
+        // terminal nav as the full cinematic, just without theatre.
+        onComplete={props.onComplete}
       />
     );
   }
@@ -187,7 +213,7 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
       {props.onSkip && (
         <button
           type="button"
-          onClick={props.onSkip}
+          onClick={handleSkipOnce}
           className="absolute bottom-6 right-6 rounded-md px-2 py-1 text-[11px] text-muted/60 transition hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           aria-label="Skip introduction"
         >
@@ -598,11 +624,31 @@ function ReducedMotionFallback({
   heroLine,
   subtitle,
   onSkip,
+  onComplete,
 }: {
   heroLine: string;
   subtitle: string;
   onSkip?: () => void;
+  onComplete: () => void;
 }) {
+  // Fire onComplete after the static reveal finishes (hero 500 ms fade
+  // + subtitle 300 ms delay + 500 ms fade = ~1.5 s) plus a moment for
+  // the user to read. Without this, reduced-motion learners are
+  // stranded on /welcome — the full-cinematic timer never runs, and
+  // there's nothing else that would navigate them to the lesson.
+  const REDUCED_HOLD_MS = 2_500;
+  const firedRef = useRef(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      onComplete();
+    }, REDUCED_HOLD_MS);
+    return () => window.clearTimeout(t);
+    // onComplete is intentionally excluded — we want a stable timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-bg text-center text-ink"
@@ -627,7 +673,11 @@ function ReducedMotionFallback({
       {onSkip && (
         <button
           type="button"
-          onClick={onSkip}
+          onClick={() => {
+            if (firedRef.current) return;
+            firedRef.current = true;
+            onSkip();
+          }}
           className="absolute bottom-6 right-6 rounded-md px-2 py-1 text-[11px] text-muted/60 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           Skip intro →

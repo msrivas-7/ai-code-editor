@@ -13,16 +13,29 @@ import { useWelcomeBack } from "./useWelcomeBack";
 export function WelcomeBackOverlay() {
   const { shouldShow, firstName, copy, dismiss } = useWelcomeBack();
   // `wasShown` is the "once latched, stay visible" memory so hydration
-  // flicker can't drop the overlay mid-reveal. Intentionally only
-  // flips TRUE — never back. `active` is derived synchronously from
-  // `shouldShow || wasShown`; an earlier version computed it from a
-  // useEffect that ran after commit, which let the dashboard paint
-  // for one frame before the overlay mounted on the next render.
+  // flicker can't drop the overlay mid-reveal during its first few
+  // beats. `active` is derived synchronously from `shouldShow ||
+  // wasShown` so the overlay mounts in the same paint as the
+  // dashboard (no one-frame flash). The effect below only flips
+  // `wasShown` TRUE; the drop happens via handleComplete below or
+  // via the allowed-route watcher, never implicitly.
   const [wasShown, setWasShown] = useState(false);
   const active = shouldShow || wasShown;
 
   useEffect(() => {
     if (shouldShow && !wasShown) setWasShown(true);
+  }, [shouldShow, wasShown]);
+
+  // Drop the latch if the user navigates off an allowed route mid-
+  // overlay (click-through to a deep lesson link, etc.). Without
+  // this, the overlay would follow them onto routes where
+  // `shouldShow` is false, sitting on top of lesson content. We use
+  // `shouldShow` as the proxy for "we're still on an allowed route"
+  // because the hook already folds the ALLOWED_PATHS check into it.
+  useEffect(() => {
+    if (!shouldShow && wasShown) {
+      setWasShown(false);
+    }
   }, [shouldShow, wasShown]);
 
   if (!active || !copy) return null;
