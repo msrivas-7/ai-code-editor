@@ -345,6 +345,27 @@ export function useFirstRunChoreography({
   const bumpWrongEditAttempts = useFirstRunStore(
     (s) => s.bumpWrongEditAttempts,
   );
+
+  // Seed the last-evaluated-result ref every time awaitEdit starts.
+  // Without this, the auto-run's result (from the awaitRun step) is
+  // still sitting in runStore when awaitEdit begins — and since
+  // `runner.hasRun` is true from that auto-run, the observer below
+  // would evaluate the STALE "Hello, Python!" stdout the instant the
+  // learner types a single character (hasEdited flips true). That
+  // fired `correctEdit` immediately, with a "capital W" nudge
+  // referring to text the user hadn't actually produced yet. Seeding
+  // here means the observer only fires on runs that happen AFTER
+  // awaitEdit began — i.e., on the learner's own run, not the
+  // auto-run from one step earlier. The same seed also handles the
+  // user-typed-during-celebrateRun edge case: when awaitEdit enters
+  // with hasEdited already true, the ref matches the current result
+  // and the observer correctly waits for an actual run.
+  useEffect(() => {
+    if (step === "awaitEdit") {
+      lastEvaluatedResultRef.current = useRunStore.getState().result;
+    }
+  }, [step]);
+
   useEffect(() => {
     if (!enabled || skipped) return;
     if (step !== "awaitEdit") return;
