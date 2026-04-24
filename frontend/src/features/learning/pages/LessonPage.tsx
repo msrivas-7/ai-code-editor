@@ -29,6 +29,7 @@ import { useAuthStore } from "../../../auth/authStore";
 import { useAIStore } from "../../../state/aiStore";
 import { usePreferencesStore } from "../../../state/preferencesStore";
 import { useProgressStore } from "../stores/progressStore";
+import { useRunStore } from "../../../state/runStore";
 import { pickFirstFailure } from "../utils/validator";
 import { computeMastery, formatTimeSpent } from "../utils/mastery";
 import { useShortcutLabels } from "../../../util/platform";
@@ -89,6 +90,12 @@ export default function LessonPage() {
     useProgressStore
       .getState()
       .resetLessonProgress(learnerId, courseId, lessonId);
+    // Also clear the output panel so the scripted narration doesn't
+    // start on top of a prior run's stdout/stderr. On a replay path
+    // the runStore could still hold the "Hello, Python!" from the
+    // learner's last time through — the cinematic promises a fresh
+    // moment, so the panel should mirror that.
+    useRunStore.setState({ result: null, error: null });
   }, [isFirstRun, courseId, lessonId, learnerId]);
 
   const loader = useLessonLoader({
