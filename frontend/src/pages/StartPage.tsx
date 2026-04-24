@@ -55,16 +55,24 @@ export default function StartPage() {
   const editorRef = useRef<HTMLButtonElement>(null);
   const guidedRef = useRef<HTMLButtonElement>(null);
 
-  // Pick the most-recently-updated, not-yet-completed course id from the
-  // already-hydrated progress store. HydrationGate guarantees this map is
-  // populated before StartPage renders. Completed courses fall through so
-  // returning learners who just finished Python still get the cold 2-card
-  // grid rather than a redundant "Resume Python" where everything is done.
+  // Pick the most-recently-updated in-progress course id from the
+  // already-hydrated progress store. HydrationGate guarantees this map
+  // is populated before StartPage renders.
+  //
+  // Critical: skip BOTH `completed` AND `not_started`. Per the comment
+  // in LearningDashboardPage:58-66, `loadCourseProgress` writes a
+  // fresh `updatedAt: now()` into the store even for not-started rows
+  // — so without the not_started filter, a course the learner has
+  // never touched but which simply hydrated more recently would win
+  // the resume slot. The bug observable is "Resume Course X" showing
+  // a course you've never started, with 0/N done.
   const resumeCourseId = useMemo(() => {
     let bestId: string | null = null;
     let bestTs = 0;
     for (const [id, p] of Object.entries(courseProgressMap)) {
-      if (!p || p.status === "completed" || !p.updatedAt) continue;
+      if (!p) continue;
+      if (p.status === "completed" || p.status === "not_started") continue;
+      if (!p.updatedAt) continue;
       const t = new Date(p.updatedAt).getTime();
       if (!Number.isFinite(t)) continue;
       if (t > bestTs) {
