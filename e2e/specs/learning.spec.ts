@@ -290,12 +290,14 @@ test.describe("learning", () => {
     await expect(pbBefore).toHaveAttribute("aria-valuenow", before!);
   });
 
-  test("Explain Error button appears after a NameError + clicking sets pendingAsk", async ({ page }) => {
+  test("'What went wrong?' button appears after a NameError + clicking sets pendingAsk", async ({ page }) => {
     // The button is gated on stderr-present + not-currently-running. Typing a
     // reference to an undefined name produces a NameError in OutputPanel.
-    // Clicking Explain Error queues a pre-filled tutor question (pendingAsk)
-    // and uncollapses the tutor panel if collapsed. Full AI round-trip is
-    // covered by the ai-tutor spec — here we only prove the UX wiring.
+    // Clicking "What went wrong?" queues a pre-filled tutor question
+    // (pendingAsk) and uncollapses the tutor panel if collapsed. Full AI
+    // round-trip is covered by the ai-tutor spec — here we only prove the
+    // UX wiring. Button copy was reframed from "Explain Error" (diagnostic)
+    // to "What went wrong?" (tutor voice) as part of the Cinema Kit polish.
     await loadProfile(page, "mid-course-healthy");
     await page.goto(`/learn/course/${COURSE_ID}/lesson/variables`);
     await waitForMonacoReady(page);
@@ -305,7 +307,7 @@ test.describe("learning", () => {
     await S.lessonRunButton(page).click();
     await expect(S.outputPanel(page)).toContainText(/NameError/, { timeout: 20_000 });
 
-    const explainBtn = page.getByRole("button", { name: /explain error with ai tutor/i });
+    const explainBtn = page.getByRole("button", { name: /ask the tutor what went wrong/i });
     await expect(explainBtn).toBeVisible({ timeout: 10_000 });
     await explainBtn.click();
 

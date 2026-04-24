@@ -58,14 +58,14 @@ describe("pickNudge", () => {
     expect(n?.id).toBe("ran-error");
   });
 
-  it("error nudge mentions 'Explain Error' when tutor configured", () => {
+  it("error nudge mentions 'What went wrong?' when tutor configured", () => {
     const n = pickNudge({ ...base, hasEdited: true, hasRun: true, hasError: true, tutorConfigured: true }, 60, 35, none);
-    expect(n?.message).toMatch(/Explain Error/);
+    expect(n?.message).toMatch(/What went wrong\?/);
   });
 
   it("error nudge omits tutor reference when not configured", () => {
     const n = pickNudge({ ...base, hasEdited: true, hasRun: true, hasError: true, tutorConfigured: false }, 60, 35, none);
-    expect(n?.message).not.toMatch(/Explain Error/);
+    expect(n?.message).not.toMatch(/What went wrong\?/);
   });
 
   it("returns 'not quite' after failed check and idle > 30s", () => {

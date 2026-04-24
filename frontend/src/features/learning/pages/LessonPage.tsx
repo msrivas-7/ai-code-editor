@@ -46,6 +46,10 @@ import { useFirstRunChoreography } from "../../firstRun/useFirstRunChoreography"
 import { resolveFirstName } from "../../firstRun/resolveFirstName";
 import { useFirstRunStore } from "../../firstRun/useFirstRunStore";
 import { FirstRunSpotlight } from "../../firstRun/FirstRunSpotlight";
+import { motion } from "framer-motion";
+import { RingPulse } from "../../../components/cinema/RingPulse";
+import { MATERIAL_EASE, CINEMA_DURATIONS } from "../../../components/cinema/easing";
+import { useValidatorUIStore } from "../stores/validatorUIStore";
 
 export default function LessonPage() {
   const { courseId, lessonId } = useParams<{
@@ -141,6 +145,30 @@ export default function LessonPage() {
       runner.setHasRun(false);
     },
   });
+
+  // Cinema Kit — Run button tactile feedback.
+  // `runPressKey` bumps on each Run click; feeds RingPulse.replayKey so
+  // the accent-colored click ring re-renders each press. `runSuccessKey`
+  // bumps when a brand-new zero-exit RunResult lands, firing a green
+  // success ring. Identity check on the result object guarantees we
+  // only celebrate NEW runs, not re-renders that re-read the same
+  // lastResult.
+  const [runPressKey, setRunPressKey] = useState(0);
+  const [runSuccessKey, setRunSuccessKey] = useState(0);
+  // Cinema Kit — Check-pass sonar nonce, bumped by the validator hook
+  // at the moment a lesson passes. LessonPage watches it to fire a
+  // three-ring RingPulse over the Check button.
+  const sonarNonce = useValidatorUIStore((s) => s.sonarNonce);
+  const lastSeenRunResultRef = useRef<typeof runner.lastResult>(null);
+  useEffect(() => {
+    const result = runner.lastResult;
+    if (!result) return;
+    if (lastSeenRunResultRef.current === result) return;
+    lastSeenRunResultRef.current = result;
+    if (result.exitCode === 0 && result.errorType === "none") {
+      setRunSuccessKey((k) => k + 1);
+    }
+  }, [runner.lastResult]);
 
   // First-run scripted narration — runs when the learner lands on
   // hello-world with ?firstRun=1 from /welcome. The hook is a no-op
@@ -535,86 +563,141 @@ export default function LessonPage() {
             <div className="border-t border-border bg-panel/80">
               {/* Row 1 — Primary actions */}
               <div className="flex items-center gap-2 px-4 py-1.5">
-                <button
-                  ref={layout.runBtnRef}
-                  onClick={runner.handleRun}
-                  disabled={!runner.canRun || runButtonLocked}
-                  className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                    runner.canRun && !runButtonLocked
-                      ? "bg-accent text-bg hover:bg-accent/90"
-                      : "bg-elevated text-muted cursor-not-allowed"
-                  }`}
-                  title={
-                    runButtonLocked
-                      ? "The tutor will tell you when to run"
-                      : runner.canRun
-                        ? `Run your code (${keys.run})`
-                        : runner.sessionPhase !== "active"
-                          ? "Waiting for session to start…"
-                          : runner.running
-                            ? "Already running…"
-                            : "Run code"
-                  }
-                  aria-label={
-                    runner.canRun
-                      ? `Run code (${keys.runPhrase})`
-                      : runner.sessionPhase !== "active"
-                        ? "Run code — waiting for session"
-                        : "Run code"
-                  }
-                >
-                  {runner.running ? (
-                    <>
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      Running...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                      </svg>
-                      Run
-                    </>
+                <span className="relative inline-flex">
+                  {/* Cinema Kit — tactile press ring. Accent-colored,
+                      keyed to runPressKey so each click re-renders
+                      the ring at the button's center. Only mounts
+                      after the first press so the initial render
+                      doesn't fire a rogue ring. */}
+                  {runPressKey > 0 && (
+                    <RingPulse
+                      anchor="self"
+                      rings={1}
+                      maxScale={8}
+                      borderClass="border-accent/80"
+                      replayKey={runPressKey}
+                    />
                   )}
-                </button>
-                <button
-                  ref={layout.checkBtnRef}
-                  onClick={validator.handleCheck}
-                  disabled={runner.running || validator.runningTests || checkButtonLocked}
-                  className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet ${
-                    !runner.running && !validator.runningTests && !checkButtonLocked
-                      ? "bg-violet/20 text-violet hover:bg-violet/30"
-                      : "bg-elevated text-muted cursor-not-allowed"
-                  }`}
-                  title={
-                    checkButtonLocked
-                      ? "The tutor will tell you when to check"
-                      : "Verify your solution against the lesson's checks"
-                  }
-                  aria-label="Check my work against lesson requirements"
-                >
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                  {/* Cinema Kit — success confirmation ring. Green,
+                      fires when a fresh zero-exit result lands. Same
+                      mount guard. */}
+                  {runSuccessKey > 0 && (
+                    <RingPulse
+                      anchor="self"
+                      rings={1}
+                      maxScale={10}
+                      borderClass="border-success/80"
+                      replayKey={`success-${runSuccessKey}`}
+                    />
+                  )}
+                  <motion.button
+                    ref={layout.runBtnRef}
+                    onClick={() => {
+                      setRunPressKey((k) => k + 1);
+                      runner.handleRun();
+                    }}
+                    whileTap={{ scale: 0.96 }}
+                    transition={{
+                      duration: CINEMA_DURATIONS.tactileTap / 1000,
+                      ease: MATERIAL_EASE,
+                    }}
+                    disabled={!runner.canRun || runButtonLocked}
+                    className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                      runner.canRun && !runButtonLocked
+                        ? "bg-accent text-bg hover:bg-accent/90"
+                        : "bg-elevated text-muted cursor-not-allowed"
+                    }`}
+                    title={
+                      runButtonLocked
+                        ? "The tutor will tell you when to run"
+                        : runner.canRun
+                          ? `Run your code (${keys.run})`
+                          : runner.sessionPhase !== "active"
+                            ? "Waiting for session to start…"
+                            : runner.running
+                              ? "Already running…"
+                              : "Run code"
+                    }
+                    aria-label={
+                      runner.canRun
+                        ? `Run code (${keys.runPhrase})`
+                        : runner.sessionPhase !== "active"
+                          ? "Run code — waiting for session"
+                          : "Run code"
+                    }
                   >
-                    <circle cx="11" cy="11" r="7" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  {validator.runningTests ? "Checking…" : "Check My Work"}
-                </button>
-                {/* Reserve a fixed slot for Explain Error to avoid layout shift when stderr toggles */}
-                <div className="min-w-[128px]">
+                    {runner.running ? (
+                      <>
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Running...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        Run
+                      </>
+                    )}
+                  </motion.button>
+                </span>
+                <span className="relative inline-flex">
+                  {/* Cinema Kit — Check-pass sonar. Three rings, violet,
+                      firing the instant validation passes and holding
+                      for 250 ms before confetti + complete-modal. The
+                      same ring shape the learner saw at the end of
+                      the /welcome cinematic — deja vu, good kind. */}
+                  {sonarNonce > 0 && (
+                    <RingPulse
+                      anchor="self"
+                      rings={3}
+                      maxScale={8}
+                      borderClass="border-violet/70"
+                      replayKey={sonarNonce}
+                    />
+                  )}
+                  <button
+                    ref={layout.checkBtnRef}
+                    onClick={validator.handleCheck}
+                    disabled={runner.running || validator.runningTests || checkButtonLocked}
+                    className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet ${
+                      !runner.running && !validator.runningTests && !checkButtonLocked
+                        ? "bg-violet/20 text-violet hover:bg-violet/30"
+                        : "bg-elevated text-muted cursor-not-allowed"
+                    }`}
+                    title={
+                      checkButtonLocked
+                        ? "The tutor will tell you when to check"
+                        : "Verify your solution against the lesson's checks"
+                    }
+                    aria-label="Check my work against lesson requirements"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="11" cy="11" r="7" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    {validator.runningTests ? "Checking…" : "Check My Work"}
+                  </button>
+                </span>
+                {/* Reserve a fixed slot for the error-help CTA to avoid layout
+                    shift when stderr toggles. Copy shifted from "Explain Error"
+                    (diagnostic) to "What went wrong?" (a question a real tutor
+                    would ask) — same handler, warmer framing. */}
+                <div className="min-w-[160px]">
                   {runner.hasStderr && !runner.running && (
                     <button
                       onClick={runner.handleExplainError}
                       className="flex items-center gap-1 rounded-lg bg-danger/15 px-3 py-1.5 text-[11px] font-medium text-danger ring-1 ring-danger/40 transition hover:bg-danger/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger"
                       title="Ask the tutor to explain this error"
-                      aria-label="Explain error with AI tutor"
+                      aria-label="Ask the tutor what went wrong"
                     >
                       <svg
                         className="h-3 w-3"
@@ -629,7 +712,7 @@ export default function LessonPage() {
                         <line x1="12" y1="8" x2="12" y2="12" />
                         <line x1="12" y1="16" x2="12.01" y2="16" />
                       </svg>
-                      Explain Error
+                      What went wrong?
                     </button>
                   )}
                 </div>

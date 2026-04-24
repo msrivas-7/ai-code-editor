@@ -5,6 +5,7 @@ import { useProjectStore } from "../../../state/projectStore";
 import { useRunStore } from "../../../state/runStore";
 import { useSessionStore } from "../../../state/sessionStore";
 import { useProgressStore } from "../stores/progressStore";
+import { useFirstSuccessStore } from "../stores/firstSuccessStore";
 import { api } from "../../../api/client";
 
 export interface UseLessonRunnerArgs {
@@ -66,6 +67,15 @@ export function useLessonRunner({
       setResult(result);
       setHasRun(true);
       incrementRun(courseId, lessonId);
+      // Cinema Kit — first-successful-run celebration. Session-scoped
+      // (no schema change), per-lesson. Fires a single RingPulse +
+      // confetti burst the first time the learner gets a zero-exit
+      // run on each lesson in this browser tab.
+      if (result.exitCode === 0 && result.errorType === "none") {
+        useFirstSuccessStore
+          .getState()
+          .markIfFirst(courseId, lessonId);
+      }
       if (!practiceMode) {
         if (result.stdout) {
           saveOutput(courseId, lessonId, result.stdout);

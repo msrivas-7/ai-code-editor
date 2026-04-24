@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useRunStore } from "../state/runStore";
 import { useProjectStore } from "../state/projectStore";
+import { useFirstSuccessStore } from "../features/learning/stores/firstSuccessStore";
 import { linkifyRefs } from "../util/linkifyRefs";
 import { useShortcutLabels } from "../util/platform";
+import { RingPulse } from "./cinema/RingPulse";
+import { FilmGrain } from "./cinema/FilmGrain";
 import type { ErrorType } from "../types";
 
 const TYPE_LABEL: Record<ErrorType, string> = {
@@ -29,6 +33,36 @@ export function OutputPanel() {
   const [tab, setTab] = useState<Tab>("combined");
   const [copied, setCopied] = useState(false);
   const keys = useShortcutLabels();
+  const reduce = useReducedMotion();
+
+  // Cinema Kit — first-successful-run celebration.
+  // useFirstSuccessStore.celebrationNonce bumps whenever the runner
+  // records a fresh first-success for any lesson. Mirror it locally
+  // into a glow + a RingPulse key so the panel briefly celebrates.
+  const celebrationNonce = useFirstSuccessStore((s) => s.celebrationNonce);
+  const [glowing, setGlowing] = useState(false);
+  const [pulseKey, setPulseKey] = useState(0);
+  useEffect(() => {
+    if (celebrationNonce === 0) return;
+    setGlowing(true);
+    setPulseKey((k) => k + 1);
+    const t = window.setTimeout(() => setGlowing(false), 900);
+    // Micro-confetti burst — ~40 particles, scoped to the output
+    // panel's rough vertical position. Reuses canvas-confetti on
+    // demand; same reduced-motion guard as lesson-pass celebrate().
+    if (!reduce) {
+      void import("canvas-confetti").then((m) =>
+        m.default({
+          particleCount: 40,
+          spread: 30,
+          startVelocity: 22,
+          origin: { y: 0.85 },
+          scalar: 0.8,
+        }),
+      );
+    }
+    return () => window.clearTimeout(t);
+  }, [celebrationNonce, reduce]);
 
   // When a Run starts while the stdin tab is active, jump to combined so the
   // learner sees output rather than their input buffer. The ref guards against
@@ -45,6 +79,7 @@ export function OutputPanel() {
 
   const stdout = result?.stdout ?? "";
   const stderr = result?.stderr ?? "";
+  const hasStderr = stderr.trim().length > 0;
   const combined = [
     stderr && `--- stderr ---\n${stderr}`,
     stdout && `--- stdout ---\n${stdout}`,
@@ -67,7 +102,24 @@ export function OutputPanel() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-panel">
+    <div
+      className={`relative flex h-full min-h-0 flex-col bg-panel transition-shadow duration-500 ${
+        glowing
+          ? "shadow-[inset_0_0_0_2px_rgb(var(--color-success)/0.45),0_0_24px_-4px_rgb(var(--color-success)/0.35)]"
+          : ""
+      }`}
+    >
+      {/* Cinema Kit — first-success RingPulse. Gated on pulseKey > 0
+          so the initial mount doesn't fire a ghost ring. */}
+      {pulseKey > 0 && (
+        <RingPulse
+          anchor="self"
+          rings={1}
+          maxScale={14}
+          borderClass="border-success/70"
+          replayKey={pulseKey}
+        />
+      )}
       <div className="flex items-center gap-3 border-b border-border px-3 py-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
           Output
@@ -153,6 +205,19 @@ export function OutputPanel() {
           )}
         </div>
       </div>
+      {/* Cinema Kit — error empathy strip. Renders above the stderr
+          body when there's an error. One warm line of voice + scoped
+          ambient grain to signal "this is a moment, not noise."
+          Grain is pointer-events:none so the pre below stays fully
+          interactive (copy, linkifyRefs, etc.). */}
+      {tab !== "stdin" && hasStderr && !running && (
+        <div className="relative border-b border-danger/20 bg-danger/5 px-3 py-2">
+          <FilmGrain intensity="ambient" />
+          <p className="relative z-10 text-[12px] leading-relaxed text-ink/90">
+            Been there — let's figure it out.
+          </p>
+        </div>
+      )}
       {tab === "stdin" ? (
         <textarea
           id="output-panel-body"

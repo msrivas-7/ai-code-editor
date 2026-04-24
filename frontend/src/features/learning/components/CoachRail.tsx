@@ -133,7 +133,7 @@ export function pickNudge(
       condition: p.hasRun && p.hasError && idle > 30,
       icon: "🔍",
       message: p.tutorConfigured
-        ? "Got an error? Read the red text in the output — it tells you which line went wrong. Or click 'Explain Error' for help."
+        ? "Got an error? Read the red text in the output — it tells you which line went wrong. Or click 'What went wrong?' — the tutor's been there."
         : "Got an error? Read the red text in the output — it usually tells you which line has the problem.",
     },
     {
