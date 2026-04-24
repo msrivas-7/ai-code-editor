@@ -122,6 +122,16 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
 
   const total = props.mode === "full" ? FULL_TIMELINE.total : MINIMAL_TIMELINE.total;
 
+  // Pin onComplete / onSkip into refs so prop-identity changes (parent
+  // recreating inline arrow handlers on every render) don't restart
+  // the 14.2 s timeline. Earlier revision had `props.onComplete` in
+  // the dep array; any re-render in the ancestor chain during the
+  // cinematic would clear the timeout and start over — the visuals
+  // kept playing (driven by independent framer timelines) but
+  // onComplete never fired, and the handoff to the lesson stalled.
+  const onCompleteRef = useRef(props.onComplete);
+  onCompleteRef.current = props.onComplete;
+
   // onComplete fires after the full timeline regardless of mode. Guard
   // against double-fire (react strict-mode double-mount in dev).
   useEffect(() => {
@@ -131,10 +141,10 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
       setExiting(true);
       // Allow the exit blur / fade to breathe before unmounting.
       const exitMs = props.mode === "full" ? 300 : 400;
-      window.setTimeout(props.onComplete, exitMs);
+      window.setTimeout(() => onCompleteRef.current(), exitMs);
     }, total);
     return () => window.clearTimeout(t);
-  }, [total, props.mode, props.onComplete]);
+  }, [total, props.mode]);
 
   // Esc listener — same dismiss as the Skip link.
   useEffect(() => {

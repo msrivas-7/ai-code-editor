@@ -44,18 +44,31 @@ export function FirstRunGreeting() {
   // "Show intro again," or (c) a user typing /welcome directly.
   // All three are legitimate — no guard needed.
 
+  // Race the pref patch against a short safety timeout. We prefer to
+  // await the server write so a reload right after the cinematic
+  // doesn't re-fire the welcome-back overlay (stale server state).
+  // But hanging on a bad network would strand the learner watching
+  // a completed cinematic forever. 2 s is comfortably longer than a
+  // normal round-trip yet short enough the user doesn't notice.
+  const PATCH_TIMEOUT_MS = 2_000;
+  const persistOrTimeout = () =>
+    Promise.race([
+      markFirstRunComplete(),
+      new Promise<void>((resolve) =>
+        window.setTimeout(resolve, PATCH_TIMEOUT_MS),
+      ),
+    ]);
+
   const handleComplete = async () => {
     // The cinematic has finished its own dissolve; flip welcomeDone
     // now so a user who rode the whole arc doesn't get re-greeted on
-    // the next StartPage visit, and nav to the target. Await the
-    // server write so a quick reload on the next route doesn't hit
-    // stale prefs and re-fire the overlay.
-    await markFirstRunComplete();
+    // the next StartPage visit, and nav to the lesson handoff.
+    await persistOrTimeout();
     nav(target, { replace: true });
   };
 
   const handleSkip = async () => {
-    await markFirstRunComplete();
+    await persistOrTimeout();
     nav("/", { replace: true });
   };
 
