@@ -93,6 +93,7 @@ describe("DB row parsers", () => {
       editor_coach_done: false,
       ui_layout: { panel: "split" },
       has_openai_key: true,
+      last_welcome_back_at: null,
       updated_at: new Date(),
     };
 
