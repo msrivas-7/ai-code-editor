@@ -37,9 +37,14 @@ interface GuidedTutorPanelProps {
   // narration — we want them to watch the scripted turn land before
   // taking the wheel.
   inputLocked?: boolean;
+  // When true, hide the "clear" button in the panel header. Clearing
+  // the chat mid-welcome would wipe the scripted tutor turns and
+  // break the flow; simplest fix is to take the affordance away for
+  // the duration of the cinematic.
+  clearHidden?: boolean;
 }
 
-export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, priorConcepts, onCollapse, onOpenSettings, resetNonce, inputLocked }: GuidedTutorPanelProps) {
+export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, priorConcepts, onCollapse, onOpenSettings, resetNonce, inputLocked, clearHidden }: GuidedTutorPanelProps) {
   const incrementHint = useProgressStore((s) => s.incrementHint);
   // Derive the hint cap from the DB-backed hint_count (not local component
   // state) so the limit survives navigation + reload. Local state rewinds on
@@ -206,6 +211,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
           )}
         </div>
         <div className="flex items-center gap-1">
+          {!clearHidden && (
           <button
             onClick={() => { clearConversation(); setDraft(""); }}
             className="rounded px-2 py-0.5 text-[11px] text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-40"
@@ -214,6 +220,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
           >
             clear
           </button>
+          )}
           {onCollapse && (
             <button
               onClick={onCollapse}

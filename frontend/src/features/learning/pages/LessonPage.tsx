@@ -185,6 +185,26 @@ export default function LessonPage() {
       firstRunStep === "awaitEdit" ||
       firstRunStep === "praiseEditRun");
 
+  // Run + Check lock out so the learner can't skip ahead of the
+  // scripted beats by mashing buttons before the tutor has asked.
+  // Run is allowed during awaitRun (in case canRun never went true
+  // and we fell back to user-driven mode) and awaitEdit (the tutor
+  // explicitly asked them to run after editing). Check is allowed
+  // only during awaitCheck — the final nudge before lesson pass.
+  // Both unlock completely once the choreography reaches "done".
+  const runButtonLocked =
+    isFirstRun &&
+    firstRunStep !== "idle" &&
+    firstRunStep !== "awaitRun" &&
+    firstRunStep !== "awaitEdit" &&
+    firstRunStep !== "done";
+  const checkButtonLocked =
+    isFirstRun && firstRunStep !== "awaitCheck" && firstRunStep !== "done";
+  // Hide "clear" entirely during the welcome sequence — a learner
+  // who clears mid-narration wipes the scripted turns and breaks
+  // the flow. After "done" the product is fully back to normal.
+  const tutorClearHidden = isFirstRun && firstRunStep !== "done";
+
   useFirstRunChoreography({
     enabled:
       isFirstRun && !layout.showCoach && workspaceCoachDone,
@@ -504,20 +524,22 @@ export default function LessonPage() {
                 <button
                   ref={layout.runBtnRef}
                   onClick={runner.handleRun}
-                  disabled={!runner.canRun}
+                  disabled={!runner.canRun || runButtonLocked}
                   className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                    runner.canRun
+                    runner.canRun && !runButtonLocked
                       ? "bg-accent text-bg hover:bg-accent/90"
                       : "bg-elevated text-muted cursor-not-allowed"
                   }`}
                   title={
-                    runner.canRun
-                      ? `Run your code (${keys.run})`
-                      : runner.sessionPhase !== "active"
-                        ? "Waiting for session to start…"
-                        : runner.running
-                          ? "Already running…"
-                          : "Run code"
+                    runButtonLocked
+                      ? "The tutor will tell you when to run"
+                      : runner.canRun
+                        ? `Run your code (${keys.run})`
+                        : runner.sessionPhase !== "active"
+                          ? "Waiting for session to start…"
+                          : runner.running
+                            ? "Already running…"
+                            : "Run code"
                   }
                   aria-label={
                     runner.canRun
@@ -544,13 +566,17 @@ export default function LessonPage() {
                 <button
                   ref={layout.checkBtnRef}
                   onClick={validator.handleCheck}
-                  disabled={runner.running || validator.runningTests}
+                  disabled={runner.running || validator.runningTests || checkButtonLocked}
                   className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet ${
-                    !runner.running && !validator.runningTests
+                    !runner.running && !validator.runningTests && !checkButtonLocked
                       ? "bg-violet/20 text-violet hover:bg-violet/30"
                       : "bg-elevated text-muted cursor-not-allowed"
                   }`}
-                  title="Verify your solution against the lesson's checks"
+                  title={
+                    checkButtonLocked
+                      ? "The tutor will tell you when to check"
+                      : "Verify your solution against the lesson's checks"
+                  }
                   aria-label="Check my work against lesson requirements"
                 >
                   <svg
@@ -766,6 +792,7 @@ export default function LessonPage() {
                   onOpenSettings={() => layout.setShowSettings(true)}
                   resetNonce={validator.resetNonce}
                   inputLocked={tutorInputLocked}
+                  clearHidden={tutorClearHidden}
                 />
               </aside>
             </>

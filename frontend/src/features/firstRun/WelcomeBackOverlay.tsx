@@ -12,21 +12,24 @@ import { useWelcomeBack } from "./useWelcomeBack";
 // partway through.
 export function WelcomeBackOverlay() {
   const { shouldShow, firstName, copy, dismiss } = useWelcomeBack();
-  const [active, setActive] = useState(false);
+  // `wasShown` is the "once latched, stay visible" memory so hydration
+  // flicker can't drop the overlay mid-reveal. Intentionally only
+  // flips TRUE — never back. `active` is derived synchronously from
+  // `shouldShow || wasShown`; an earlier version computed it from a
+  // useEffect that ran after commit, which let the dashboard paint
+  // for one frame before the overlay mounted on the next render.
+  const [wasShown, setWasShown] = useState(false);
+  const active = shouldShow || wasShown;
 
-  // Latch: once shouldShow has been true this render-cycle, keep
-  // rendering until the cinematic's onComplete fires. Prevents the
-  // overlay from blinking out mid-reveal if hydration shifts a
-  // dependency behind us.
   useEffect(() => {
-    if (shouldShow && !active) setActive(true);
-  }, [shouldShow, active]);
+    if (shouldShow && !wasShown) setWasShown(true);
+  }, [shouldShow, wasShown]);
 
   if (!active || !copy) return null;
 
   const handleComplete = () => {
     dismiss();
-    setActive(false);
+    setWasShown(false);
   };
 
   return (
