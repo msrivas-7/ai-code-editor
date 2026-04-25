@@ -199,6 +199,16 @@ module acsEmail 'modules/acsEmail.bicep' = {
   params: {
     tags: tags
     mailDomain: mailDomain
+    // Domain DNS verification has landed in prod (DKIM/Domain/SPF all
+    // green), so step 3 of the two-phase flow described in
+    // modules/acsEmail.bicep applies: link the verified domain to the
+    // Communication Service so SMTP send actually works. Without this,
+    // every Bicep redeploy strips `linkedDomains` and Supabase Auth
+    // stops sending verification / magic-link / password-reset email.
+    // For brand-new environments where DNS isn't verified yet, drop
+    // this back to the default (false) on the first deploy and re-run
+    // with true after `az communication email domain initiate-verification`.
+    linkDomain: true
   }
 }
 
