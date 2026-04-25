@@ -220,18 +220,23 @@ export function CinematicGreeting(props: CinematicGreetingProps) {
         <MinimalCinematic {...props} exiting={exiting} />
       )}
 
-      {/* Skip affordance. Intentionally tiny + muted. Never prominent
-          enough to be the first thing a user notices; always there if
-          they want it. */}
+      {/* Skip affordance. Phase B re-tune: hidden for the first 4s so
+          the production doesn't tell the audience IN ADVANCE that
+          what they're about to watch is skippable. After 4s it
+          fades up at low contrast. Copy reduced to plain "Skip"
+          (the arrow was doing two jobs and read as "advance"). */}
       {props.onSkip && (
-        <button
+        <motion.button
           type="button"
           onClick={handleSkipOnce}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 4, duration: 0.4 }}
           className="absolute bottom-6 right-6 rounded-md px-2 py-1 text-[11px] text-muted/60 transition hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           aria-label="Skip introduction"
         >
-          Skip intro →
-        </button>
+          Skip
+        </motion.button>
       )}
     </div>
   );
@@ -621,7 +626,7 @@ function ReducedMotionFallback({
           }}
           className="absolute bottom-6 right-6 rounded-md px-2 py-1 text-[11px] text-muted/60 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          Skip intro →
+          Skip
         </button>
       )}
     </div>

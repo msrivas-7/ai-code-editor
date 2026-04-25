@@ -148,7 +148,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Sign in"
-      subtitle="Welcome back. Keep your progress across devices."
+      subtitle="Welcome back. Pick up where you left off."
       footer={
         <>
           Don't have an account?{" "}

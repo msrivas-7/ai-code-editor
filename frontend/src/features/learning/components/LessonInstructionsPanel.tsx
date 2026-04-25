@@ -77,9 +77,24 @@ export function LessonInstructionsPanel({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Phase B: lesson title hoisted into the instructions panel
+          at Fraunces 28px. Pre-Phase B the title was rendered at
+          14px in the header strip — typographic equivalent of
+          whispering after a fanfare (the cinematic just rendered
+          the user's name at 84px). The thing the user is here to
+          do should be the largest typographic element on the page. */}
+      <div className="border-b border-border px-5 py-4">
+        <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight text-ink">
+          {meta.title}
+        </h1>
+        <p className="mt-0.5 text-[11px] text-muted">
+          Lesson {meta.order} · ~{meta.estimatedMinutes} min
+        </p>
+      </div>
       <header className="flex items-center gap-2 border-b border-border px-4 py-2">
-        <h2 className="flex-1 truncate text-sm font-semibold">{meta.title}</h2>
-        <span className="text-[10px] text-muted">~{meta.estimatedMinutes} min</span>
+        <span className="flex-1 text-[10px] uppercase tracking-wider text-muted">
+          Instructions
+        </span>
         {onCollapse && (
           <button
             onClick={onCollapse}

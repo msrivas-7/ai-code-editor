@@ -29,20 +29,20 @@ function copyForReason(reason?: AIStatusNoneReason): {
     case "daily_usd_per_user_hit":
     case "lifetime_usd_per_user_hit":
       return {
-        title: "Free tutor is paused",
-        body: "Add your OpenAI key below to keep asking questions. You keep full control — OpenAI bills you directly, typical tutor usage is fractions of a cent per question.",
+        title: "Want to keep going?",
+        body: "Add your own OpenAI key below — we never see it. Roughly a hundredth of a cent per question. Takes a minute, lasts forever.",
       };
     case "denylisted":
       return {
-        title: "Free tutor unavailable",
-        body: "Free tutor access is unavailable for this account. Add your OpenAI key below to continue — OpenAI bills you directly.",
+        title: "Bring your own key to continue",
+        body: "Add your OpenAI key below. We never see the key in plaintext, and OpenAI bills you directly.",
       };
     case "free_exhausted":
     case "no_key":
     default:
       return {
-        title: "Connect your AI tutor",
-        body: "The tutor uses your own OpenAI account to answer questions about your code and the current lesson — we never see the key in plaintext (it's encrypted on our server).",
+        title: "Connect your tutor",
+        body: "Your tutor reads your code and the current lesson. Bring your own OpenAI key — we never see it in plaintext, and you can pull it any time.",
       };
   }
 }

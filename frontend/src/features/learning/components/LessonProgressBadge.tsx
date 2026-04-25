@@ -1,13 +1,20 @@
 import type { ProgressStatus } from "../types";
 
-const config: Record<ProgressStatus, { label: string; cls: string }> = {
-  not_started: { label: "Not started", cls: "bg-elevated text-muted" },
+// Phase B: "Not started" is a verdict — it documents the user's
+// failure to have begun, before they had a chance to. Render NOTHING
+// for the not_started state. The lesson list / course rows already
+// imply position; this badge only earns its space once the learner
+// has actually engaged.
+const config: Record<ProgressStatus, { label: string; cls: string } | null> = {
+  not_started: null,
   in_progress: { label: "In progress", cls: "bg-accent/15 text-accent" },
   completed: { label: "Completed", cls: "bg-success/15 text-success" },
 };
 
 export function LessonProgressBadge({ status }: { status: ProgressStatus }) {
-  const { label, cls } = config[status];
+  const entry = config[status];
+  if (!entry) return null;
+  const { label, cls } = entry;
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}>
       {status === "completed" && (

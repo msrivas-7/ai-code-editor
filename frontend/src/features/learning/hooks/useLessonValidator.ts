@@ -180,6 +180,14 @@ export function useLessonValidator({
     const files = useProjectStore.getState().snapshot();
     const result = useRunStore.getState().result;
 
+    // Each Check button press is one attempt. Bump here (not in
+    // `startLesson`, where it was incorrectly counting page opens).
+    // Practice-mode checks have their own per-exercise completion
+    // model and don't roll up into the lesson's attemptCount.
+    if (!practiceMode) {
+      useProgressStore.getState().incrementAttempt(courseId, lessonId);
+    }
+
     if (practiceMode) {
       const exercise = lesson.practiceExercises?.[practiceIndex];
       if (!exercise) return;

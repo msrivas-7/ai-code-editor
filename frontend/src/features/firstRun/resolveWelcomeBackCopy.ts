@@ -85,15 +85,30 @@ export function resolveWelcomeBackCopy(ctx: WelcomeBackContext): WelcomeBackCopy
   }
 
   // Branch 3: has progress, nothing in-flight — quiet, low-pressure.
+  // Phase B: replaced "Your dashboard is waiting" (a status report
+  // about a piece of UI) with copy that names what the user is
+  // actually carrying: their longest run of completed lessons.
   const hasAnyProgress = Object.values(ctx.courseProgressMap).some(
     (c) => c.status !== "not_started",
   );
   if (hasAnyProgress) {
-    return { hero, subtitle: "Your dashboard is waiting." };
+    const completedCount = Object.values(ctx.lessonProgressMap).filter(
+      (l) => l.status === "completed",
+    ).length;
+    if (completedCount > 0) {
+      return {
+        hero,
+        subtitle:
+          completedCount === 1
+            ? "One lesson down. Pick the next one when you're ready."
+            : `${completedCount} lessons done. The next one's there when you are.`,
+      };
+    }
+    return { hero, subtitle: "Pick up where you left off." };
   }
 
   // Branch 4: a returning user with zero progress (rare — maybe they
   // signed up months ago and only today opened a lesson). Invite
   // without pressure.
-  return { hero, subtitle: "Let's start something today." };
+  return { hero, subtitle: "Today's a good day to start." };
 }

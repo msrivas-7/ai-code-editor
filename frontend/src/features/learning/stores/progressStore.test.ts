@@ -131,12 +131,15 @@ describe("progressStore.reset", () => {
 });
 
 describe("progressStore.startLesson", () => {
-  it("creates lesson + course records with attemptCount=1 and fires PATCHes", () => {
+  it("creates lesson + course records (no attemptCount bump on open) and fires PATCHes", () => {
     useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
 
     const lp = useProgressStore.getState().lessonProgress[KEY];
     expect(lp.status).toBe("in_progress");
-    expect(lp.attemptCount).toBe(1);
+    // Opening a lesson page is no longer counted as an "attempt."
+    // An attempt is a Check-button press; that bump lives in
+    // incrementAttempt / useLessonValidator.handleCheck.
+    expect(lp.attemptCount).toBe(0);
 
     const cp = useProgressStore.getState().courseProgress[COURSE];
     expect(cp.status).toBe("in_progress");
@@ -145,7 +148,7 @@ describe("progressStore.startLesson", () => {
     expect(patchLessonProgress).toHaveBeenCalledWith(
       COURSE,
       LESSON,
-      expect.objectContaining({ status: "in_progress", attemptCount: 1 }),
+      expect.objectContaining({ status: "in_progress" }),
     );
     expect(patchCourseProgress).toHaveBeenCalledWith(
       COURSE,
@@ -153,10 +156,26 @@ describe("progressStore.startLesson", () => {
     );
   });
 
-  it("does not double-bump attemptCount within the same session", () => {
+  it("startLesson never bumps attemptCount, even on repeated calls", () => {
     useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
     useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
-    expect(useProgressStore.getState().lessonProgress[KEY].attemptCount).toBe(1);
+    expect(useProgressStore.getState().lessonProgress[KEY].attemptCount).toBe(0);
+  });
+
+  it("incrementAttempt bumps the counter and skips after completion", () => {
+    useProgressStore.getState().startLesson(LEARNER, COURSE, LESSON);
+    useProgressStore.getState().incrementAttempt(COURSE, LESSON);
+    useProgressStore.getState().incrementAttempt(COURSE, LESSON);
+    expect(useProgressStore.getState().lessonProgress[KEY].attemptCount).toBe(2);
+    // After completion, re-checks don't count as new attempts.
+    useProgressStore.setState((s) => ({
+      lessonProgress: {
+        ...s.lessonProgress,
+        [KEY]: { ...s.lessonProgress[KEY], status: "completed" as const },
+      },
+    }));
+    useProgressStore.getState().incrementAttempt(COURSE, LESSON);
+    expect(useProgressStore.getState().lessonProgress[KEY].attemptCount).toBe(2);
   });
 
   it("preserves a completed lesson's status on re-entry", () => {

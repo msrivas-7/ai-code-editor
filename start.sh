@@ -33,6 +33,14 @@ else
   ok "Docker daemon reachable"
 fi
 
+# Always tear down any prior instance first so `./start.sh` is a
+# one-command "(re)start." Idempotent — stop.sh is a no-op if nothing
+# is running. Marked non-fatal (|| true) so a stop failure (rare —
+# e.g., a hung container) doesn't block a fresh start; docker compose
+# up below will reconcile.
+log "Cleaning up any prior instance…"
+./stop.sh || true
+
 log "Building + starting CodeTutor AI (this is fast after the first run)…"
 docker compose up --build -d
 

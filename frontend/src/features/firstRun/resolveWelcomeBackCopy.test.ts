@@ -133,7 +133,9 @@ describe("resolveWelcomeBackCopy", () => {
       courseCatalog: CATALOG,
     });
     // Falls through to branch 3 (has progress, nothing in-flight).
-    expect(out.subtitle).toBe("Your dashboard is waiting.");
+    // Phase B: copy is now state-aware. lessonProgressMap is empty
+    // here so completedCount=0 → falls to the generic resume line.
+    expect(out.subtitle).toBe("Pick up where you left off.");
   });
 
   it("idle-with-progress branch: has progress but nothing in-flight", () => {
@@ -152,7 +154,11 @@ describe("resolveWelcomeBackCopy", () => {
       },
       courseCatalog: CATALOG,
     });
-    expect(out.subtitle).toBe("Your dashboard is waiting.");
+    // Phase B: state-aware subtitle names what the user has done.
+    // 1 completed lesson → singular phrasing.
+    expect(out.subtitle).toBe(
+      "One lesson down. Pick the next one when you're ready.",
+    );
   });
 
   it("no-progress branch: invites without pressure", () => {
@@ -164,7 +170,7 @@ describe("resolveWelcomeBackCopy", () => {
       lessonProgressMap: {},
       courseCatalog: CATALOG,
     });
-    expect(out.subtitle).toBe("Let's start something today.");
+    expect(out.subtitle).toBe("Today's a good day to start.");
   });
 
   it("softens the hero after a >7-day absence", () => {

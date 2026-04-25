@@ -47,10 +47,9 @@ import { resolveFirstName } from "../../firstRun/resolveFirstName";
 import { useFirstRunStore } from "../../firstRun/useFirstRunStore";
 import { FirstRunSpotlight } from "../../firstRun/FirstRunSpotlight";
 import { FirstRunHandoffReveal } from "../../firstRun/FirstRunHandoffReveal";
+import { FirstSuccessReveal } from "../components/FirstSuccessReveal";
 import { motion } from "framer-motion";
-import { RingPulse } from "../../../components/cinema/RingPulse";
 import { MATERIAL_EASE, CINEMA_DURATIONS } from "../../../components/cinema/easing";
-import { useValidatorUIStore } from "../stores/validatorUIStore";
 
 export default function LessonPage() {
   const { courseId, lessonId } = useParams<{
@@ -174,37 +173,10 @@ export default function LessonPage() {
     },
   });
 
-  // Cinema Kit — Run button tactile feedback.
-  // `runPressKey` bumps on each Run click; feeds RingPulse.replayKey so
-  // the accent-colored click ring re-renders each press. `runSuccessKey`
-  // bumps when a brand-new zero-exit RunResult lands, firing a green
-  // success ring. Identity check on the result object guarantees we
-  // only celebrate NEW runs, not re-renders that re-read the same
-  // lastResult.
-  const [runPressKey, setRunPressKey] = useState(0);
-  const [runSuccessKey, setRunSuccessKey] = useState(0);
-  // Cinema Kit — Check-pass sonar nonce, bumped by the validator hook
-  // at the moment a lesson passes. LessonPage watches it to fire a
-  // three-ring RingPulse over the Check button.
-  //
-  // The nonce is module-scoped, so navigating to the next lesson
-  // would otherwise read the still-bumped value from the previous
-  // lesson's pass and fire a ghost sonar on the fresh mount. Snapshot
-  // the value on mount and only render the pulse when a strictly
-  // higher nonce has landed while this lesson instance is alive.
-  const sonarNonce = useValidatorUIStore((s) => s.sonarNonce);
-  const sonarNonceAtMountRef = useRef<number>(sonarNonce);
-  const sonarNonceNew = sonarNonce > sonarNonceAtMountRef.current;
-  const lastSeenRunResultRef = useRef<typeof runner.lastResult>(null);
-  useEffect(() => {
-    const result = runner.lastResult;
-    if (!result) return;
-    if (lastSeenRunResultRef.current === result) return;
-    lastSeenRunResultRef.current = result;
-    if (result.exitCode === 0 && result.errorType === "none") {
-      setRunSuccessKey((k) => k + 1);
-    }
-  }, [runner.lastResult]);
+  // Run-success ring + Check sonar removed per user direction —
+  // the lesson-complete celebration is the win moment; per-press
+  // rings on those buttons were redundant. Run press feedback is
+  // covered by `whileTap` on the button itself.
 
   // First-run scripted narration — runs when the learner lands on
   // hello-world with ?firstRun=1 from /welcome. The hook is a no-op
@@ -352,6 +324,13 @@ export default function LessonPage() {
           the hole's perimeter is the same shape language the
           learner saw at the end of the cinematic — one continuous
           outward motion across the route boundary. */}
+      {/* Phase B — first-success reveal. Vignette pulse over the
+          workspace when the learner's own code lands its first
+          successful run. Reads in concert with the OutputPanel's
+          hero RingPulse (scaled to 28) and the tutor's celebration
+          message arriving DURING the typewriter completion (timed
+          via POST_RUN_BEAT_MS in useFirstRunChoreography). */}
+      <FirstSuccessReveal />
       {inHandoff && isFirstRun && (
         <FirstRunHandoffReveal runBtnRef={layout.runBtnRef} />
       )}
@@ -366,40 +345,28 @@ export default function LessonPage() {
         </button>
         <Wordmark size="sm" />
         <span className="h-4 w-px bg-border" aria-hidden="true" />
-        {/* Cinema Kit Continuity Pass — header flicker fix. While
-            the loader is in flight, lesson is null and the old code
-            rendered "Lesson : Loading..." for a frame on every nav.
-            Render a thin skeleton bar in the title slot until lesson
-            data lands; then show the real title. */}
+        {/* Phase B: lesson title hoisted to the instructions panel
+            at Fraunces 28px. The header now carries only a thin
+            breadcrumb — the lesson order — so the chrome doesn't
+            compete with the panel for the user's attention. The
+            full title still appears in the document title (set
+            elsewhere) and the meta. */}
         {lesson ? (
-          <h1
-            className="truncate text-[14px] font-medium tracking-tight text-ink"
-            title={`Lesson ${lesson.order}: ${lesson.title}`}
-          >
-            Lesson {lesson.order}: {lesson.title}
-          </h1>
+          <span className="truncate text-[11px] text-muted">
+            Lesson {lesson.order}
+          </span>
         ) : (
           <span
-            className="skeleton h-4 w-40 rounded"
-            aria-label="Loading lesson title"
+            className="skeleton h-3 w-16 rounded"
+            aria-label="Loading"
           />
         )}
-        <nav
-          className="ml-2 flex shrink-0 items-center overflow-hidden rounded-md border border-border text-[11px]"
-          aria-label="Mode switcher"
-        >
-          <button
-            onClick={() => nav("/editor")}
-            className="bg-transparent px-2.5 py-1 text-muted transition hover:bg-elevated hover:text-ink"
-            title="Switch to free-form editor"
-            aria-label="Switch to editor mode"
-          >
-            Editor
-          </button>
-          <span className="border-l border-border bg-violet/15 px-2.5 py-1 font-semibold text-violet">
-            Learning
-          </span>
-        </nav>
+        {/* Phase B: mode switcher (Editor | Learning) removed from
+            chrome. Sitting persistently next to the lesson title, it
+            reminded the learner on every render that there's a
+            different place they could be — the product's identity
+            confusion made structural. Editor mode is now reachable
+            via the user menu and the StartPage tertiary affordance. */}
 
         <div className="ml-auto flex items-center gap-2">
           {runner.sessionPhase === "starting" && (
@@ -476,8 +443,36 @@ export default function LessonPage() {
               Next →
             </button>
           )}
-          <FeedbackButton />
-          <UserMenu />
+          {/* Phase B: chrome politeness during framed moments. While
+              the first-run scripted choreography is in flight, the
+              FeedbackButton dims to 30% and the UserMenu is hidden —
+              the cinematic + iris + scripted tutor is the framed
+              first-impression and full-product chrome arriving
+              uninvited inside that frame breaks the spell. Both
+              return on a 250ms fade-up at firstRunStep === "done". */}
+          <motion.div
+            animate={{
+              opacity: isFirstRun && firstRunStep !== "done" ? 0.3 : 1,
+            }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              display: "inline-flex",
+              pointerEvents:
+                isFirstRun && firstRunStep !== "done" ? "none" : "auto",
+            }}
+          >
+            <FeedbackButton />
+          </motion.div>
+          {(!isFirstRun || firstRunStep === "done") && (
+            <motion.div
+              initial={isFirstRun ? { opacity: 0, y: -4 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              style={{ display: "inline-flex" }}
+            >
+              <UserMenu />
+            </motion.div>
+          )}
         </div>
       </header>
 
@@ -486,38 +481,39 @@ export default function LessonPage() {
       <SessionReplacedModal />
 
       {loader.loading ? (
+        // Phase B: lesson content is bundled client-side, so the
+        // load is typically <100ms. The previous gray-rectangle
+        // wireframe skeleton — three columns of bars — was the first
+        // frame after the iris reveal opens, breaking the spell from
+        // "hand-painted cinematic" straight to "this is software."
+        // Replace with a simple centered loading state in the
+        // cinematic's voice; the skeleton bars only show on
+        // genuinely slow loads (the JSON is bundled, so this is
+        // mostly catastrophic-only).
         <div
-          className="flex min-h-0 flex-1 overflow-hidden"
+          className="flex min-h-0 flex-1 items-center justify-center"
           role="status"
           aria-live="polite"
           aria-label="Loading lesson"
         >
           <span className="sr-only">Loading…</span>
-          <div className="flex w-[320px] shrink-0 flex-col gap-3 border-r border-border bg-panel p-4">
-            <span className="skeleton h-4 w-2/3 rounded" />
-            <span className="skeleton h-3 w-5/6 rounded" />
-            <span className="skeleton h-3 w-3/4 rounded" />
-            <span className="skeleton h-3 w-4/5 rounded" />
-            <span className="skeleton h-3 w-1/2 rounded" />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex-1 space-y-2 bg-bg p-6">
-              <span className="skeleton h-3 w-1/3 rounded" />
-              <span className="skeleton mt-4 block h-3 w-1/2 rounded" />
-              <span className="skeleton mt-2 block h-3 w-3/4 rounded" />
-              <span className="skeleton mt-2 block h-3 w-2/3 rounded" />
-            </div>
-            <div className="h-[200px] border-t border-border bg-panel p-4">
-              <span className="skeleton h-3 w-1/4 rounded" />
-            </div>
-          </div>
-          <div className="flex w-[340px] shrink-0 flex-col gap-3 border-l border-border bg-panel p-4">
-            <span className="skeleton h-3 w-1/3 rounded" />
-            <span className="skeleton h-10 w-full rounded-md" />
-          </div>
+          <p className="font-display text-[15px] text-muted">
+            Setting your stage…
+          </p>
         </div>
       ) : lesson ? (
-        <main id="main-content" className="flex min-h-0 flex-1 overflow-hidden">
+        <motion.main
+          id="main-content"
+          className="flex min-h-0 flex-1 overflow-hidden"
+          // Phase B: workspace dims to 20% opacity when the
+          // lesson-complete panel takes the stage. Pre-Phase B that
+          // panel sat in a max-w-md Modal on top of full-bright
+          // chrome; the climactic beat had to compete with the
+          // editor + tutor + toolbar at full intensity. Now the
+          // workspace recedes and the panel is the only thing
+          // lit. 400 ms each way.
+          animate={{ opacity: validator.showComplete ? 0.2 : 1 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
           {/* Instructions panel — collapsible. Cinema Kit Continuity
               Pass: same width-animation pattern as the tutor panel.
               Aside stays mounted always; framer animates width
@@ -652,36 +648,19 @@ export default function LessonPage() {
               {/* Row 1 — Primary actions */}
               <div className="flex items-center gap-2 px-4 py-1.5">
                 <span className="relative inline-flex">
-                  {/* Cinema Kit — tactile press ring. Accent-colored,
-                      keyed to runPressKey so each click re-renders
-                      the ring at the button's center. Only mounts
-                      after the first press so the initial render
-                      doesn't fire a rogue ring. */}
-                  {runPressKey > 0 && (
-                    <RingPulse
-                      anchor="self"
-                      rings={1}
-                      maxScale={8}
-                      borderClass="border-accent/80"
-                      replayKey={runPressKey}
-                    />
-                  )}
-                  {/* Cinema Kit — success confirmation ring. Green,
-                      fires when a fresh zero-exit result lands. Same
-                      mount guard. */}
-                  {runSuccessKey > 0 && (
-                    <RingPulse
-                      anchor="self"
-                      rings={1}
-                      maxScale={10}
-                      borderClass="border-success/80"
-                      replayKey={`success-${runSuccessKey}`}
-                    />
-                  )}
+                  {/* Phase B: dropped the press ring. The accent-color
+                      ring on every click + the green ring on every
+                      success was firing two concentric ripples on the
+                      same anchor in <1 s after a successful run,
+                      reading as a stutter. Reserve rings for OUTCOMES,
+                      not inputs — `whileTap` already gives tactile
+                      feedback for the press itself. */}
+                  {/* Ring removed — the lesson-complete celebration
+                      is the win moment; per-run rings on this button
+                      were extra. */}
                   <motion.button
                     ref={layout.runBtnRef}
                     onClick={() => {
-                      setRunPressKey((k) => k + 1);
                       runner.handleRun();
                     }}
                     whileTap={{ scale: 0.96 }}
@@ -730,20 +709,9 @@ export default function LessonPage() {
                   </motion.button>
                 </span>
                 <span className="relative inline-flex">
-                  {/* Cinema Kit — Check-pass sonar. Three rings, violet,
-                      firing the instant validation passes and holding
-                      for 250 ms before confetti + complete-modal. The
-                      same ring shape the learner saw at the end of
-                      the /welcome cinematic — deja vu, good kind. */}
-                  {sonarNonceNew && (
-                    <RingPulse
-                      anchor="self"
-                      rings={3}
-                      maxScale={8}
-                      borderClass="border-violet/70"
-                      replayKey={sonarNonce}
-                    />
-                  )}
+                  {/* Sonar ring removed — the lesson-complete
+                      celebration is the win moment; the per-pass
+                      sonar on this button was extra. */}
                   <button
                     ref={layout.checkBtnRef}
                     onClick={validator.handleCheck}
@@ -783,7 +751,12 @@ export default function LessonPage() {
                   {runner.hasStderr && !runner.running && (
                     <button
                       onClick={runner.handleExplainError}
-                      className="flex items-center gap-1 rounded-lg bg-danger/15 px-3 py-1.5 text-[11px] font-medium text-danger ring-1 ring-danger/40 transition hover:bg-danger/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+                      // Phase B: tone fix. Copy says "let me help" but
+                      // the danger-tinted color said "alarm" — user
+                      // read "What went wrong?" with red highlight
+                      // and felt accused. Accent tint matches the
+                      // calm-hand-on-shoulder intent of the copy.
+                      className="flex items-center gap-1 rounded-lg bg-accent/15 px-3 py-1.5 text-[11px] font-medium text-accent ring-1 ring-accent/40 transition hover:bg-accent/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       title="Ask the tutor to explain this error"
                       aria-label="Ask the tutor what went wrong"
                     >
@@ -918,8 +891,17 @@ export default function LessonPage() {
                   )}
                 </div>
               )}
-              {/* Row 3 — Stats strip. Ambient motivation (time/attempts/runs/hints), always visible. No controls here — Resets live in Row 1's ⋯ menu. */}
-              {lp && (
+              {/* Row 3 — Stats strip. Ambient motivation
+                  (time/attempts/runs/hints). Phase B: hidden until
+                  the learner has done SOMETHING. Showing
+                  "0m · 0 attempts · 0 runs · 0 hints" the moment a
+                  lesson opens is the product surveiling the user
+                  before they've started moving — Apple shows you the
+                  activity ring at the END of the activity, not the
+                  beginning. Once at least one run OR attempt lands,
+                  the strip stays visible for the rest of the
+                  session. */}
+              {lp && (lp.runCount > 0 || lp.attemptCount > 0) && (
                 <div className="flex items-center px-4 pb-1.5 pt-1">
                   <div className="flex-1" />
                   <span
@@ -995,7 +977,7 @@ export default function LessonPage() {
               clearHidden={tutorClearHidden}
             />
           </motion.aside>
-        </main>
+        </motion.main>
       ) : loader.loadError?.kind === "schema_error" ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <div

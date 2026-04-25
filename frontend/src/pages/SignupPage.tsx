@@ -120,7 +120,7 @@ export default function SignupPage() {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Save your progress and sync it across devices."
+      subtitle="Make a place for yourself. Your work, anywhere you sign in."
       footer={
         <>
           Already have an account?{" "}

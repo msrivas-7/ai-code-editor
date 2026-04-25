@@ -1,7 +1,7 @@
+import { useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { LessonMeta } from "../types";
 import { formatTimeSpent, type MasteryLevel } from "../utils/mastery";
-import { Modal } from "../../../components/Modal";
 import { LessonFeedbackChip } from "./LessonFeedbackChip";
 
 interface LessonCompletePanelProps {
@@ -31,15 +31,46 @@ export function LessonCompletePanel({
   const showShakyNudge =
     mastery === "shaky" && practiceCount > 0 && practiceDone < practiceCount;
 
+  // Phase B: Esc dismisses (preserved from the prior Modal wrapper).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
+  // Phase B: full-frame takeover, not a Modal. The lesson-complete
+  // beat is the third-act climax — the most emotionally important
+  // moment in the product. Pre-Phase B it shipped in a `max-w-md`
+  // Modal with the same chrome as the Reset Lesson confirm dialog,
+  // and the same 160 ms scale-down exit. Now the panel takes the
+  // center column at max-w-2xl, the workspace dims to 20 % opacity
+  // behind it (handled by LessonPage), the heading is 40 px in
+  // Fraunces, and the rings (already wrapped by CelebrationHeader)
+  // get the room they need to breathe.
   return (
-    <Modal
-      onClose={onDismiss}
+    <motion.div
       role="alertdialog"
-      labelledBy="lesson-complete-title"
-      describedBy="lesson-complete-desc"
-      position="center"
-      panelClassName="mx-4 w-full max-w-md rounded-xl border border-success/30 bg-panel p-6 shadow-xl"
+      aria-labelledby="lesson-complete-title"
+      aria-describedby="lesson-complete-desc"
+      className="fixed inset-0 z-[55] flex items-center justify-center px-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onDismiss();
+      }}
     >
+      <motion.div
+        className="relative w-full max-w-2xl rounded-2xl border border-success/30 bg-panel/95 p-10 shadow-2xl backdrop-blur"
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 1.02 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        onClick={(e) => e.stopPropagation()}
+      >
       <div className="relative">
         <CelebrationHeader
           orderLabel={`Lesson ${lesson.order}: ${lesson.title}`}
@@ -214,7 +245,8 @@ export function LessonCompletePanel({
 
         <LessonFeedbackChip lessonId={lesson.id} lessonTitle={lesson.title} />
       </div>
-    </Modal>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -327,9 +359,14 @@ function CelebrationHeader({ orderLabel }: { orderLabel: string }) {
 
       {/* Heading — springs up with overshoot. Gradient fill is ONE of
           the allowed accent→violet uses in the product — this is the
-          single most celebratory moment, it earns the treatment. */}
+          single most celebratory moment, it earns the treatment.
+          Phase B: scaled from 24 → 40 px (Fraunces display) so the
+          climactic beat actually reads as climactic — pre-Phase B
+          this was clipped inside a max-w-md Modal at button-heading
+          weight. The new full-frame takeover gives the heading
+          breathing room. */}
       <motion.h2
-        className="mb-1 bg-gradient-to-r from-success via-accent to-violet bg-clip-text text-[24px] font-semibold leading-tight tracking-tight text-transparent"
+        className="mb-1 bg-gradient-to-r from-success via-accent to-violet bg-clip-text font-display text-[40px] font-semibold leading-tight tracking-tight text-transparent"
         initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.85, y: 6 }}
         animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
         transition={

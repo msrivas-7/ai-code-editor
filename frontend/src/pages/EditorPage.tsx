@@ -184,11 +184,21 @@ export default function EditorPage() {
           initial={false}
           animate={{ width: filesCollapsed ? 0 : leftW }}
           transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-          className="min-h-0 shrink-0 overflow-hidden border-r border-border bg-panel p-3"
+          className="min-h-0 shrink-0 overflow-hidden border-r border-border bg-panel"
           aria-hidden={filesCollapsed ? "true" : undefined}
           {...((filesCollapsed ? { inert: "" } : {}) as Record<string, unknown>)}
         >
-          <FileTree onCollapse={() => setFilesCollapsed(true)} />
+          {/* Padding lives on an inner wrapper, NOT the animating
+              aside, so the box-sizing math when width animates to 0
+              doesn't leave a ~24 px residual strip of bg-panel. The
+              other three asides in this app already follow this
+              pattern; this one was the odd one out. */}
+          <div
+            className="h-full p-3"
+            style={{ width: leftW, minWidth: leftW }}
+          >
+            <FileTree onCollapse={() => setFilesCollapsed(true)} />
+          </div>
         </motion.aside>
         {!filesCollapsed && (
           <Splitter

@@ -103,6 +103,7 @@ interface ProgressState {
     totalLessons: number,
   ) => void;
   incrementRun: (courseId: string, lessonId: string) => void;
+  incrementAttempt: (courseId: string, lessonId: string) => void;
   incrementHint: (courseId: string, lessonId: string) => void;
   saveCode: (
     courseId: string,
@@ -259,18 +260,19 @@ export const useProgressStore = create<ProgressState>()((set, get) => {
 
     startLesson(learnerId, courseId, lessonId) {
       const key = compositeKey(courseId, lessonId);
-      const isNewSession = !startedThisSession.has(key);
+      // `startedThisSession` is still tracked but no longer drives an
+      // attemptCount bump — opening a lesson page is not an "attempt."
+      // An attempt is a Check button press; that lives in
+      // `incrementAttempt` below, called from useLessonValidator.
       startedThisSession.add(key);
 
       const s = get();
       const currentL = s.lessonProgress[key];
-      const shouldBumpAttempt = isNewSession && currentL?.status !== "completed";
       const nextL: LessonProgress = {
         ...(currentL ?? freshLesson(learnerId, courseId, lessonId)),
         status: currentL?.status === "completed" ? "completed" : "in_progress",
         startedAt: currentL?.startedAt ?? now(),
         updatedAt: now(),
-        attemptCount: (currentL?.attemptCount ?? 0) + (shouldBumpAttempt ? 1 : 0),
       };
 
       const currentC = s.courseProgress[courseId];
@@ -382,6 +384,21 @@ export const useProgressStore = create<ProgressState>()((set, get) => {
         lessonId,
         (lp) => ({ ...lp, runCount: lp.runCount + 1, updatedAt: now() }),
         (next) => ({ runCount: next.runCount }),
+      );
+    },
+
+    // Caller: useLessonValidator.handleCheck — fires once per Check
+    // button press. Skips the bump after the lesson is completed
+    // (re-checks of an already-passed lesson aren't fresh attempts).
+    incrementAttempt(courseId, lessonId) {
+      patchLesson(
+        courseId,
+        lessonId,
+        (lp) =>
+          lp.status === "completed"
+            ? lp
+            : { ...lp, attemptCount: lp.attemptCount + 1, updatedAt: now() },
+        (next) => ({ attemptCount: next.attemptCount }),
       );
     },
 

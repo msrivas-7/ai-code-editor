@@ -33,10 +33,13 @@ const PERSONA_LABEL: Record<Persona, string> = {
   advanced: "Advanced",
 };
 
+// Phase B: persona blurbs rewritten in tutor's voice (first-person,
+// matches scriptedTurns.ts). The user picking "beginner" is admitting
+// they're a beginner — copy should make them feel safe, not described.
 const PERSONA_BLURB: Record<Persona, string> = {
-  beginner: "Assumes little prior knowledge; prefers plain words and concrete examples.",
-  intermediate: "Uses standard vocabulary without defining it; explains the why.",
-  advanced: "Dense and technical; skips basics, short explanations.",
+  beginner: "I'll explain things from the ground up. No jargon without context, plain words, concrete examples.",
+  intermediate: "I'll use the standard vocabulary as we go and focus on the why behind it, not the basics.",
+  advanced: "Short and dense. I'll skip the foundations and go straight to the interesting part.",
 };
 
 export function SettingsPanel({ onClose }: { onClose?: () => void }) {
@@ -322,7 +325,7 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
       <hr className="border-border" />
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-ink">Guided tour</h3>
+        <h3 className="text-xs font-semibold text-ink">Replay opening</h3>
         {replayErr && (
           <div
             role="alert"
@@ -338,10 +341,10 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
           aria-busy={replaying}
           className="self-start rounded-md border border-border bg-elevated px-3 py-1 text-[11px] font-semibold text-ink transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {replaying ? "Resetting…" : "Show intro again"}
+          {replaying ? "Resetting…" : "Watch the moment again"}
         </button>
         <p className="text-[10px] leading-relaxed text-faint">
-          Replay the welcome message and the workspace and editor tips.
+          Replay the cinematic opening and the lesson handoff.
         </p>
       </section>
 
