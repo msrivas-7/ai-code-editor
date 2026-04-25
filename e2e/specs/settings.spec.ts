@@ -286,7 +286,7 @@ test.describe("settings panel", () => {
     // of remounting the old 3-step spotlight overlay.
     await page.goto("/learn");
     await openSettings(page, "account");
-    await page.getByRole("button", { name: /^show intro again$/i }).click();
+    await page.getByRole("button", { name: /^watch the moment again$/i }).click();
 
     // Modal closes; redirect chain ends at /welcome with the cinematic
     // rendering. The Skip link is the stable assertion point — the

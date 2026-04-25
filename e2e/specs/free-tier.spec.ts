@@ -226,7 +226,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     // The paid-interest CTA is visible whenever reason is non-no_key.
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
@@ -263,7 +263,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor unavailable/i)).toBeVisible();
+    await expect(page.getByText(/bring your own key to continue/i)).toBeVisible();
     const cta = page.getByRole("button", { name: /register interest in a paid plan/i });
     await expect(cta).toBeVisible();
     await cta.click();
@@ -285,7 +285,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Connect your AI tutor/i)).toBeVisible();
+    await expect(page.getByText(/connect your tutor/i)).toBeVisible();
     // The onboarding surface must NOT crowd in a paid-interest CTA — it is
     // only relevant when the user is actively blocked from the free tier.
     await expect(
@@ -303,7 +303,7 @@ test.describe("free AI tier", () => {
 
     // With BYOK-shaped fallback + hasKey=false, the TutorSetupWarning
     // renders (no hanging loader).
-    await expect(page.getByText(/Connect your AI tutor/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/connect your tutor/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/Free tutor · /i)).toHaveCount(0);
   });
 
@@ -320,7 +320,7 @@ test.describe("free AI tier", () => {
     await waitForMonacoReady(page);
 
     // Same generic "paused" copy — no dollar amount leaks to the user.
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await expect(page.getByText(/\$/)).toHaveCount(0);
   });
 
@@ -342,7 +342,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
     ).toHaveCount(0);
@@ -517,7 +517,7 @@ test.describe("free AI tier", () => {
     await waitForMonacoReady(page);
 
     // Phase 1: paused.
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
 
     // Phase 2: force a status refetch by reloading the page. The
     // mockAIStatusSequence advances to the next body on each call, so the
@@ -526,7 +526,7 @@ test.describe("free AI tier", () => {
     await waitForMonacoReady(page);
 
     // Paused copy is gone; platform pill is back with fresh 30/30.
-    await expect(page.getByText(/Free tutor is paused/i)).toHaveCount(0);
+    await expect(page.getByText(/want to keep going/i)).toHaveCount(0);
     await expect(page.getByText(/30\/30/)).toBeVisible({ timeout: 10_000 });
 
     // Phase 3: composer accepts a new ask. Pill decrements to 29/30 on
@@ -552,7 +552,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
     ).toBeVisible();
@@ -572,7 +572,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await expect(page.getByText(/\$/)).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
@@ -592,7 +592,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
     ).toBeVisible();
@@ -842,7 +842,7 @@ test.describe("free AI tier", () => {
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
 
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await page.getByRole("button", { name: /register interest in a paid plan/i }).click();
 
     await S.openSettings(page, "ai");
@@ -886,7 +886,7 @@ test.describe("free AI tier", () => {
 
     await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}`);
     await waitForMonacoReady(page);
-    await expect(page.getByText(/Free tutor is paused/i)).toBeVisible();
+    await expect(page.getByText(/want to keep going/i)).toBeVisible();
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
     ).toHaveCount(0);
@@ -1080,7 +1080,7 @@ test.describe("free AI tier", () => {
 
     await expect(page.getByText(/You've used today's free tutor questions/i)).toBeVisible();
     // The TutorSetupWarning onboarding headline MUST NOT be stacked on top.
-    await expect(page.getByText(/Connect your AI tutor/i)).toHaveCount(0);
+    await expect(page.getByText(/connect your tutor/i)).toHaveCount(0);
     // Exactly one paid-interest CTA (not two).
     await expect(
       page.getByRole("button", { name: /register interest in a paid plan/i }),
