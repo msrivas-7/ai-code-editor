@@ -1,5 +1,7 @@
+import { motion } from "framer-motion";
 import { useProjectStore } from "../state/projectStore";
 import { linkifyRefs } from "../util/linkifyRefs";
+import { HOUSE_EASE } from "./cinema/easing";
 import type {
   Stuckness,
   TutorCitation,
@@ -114,8 +116,15 @@ export function SectionView({
   const t = TONE[tone];
   const order = useProjectStore((s) => s.order);
   const revealAt = useProjectStore((s) => s.revealAt);
+  // Cinema Kit Continuity Pass — section arrival. Each section
+  // (intent / explain / example / etc.) fades in from a 6 px lift
+  // as it lands so the response feels assembled in real time, not
+  // dumped. 180 ms with HOUSE_EASE matches the rest of the kit.
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: HOUSE_EASE }}
       className={`rounded-md border-l-2 ${t.border} bg-elevated/60 px-3 py-2 shadow-soft`}
     >
       <div className="mb-1 flex items-center gap-1.5">
@@ -128,7 +137,7 @@ export function SectionView({
         {linkifyRefs(text, order, revealAt)}
         {isStreamingTail && <StreamingCaret />}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -173,7 +182,12 @@ export function WalkthroughView({ steps }: { steps: TutorWalkStep[] }) {
   const order = useProjectStore((s) => s.order);
   const revealAt = useProjectStore((s) => s.revealAt);
   return (
-    <div className="rounded-md border-l-2 border-violet/50 bg-elevated/60 px-3 py-2 shadow-soft">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: HOUSE_EASE }}
+      className="rounded-md border-l-2 border-violet/50 bg-elevated/60 px-3 py-2 shadow-soft"
+    >
       <div className="mb-2 flex items-center gap-1.5">
         <span className="text-[10px] text-violet">→</span>
         <span className="rounded px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider bg-violet/10 text-violet">
@@ -201,7 +215,7 @@ export function WalkthroughView({ steps }: { steps: TutorWalkStep[] }) {
           </li>
         ))}
       </ol>
-    </div>
+    </motion.div>
   );
 }
 
@@ -215,7 +229,12 @@ export function CheckQuestionsView({
   disabled?: boolean;
 }) {
   return (
-    <div className="rounded-md border-l-2 border-success/50 bg-elevated/60 px-3 py-2 shadow-soft">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: HOUSE_EASE }}
+      className="rounded-md border-l-2 border-success/50 bg-elevated/60 px-3 py-2 shadow-soft"
+    >
       <div className="mb-1.5 flex items-center gap-1.5">
         <span className="text-[10px] text-success">?</span>
         <span className="rounded bg-success/10 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-success">
@@ -241,7 +260,7 @@ export function CheckQuestionsView({
           </li>
         ))}
       </ul>
-    </div>
+    </motion.div>
   );
 }
 
@@ -258,7 +277,12 @@ export function ComprehensionCheckView({
     <div className="text-xs leading-relaxed text-ink/90">{text}</div>
   );
   return (
-    <div className="rounded-md border border-accent/40 bg-accent/5 px-3 py-2 shadow-soft">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: HOUSE_EASE }}
+      className="rounded-md border border-accent/40 bg-accent/5 px-3 py-2 shadow-soft"
+    >
       <div className="mb-1.5 flex items-center gap-1.5">
         <span className="text-[10px] text-accent">↻</span>
         <span className="rounded bg-accent/15 px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-wider text-accent">
@@ -280,7 +304,7 @@ export function ComprehensionCheckView({
       ) : (
         body
       )}
-    </div>
+    </motion.div>
   );
 }
 

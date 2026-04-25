@@ -1,6 +1,6 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 interface ModalProps {
   onClose: () => void;
@@ -41,13 +41,34 @@ export function Modal({
   const backdropRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Cinema Kit Continuity Pass — modal exit animation. Existing
+  // callers do `{open && <Modal onClose={() => setOpen(false)}>}`,
+  // which means the parent unmounts us instantly when their state
+  // flips. AnimatePresence at the parent level would fix this, but
+  // refactoring every caller (~7 sites) is too much surface area.
+  // Instead: Modal intercepts its OWN close paths (Esc, backdrop
+  // click). It flips a local `exiting` flag, plays the reverse
+  // entrance animation via AnimatePresence, then calls the real
+  // onClose. Parent code is unchanged.
+  //
+  // Edge: if a caller dismisses the modal via state OUTSIDE its
+  // onClose (e.g. SettingsPanel's Save button flipping the parent's
+  // showSettings to false directly), we skip the exit animation —
+  // those paths still pop out cold. Most product modals close via
+  // user-initiated dismiss, so this covers the visible majority.
+  const [exiting, setExiting] = useState(false);
+  const closeWithExit = useCallback(() => {
+    if (exiting) return;
+    setExiting(true);
+  }, [exiting]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeWithExit();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [closeWithExit]);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -115,32 +136,52 @@ export function Modal({
     ease: [0.22, 1, 0.36, 1] as const,
   };
 
+  // AnimatePresence wraps the conditional. When `exiting` flips
+  // true, framer plays the exit variants on both backdrop and panel,
+  // then onExitComplete fires the real parent onClose — which
+  // unmounts us. The reduced-motion exit collapses to a 100 ms
+  // opacity drop so motion-sensitive users still see a brief
+  // dissolve instead of an abrupt vanish.
+  const panelExit = reduce
+    ? { opacity: 0 }
+    : { opacity: 0, scale: 0.96, y: 4 };
+
   return createPortal(
-    <motion.div
-      ref={backdropRef}
-      className={`fixed inset-0 z-50 flex ${overlayPos} bg-black/50 backdrop-blur-sm`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.18 }}
-      onClick={(e) => {
-        if (e.target === backdropRef.current) onClose();
-      }}
-    >
-      <motion.div
-        ref={panelRef}
-        role={role}
-        aria-modal="true"
-        aria-labelledby={labelledBy}
-        aria-describedby={describedBy}
-        tabIndex={-1}
-        className={panelClassName}
-        initial={panelInitial}
-        animate={panelAnimate}
-        transition={panelTransition}
-      >
-        {children}
-      </motion.div>
-    </motion.div>,
+    <AnimatePresence onExitComplete={onClose}>
+      {!exiting && (
+        <motion.div
+          ref={backdropRef}
+          key="backdrop"
+          className={`fixed inset-0 z-50 flex ${overlayPos} bg-black/50 backdrop-blur-sm`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: reduce ? 0.1 : 0.16 } }}
+          transition={{ duration: 0.18 }}
+          onClick={(e) => {
+            if (e.target === backdropRef.current) closeWithExit();
+          }}
+        >
+          <motion.div
+            ref={panelRef}
+            role={role}
+            aria-modal="true"
+            aria-labelledby={labelledBy}
+            aria-describedby={describedBy}
+            tabIndex={-1}
+            className={panelClassName}
+            initial={panelInitial}
+            animate={panelAnimate}
+            exit={{
+              ...panelExit,
+              transition: { duration: reduce ? 0.1 : 0.16, ease: panelTransition.ease },
+            }}
+            transition={panelTransition}
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
     document.body,
   );
 }

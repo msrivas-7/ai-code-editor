@@ -854,8 +854,18 @@ export default function LessonPage() {
             </div>
           </section>
 
-          {/* Guided tutor panel — collapsible + resizable */}
-          {layout.tutorCollapsed ? (
+          {/* Guided tutor panel — collapsible + resizable.
+              Cinema Kit Continuity Pass: aside stays mounted always
+              and animates its width via framer-motion (0 when
+              collapsed, layout.tutorW when expanded). Keeps
+              GuidedTutorPanel state alive across collapse cycles
+              (composer drafts, scroll position, message stream)
+              and gives a smooth glide instead of a hard hide/show.
+              The vertical splitter only renders when expanded —
+              there's nothing to drag against when the panel is
+              closed. The thin "Tutor" strip is a sibling that
+              shows only when collapsed. */}
+          {layout.tutorCollapsed && (
             <button
               onClick={() => layout.setTutorCollapsed(false)}
               title="Show tutor"
@@ -870,38 +880,40 @@ export default function LessonPage() {
                 Tutor
               </span>
             </button>
-          ) : (
-            <>
-              <Splitter
-                orientation="vertical"
-                onDrag={(dx) =>
-                  layout.setTutorW((w) => clampSide(w - dx, LESSON_LAYOUT_BOUNDS.tutor))
-                }
-                onDoubleClick={() => layout.setTutorW(LESSON_LAYOUT_DEFAULTS.tutor)}
-              />
-              <aside
-                ref={layout.tutorRef as React.RefObject<HTMLElement>}
-                style={{ width: layout.tutorW }}
-                className="min-h-0 shrink-0 overflow-hidden bg-panel"
-              >
-                <GuidedTutorPanel
-                  lessonMeta={lesson}
-                  totalLessons={loader.totalLessons}
-                  priorConcepts={loader.priorConcepts}
-                  progressSummary={
-                    lp
-                      ? `attempt ${lp.attemptCount}, ${lp.runCount} runs, ${lp.hintCount} hints used`
-                      : "first attempt"
-                  }
-                  onCollapse={() => layout.setTutorCollapsed(true)}
-                  onOpenSettings={() => layout.setShowSettings(true)}
-                  resetNonce={validator.resetNonce}
-                  inputLocked={tutorInputLocked}
-                  clearHidden={tutorClearHidden}
-                />
-              </aside>
-            </>
           )}
+          {!layout.tutorCollapsed && (
+            <Splitter
+              orientation="vertical"
+              onDrag={(dx) =>
+                layout.setTutorW((w) => clampSide(w - dx, LESSON_LAYOUT_BOUNDS.tutor))
+              }
+              onDoubleClick={() => layout.setTutorW(LESSON_LAYOUT_DEFAULTS.tutor)}
+            />
+          )}
+          <motion.aside
+            ref={layout.tutorRef as React.RefObject<HTMLElement>}
+            initial={false}
+            animate={{ width: layout.tutorCollapsed ? 0 : layout.tutorW }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="min-h-0 shrink-0 overflow-hidden bg-panel"
+            aria-hidden={layout.tutorCollapsed ? "true" : undefined}
+          >
+            <GuidedTutorPanel
+              lessonMeta={lesson}
+              totalLessons={loader.totalLessons}
+              priorConcepts={loader.priorConcepts}
+              progressSummary={
+                lp
+                  ? `attempt ${lp.attemptCount}, ${lp.runCount} runs, ${lp.hintCount} hints used`
+                  : "first attempt"
+              }
+              onCollapse={() => layout.setTutorCollapsed(true)}
+              onOpenSettings={() => layout.setShowSettings(true)}
+              resetNonce={validator.resetNonce}
+              inputLocked={tutorInputLocked}
+              clearHidden={tutorClearHidden}
+            />
+          </motion.aside>
         </main>
       ) : loader.loadError?.kind === "schema_error" ? (
         <div className="flex flex-1 items-center justify-center p-6">

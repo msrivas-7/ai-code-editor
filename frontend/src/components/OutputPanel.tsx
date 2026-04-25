@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useRunStore } from "../state/runStore";
 import { useProjectStore } from "../state/projectStore";
 import { useFirstSuccessStore } from "../features/learning/stores/firstSuccessStore";
@@ -73,6 +73,19 @@ export function OutputPanel() {
     }
     return () => window.clearTimeout(t);
   }, [celebrationNonce, reduce]);
+
+  // Cinema Kit Continuity Pass — output text fade-in. Bumps a counter
+  // on every fresh RunResult identity so the motion.span below remounts
+  // and re-fires its 200 ms fade. RunResult has no monotonic id, so we
+  // track identity via ref.
+  const lastResultRef = useRef<typeof result>(null);
+  const [resultArrivalKey, setResultArrivalKey] = useState(0);
+  useEffect(() => {
+    if (!result) return;
+    if (lastResultRef.current === result) return;
+    lastResultRef.current = result;
+    setResultArrivalKey((k) => k + 1);
+  }, [result]);
 
   // When a Run starts while the stdin tab is active, jump to combined so the
   // learner sees output rather than their input buffer. The ref guards against
@@ -248,26 +261,39 @@ export function OutputPanel() {
           {error ? (
             <span className="text-danger">{error}</span>
           ) : hasResult ? (
-            body ? (
-              linkifyRefs(body, order, revealAt)
-            ) : (
-              <span className="text-faint">
-                (no output)
-                {result!.exitCode === 0 && stdin.length === 0 && (
-                  <>
-                    {" "}
-                    — if this program reads input, try the{" "}
-                    <button
-                      onClick={() => setTab("stdin")}
-                      className="text-accent underline underline-offset-2 transition hover:text-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      stdin
-                    </button>{" "}
-                    tab.
-                  </>
-                )}
-              </span>
-            )
+            // Cinema Kit Continuity Pass — output text arrives with a
+            // 200 ms fade-in instead of switching on. The motion.span
+            // is keyed on the result identity so each new run remounts
+            // the span and re-fires the animation. Subtle but it's the
+            // difference between "result was computed" and "result is
+            // presented."
+            <motion.span
+              key={resultArrivalKey}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              {body ? (
+                linkifyRefs(body, order, revealAt)
+              ) : (
+                <span className="text-faint">
+                  (no output)
+                  {result!.exitCode === 0 && stdin.length === 0 && (
+                    <>
+                      {" "}
+                      — if this program reads input, try the{" "}
+                      <button
+                        onClick={() => setTab("stdin")}
+                        className="text-accent underline underline-offset-2 transition hover:text-accentMuted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        stdin
+                      </button>{" "}
+                      tab.
+                    </>
+                  )}
+                </span>
+              )}
+            </motion.span>
           ) : running ? (
             <span className="text-muted">Running…</span>
           ) : (

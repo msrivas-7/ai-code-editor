@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { HOUSE_EASE } from "./cinema/easing";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
 import { usePreferencesStore } from "../state/preferencesStore";
@@ -82,10 +84,27 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         </nav>
 
         <div className="flex min-w-0 min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          {tab === "account" && <AccountTab onClose={onClose} />}
-          {tab === "ai" && <AITab />}
-          {tab === "appearance" && <AppearanceTab />}
-          {tab === "data" && <DataTab />}
+          {/* Cinema Kit Continuity Pass — settings tab crossfade.
+              Each tab content fades + lifts into place over 180 ms
+              (HOUSE_EASE) so the surface feels like a sequence of
+              deliberate sub-pages, not an instant DOM swap.
+              `mode="wait"` ensures the previous tab fully exits
+              before the next begins, avoiding overlap glitches. */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={tab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.18, ease: HOUSE_EASE }}
+              className="flex min-w-0 flex-col gap-4"
+            >
+              {tab === "account" && <AccountTab onClose={onClose} />}
+              {tab === "ai" && <AITab />}
+              {tab === "appearance" && <AppearanceTab />}
+              {tab === "data" && <DataTab />}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </div>
