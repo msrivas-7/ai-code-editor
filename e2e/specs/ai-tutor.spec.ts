@@ -78,7 +78,7 @@ test.describe("AI tutor", () => {
 
     // Warning copy lives in TutorSetupWarning.tsx + the "More settings →"
     // link (only present when onOpenSettings prop is passed — LessonPage does).
-    await expect(page.getByText(/connect your ai tutor/i)).toBeVisible();
+    await expect(page.getByText(/connect your tutor/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /more settings →/i })).toBeVisible();
 
     // Tutor input is disabled until a key is configured.
