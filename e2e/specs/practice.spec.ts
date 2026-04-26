@@ -10,7 +10,7 @@ import { expect, test } from "../fixtures/auth";
 
 import { mockAllAI } from "../fixtures/aiMocks";
 import { setMonacoValue, waitForMonacoReady } from "../fixtures/monaco";
-import { loadProfile, markOnboardingDone } from "../fixtures/profiles";
+import { loadProfile, markOnboardingDone, seedApiKey } from "../fixtures/profiles";
 import { readLessonSolution, readPracticeSolution } from "../fixtures/solutions";
 import * as S from "../utils/selectors";
 
@@ -194,6 +194,105 @@ test.describe("practice mode", () => {
     });
     // And the Practice "X of Y" header chip is gone.
     await expect(page.getByText(/\d+ of 3/)).toHaveCount(0);
+  });
+
+  test("AI tutor receives the active exercise's lessonContext (not the lesson's main goal)", async ({ page }) => {
+    // Regression guard: GuidedTutorPanel used to always send the
+    // lesson's primary lessonTitle / lessonObjectives / completionRules
+    // — even in practice mode. The tutor would happily reason about
+    // "the lesson goal" while the learner was asking about a
+    // sub-exercise. Pin the override here so the body shape stays
+    // exercise-shaped while practice mode is active.
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    await loadProfile(page, "capstones-pending");
+
+    // Capture the POST body sent to /api/ai/ask/stream. mockAllAI
+    // (in beforeEach) already installed a fulfill handler; our
+    // handler runs first (LIFO) and falls through to it via fallback().
+    let captured: Record<string, unknown> | null = null;
+    await page.route("**/api/ai/ask/stream", async (route) => {
+      if (route.request().method() === "POST") {
+        try {
+          captured = JSON.parse(route.request().postData() ?? "{}");
+        } catch {
+          /* skip — let the fallback handle it */
+        }
+      }
+      await route.fallback();
+    });
+
+    await page.goto(`/learn/course/${COURSE_ID}/lesson/${LESSON_ID}?mode=practice`);
+    await waitForMonacoReady(page);
+
+    // Confirm the practice view rendered for exercise 1 (Square function).
+    await expect(page.getByRole("heading", { name: /square function/i })).toBeVisible();
+
+    // Ask any question. Composer should already be enabled (key was
+    // seeded) — no need to drive the TutorSetupWarning Connect path.
+    await expect(S.tutorInput(page)).toBeEnabled({ timeout: 10_000 });
+    await S.tutorInput(page).fill("How do I get started?");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+
+    // Wait for the request to land.
+    await expect.poll(() => captured, { timeout: 10_000 }).not.toBeNull();
+    const body = captured as unknown as Record<string, unknown>;
+    const ctx = body.lessonContext as Record<string, unknown>;
+    expect(ctx).toBeTruthy();
+
+    // lessonTitle should carry the practice frame so the AI knows
+    // it's helping with a sub-exercise, not the lesson's main goal.
+    expect(ctx.lessonTitle).toMatch(/Practice:/i);
+    expect(ctx.lessonTitle).toMatch(/square function/i);
+
+    // lessonObjectives should be the exercise's prompt + goal — NOT
+    // the lesson "Functions"' main objectives. Sanity: at least one
+    // objective references squaring (the exercise's whole point).
+    expect(Array.isArray(ctx.lessonObjectives)).toBe(true);
+    const objectivesText = (ctx.lessonObjectives as string[]).join(" ").toLowerCase();
+    expect(objectivesText).toContain("square");
+  });
+
+  test("AI tutor receives the lesson's lessonContext (NOT exercise framing) when not in practice mode", async ({ page }) => {
+    // Complement to the prior spec — verifies the override fires ONLY
+    // in practice mode. Same lesson, no ?mode=practice deeplink. The
+    // lessonContext should carry the lesson's title + objectives, not
+    // any exercise framing.
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    await loadProfile(page, "capstones-pending");
+
+    let captured: Record<string, unknown> | null = null;
+    await page.route("**/api/ai/ask/stream", async (route) => {
+      if (route.request().method() === "POST") {
+        try {
+          captured = JSON.parse(route.request().postData() ?? "{}");
+        } catch {
+          /* skip */
+        }
+      }
+      await route.fallback();
+    });
+
+    await goToLesson(page);
+
+    await expect(S.tutorInput(page)).toBeEnabled({ timeout: 10_000 });
+    await S.tutorInput(page).fill("What's a function?");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+
+    await expect.poll(() => captured, { timeout: 10_000 }).not.toBeNull();
+    const body = captured as unknown as Record<string, unknown>;
+    const ctx = body.lessonContext as Record<string, unknown>;
+    expect(ctx).toBeTruthy();
+
+    // Lesson mode: title is plain "Functions", no Practice frame.
+    expect(ctx.lessonTitle).toBe("Functions");
+
+    // Objectives are the lesson's main ones, not the exercise's.
+    expect(Array.isArray(ctx.lessonObjectives)).toBe(true);
+    const objectivesText = (ctx.lessonObjectives as string[]).join(" ").toLowerCase();
+    // Lesson objectives reference parameters / scope — none mention
+    // "square" (which is exercise-only).
+    expect(objectivesText).not.toContain("square");
+    expect(objectivesText).toMatch(/parameters|scope|def/);
   });
 
   test("completion panel Start Practice opens practice view inline", async ({ page }) => {

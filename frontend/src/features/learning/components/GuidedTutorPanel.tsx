@@ -19,7 +19,7 @@ import { ExhaustionCard, formatReset } from "../../../components/ExhaustionCard"
 import { SelectionPreview } from "../../../components/SelectionPreview";
 import { useShortcutLabels } from "../../../util/platform";
 import { useProgressStore } from "../stores/progressStore";
-import type { LessonMeta } from "../types";
+import type { LessonMeta, PracticeExercise } from "../types";
 
 interface GuidedTutorPanelProps {
   lessonMeta: LessonMeta;
@@ -28,6 +28,13 @@ interface GuidedTutorPanelProps {
   // Concepts taught in earlier lessons + course baseVocabulary. Used to scope
   // the tutor's explanations ("safe to reference") vs. future material.
   priorConcepts: string[];
+  // When the learner is in practice mode AND has an active exercise,
+  // pass it through so the tutor reasons about THAT exercise's prompt
+  // + goal + completionRules instead of the lesson's main objectives.
+  // Without this the AI would happily explain "the lesson goal" while
+  // the student is asking about a sub-exercise — wrong frame, wrong
+  // hints. Null/undefined means lesson mode (default).
+  activePracticeExercise?: PracticeExercise | null;
   onCollapse?: () => void;
   onOpenSettings?: () => void;
   resetNonce?: number;
@@ -44,7 +51,7 @@ interface GuidedTutorPanelProps {
   clearHidden?: boolean;
 }
 
-export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, priorConcepts, onCollapse, onOpenSettings, resetNonce, inputLocked, clearHidden }: GuidedTutorPanelProps) {
+export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, priorConcepts, activePracticeExercise, onCollapse, onOpenSettings, resetNonce, inputLocked, clearHidden }: GuidedTutorPanelProps) {
   const incrementHint = useProgressStore((s) => s.incrementHint);
   // Derive the hint cap from the DB-backed hint_count (not local component
   // state) so the limit survives navigation + reload. Local state rewinds on
@@ -146,13 +153,25 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
       lessonContext: {
         courseId: lessonMeta.courseId,
         lessonId: lessonMeta.id,
-        lessonTitle: lessonMeta.title,
+        // In practice mode, override the three fields the backend
+        // prompt actually uses (lessonTitle, lessonObjectives,
+        // completionRules) with the active exercise's framing so the
+        // tutor reasons about THIS exercise, not the lesson's main
+        // goal. Other fields (concept tags, priorConcepts, lessonOrder,
+        // totalLessons) stay — they're the same broader context.
+        lessonTitle: activePracticeExercise
+          ? `${lessonMeta.title} → Practice: ${activePracticeExercise.title}`
+          : lessonMeta.title,
         language: lessonMeta.language,
-        lessonObjectives: lessonMeta.objectives,
+        lessonObjectives: activePracticeExercise
+          ? [activePracticeExercise.prompt, `Goal: ${activePracticeExercise.goal}`]
+          : lessonMeta.objectives,
         teachesConceptTags: lessonMeta.teachesConceptTags,
         usesConceptTags: lessonMeta.usesConceptTags,
         priorConcepts,
-        completionRules: lessonMeta.completionRules,
+        completionRules: activePracticeExercise
+          ? activePracticeExercise.completionRules
+          : lessonMeta.completionRules,
         studentProgressSummary: progressSummary,
         lessonOrder: lessonMeta.order,
         totalLessons,

@@ -114,7 +114,7 @@ export default function EditorPage() {
   return (
     <div className="flex h-full flex-col bg-bg text-ink">
       <SkipToContent />
-      <header className="flex items-center justify-between border-b border-border bg-panel/80 px-4 py-2 backdrop-blur">
+      <header className="relative z-30 flex items-center justify-between border-b border-border bg-panel/80 px-4 py-2 backdrop-blur">
         <div className="flex items-center gap-3">
           <button
             onClick={() => nav("/")}
