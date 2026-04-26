@@ -11,14 +11,16 @@ import { useThemePref, type ThemePref } from "../util/theme";
 import { DeleteAccountModal } from "./DeleteAccountModal";
 import { PaidAccessInterestButton } from "./PaidAccessInterestButton";
 import { useAIStatus } from "../state/useAIStatus";
+import { AdminTab } from "./admin/AdminTab";
 
-type Tab = "account" | "ai" | "appearance" | "data";
+type Tab = "account" | "ai" | "appearance" | "data" | "admin";
 
 const TAB_LABEL: Record<Tab, string> = {
   account: "Account",
   ai: "AI",
   appearance: "Appearance",
   data: "Data",
+  admin: "Admin",
 };
 
 const THEME_LABEL: Record<ThemePref, string> = {
@@ -44,6 +46,14 @@ const PERSONA_BLURB: Record<Persona, string> = {
 
 export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   const [tab, setTab] = useState<Tab>("account");
+  const isAdmin = useAuthStore((s) => s.isAdmin());
+
+  // Phase 20-P5: Admin tab is hidden from non-admin users entirely. The
+  // backend route is also gated (defense-in-depth), but suppressing the
+  // tab keeps the surface clean for the 99% case.
+  const visibleTabs = (Object.keys(TAB_LABEL) as Tab[]).filter(
+    (t) => t !== "admin" || isAdmin,
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -66,7 +76,7 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
           aria-label="Settings sections"
           className="flex w-28 shrink-0 flex-col gap-0.5"
         >
-          {(Object.keys(TAB_LABEL) as Tab[]).map((t) => {
+          {visibleTabs.map((t) => {
             const active = tab === t;
             return (
               <button
@@ -106,6 +116,7 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
               {tab === "ai" && <AITab />}
               {tab === "appearance" && <AppearanceTab />}
               {tab === "data" && <DataTab />}
+              {tab === "admin" && isAdmin && <AdminTab />}
             </motion.div>
           </AnimatePresence>
         </div>

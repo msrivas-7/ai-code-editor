@@ -13,6 +13,7 @@
 
 import { sumPlatformCostTodayGlobal } from "../../db/usageLedger.js";
 import { config } from "../../config.js";
+import { getEffectiveDailyUsdCap } from "../ai/effectiveCaps.js";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -21,7 +22,8 @@ let timer: NodeJS.Timeout | null = null;
 async function sampleOnce(): Promise<void> {
   const since = new Date(Date.now() - ONE_HOUR_MS);
   const sum = await sumPlatformCostTodayGlobal(since);
-  const threshold = config.freeTier.dailyUsdCap * 2;
+  const dailyCap = await getEffectiveDailyUsdCap();
+  const threshold = dailyCap * 2;
   const exceeded = sum > threshold;
   console.log(
     JSON.stringify({

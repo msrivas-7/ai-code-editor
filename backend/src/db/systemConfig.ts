@@ -1,0 +1,140 @@
+// Phase 20-P5: project-wide configuration overrides (system_config table).
+//
+// Read path: cached 60s in-module. Write path: admin route handlers
+// invalidate the cache after the DB write so the next AI call sees the
+// fresh value. The cache is module-local and does NOT survive a process
+// restart — operator who needs an immediate kill can restart the backend.
+
+import { db } from "./client.js";
+
+const CACHE_TTL_MS = 60_000;
+
+// The five well-known keys. The DB column is text + JSONB so we can add
+// keys without a migration; this constant is the validated list at the
+// admin-route layer (zod enum) so we can't write a typo'd key.
+export const KNOWN_KEYS = [
+  "free_tier_enabled",
+  "free_tier_daily_questions",
+  "free_tier_daily_usd_per_user",
+  "free_tier_lifetime_usd_per_user",
+  "free_tier_daily_usd_cap",
+] as const;
+export type SystemConfigKey = (typeof KNOWN_KEYS)[number];
+
+// JSONB unwraps numbers as numbers, booleans as booleans, etc. Postgres
+// `value` jsonb → JS `unknown`. Caller-side cast.
+type SystemConfigValue = boolean | number | null;
+
+interface SystemConfigRow {
+  key: SystemConfigKey;
+  value: SystemConfigValue;
+  setBy: string | null;
+  setAt: string;
+  reason: string | null;
+}
+
+interface CacheEntry {
+  row: SystemConfigRow | null;
+  expiresAt: number;
+}
+
+const cache = new Map<SystemConfigKey, CacheEntry>();
+
+export async function getSystemConfig(
+  key: SystemConfigKey,
+  opts: { bypassCache?: boolean } = {},
+): Promise<SystemConfigRow | null> {
+  const now = Date.now();
+  if (!opts.bypassCache) {
+    const hit = cache.get(key);
+    if (hit && hit.expiresAt > now) return hit.row;
+  }
+  const sql = db();
+  const rows = await sql<
+    Array<{ key: string; value: unknown; set_by: string | null; set_at: Date; reason: string | null }>
+  >`
+    SELECT key, value, set_by, set_at, reason
+      FROM public.system_config
+     WHERE key = ${key}
+  `;
+  const row: SystemConfigRow | null = rows[0]
+    ? {
+        key: rows[0].key as SystemConfigKey,
+        value: rows[0].value as SystemConfigValue,
+        setBy: rows[0].set_by,
+        setAt: rows[0].set_at.toISOString(),
+        reason: rows[0].reason,
+      }
+    : null;
+  cache.set(key, { row, expiresAt: now + CACHE_TTL_MS });
+  return row;
+}
+
+export async function getAllSystemConfig(): Promise<
+  Record<SystemConfigKey, SystemConfigRow | null>
+> {
+  // Bypass per-key cache for the admin dashboard read so the operator
+  // sees the freshest state. One DB roundtrip; the table has ≤5 rows
+  // so a full scan is cheaper than passing an array binding.
+  const sql = db();
+  const rows = await sql<
+    Array<{ key: string; value: unknown; set_by: string | null; set_at: Date; reason: string | null }>
+  >`
+    SELECT key, value, set_by, set_at, reason
+      FROM public.system_config
+  `;
+  const map = new Map(rows.map((r) => [r.key as SystemConfigKey, r]));
+  const result = Object.fromEntries(
+    KNOWN_KEYS.map((k) => {
+      const r = map.get(k);
+      return [
+        k,
+        r
+          ? {
+              key: r.key as SystemConfigKey,
+              value: r.value as SystemConfigValue,
+              setBy: r.set_by,
+              setAt: r.set_at.toISOString(),
+              reason: r.reason,
+            }
+          : null,
+      ];
+    }),
+  ) as Record<SystemConfigKey, SystemConfigRow | null>;
+  // Refresh per-key cache as a side effect so subsequent point reads hit.
+  const now = Date.now();
+  for (const k of KNOWN_KEYS) {
+    cache.set(k, { row: result[k], expiresAt: now + CACHE_TTL_MS });
+  }
+  return result;
+}
+
+export async function setSystemConfig(args: {
+  key: SystemConfigKey;
+  value: SystemConfigValue;
+  setBy: string;
+  reason: string;
+}): Promise<void> {
+  const sql = db();
+  await sql`
+    INSERT INTO public.system_config (key, value, set_by, set_at, reason)
+    VALUES (${args.key}, ${sql.json(args.value)}, ${args.setBy}, NOW(), ${args.reason})
+    ON CONFLICT (key) DO UPDATE
+      SET value  = EXCLUDED.value,
+          set_by = EXCLUDED.set_by,
+          set_at = EXCLUDED.set_at,
+          reason = EXCLUDED.reason
+  `;
+  cache.delete(args.key);
+}
+
+export async function clearSystemConfig(key: SystemConfigKey): Promise<void> {
+  const sql = db();
+  await sql`DELETE FROM public.system_config WHERE key = ${key}`;
+  cache.delete(key);
+}
+
+// Test-only.
+export function __resetSystemConfigCacheForTests(): void {
+  cache.clear();
+}

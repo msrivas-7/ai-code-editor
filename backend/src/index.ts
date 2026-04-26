@@ -9,6 +9,8 @@ import { createExecuteTestsRouter } from "./routes/executeTests.js";
 import { aiRouter } from "./routes/ai.js";
 import { userDataRouter } from "./routes/userData.js";
 import { aiStatusRouter } from "./routes/aiStatus.js";
+import { adminRouter, adminStatusRouter } from "./routes/admin.js";
+import { adminGuard } from "./middleware/adminGuard.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { metricsRouter } from "./routes/metrics.js";
 import { csrfGuard } from "./middleware/csrfGuard.js";
@@ -18,6 +20,7 @@ import { bodyLimit } from "./middleware/bodyLimit.js";
 import { requestId } from "./middleware/requestId.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import {
+  adminWriteLimit,
   mutationLimit,
   sessionCreateLimit,
 } from "./middleware/mutationRateLimit.js";
@@ -286,6 +289,36 @@ async function main() {
     authMiddleware,
     mutationLimit,
     aiStatusRouter,
+  );
+
+  // Phase 20-P5: admin status — auth-only, NOT adminGuard'd. Returns
+  // { isAdmin: boolean } so the frontend can gate the Admin tab without
+  // the user knowing their non-admin status (we always return 200, just
+  // with isAdmin=false). Mounted at /api/user so the same middleware
+  // chain handles auth + CSRF + body-limit.
+  app.use(
+    "/api/user",
+    bodyLimit(4 * 1024),
+    csrfGuard,
+    authMiddleware,
+    mutationLimit,
+    adminStatusRouter,
+  );
+
+  // Phase 20-P5: admin routes — adminGuard required, plus an extra-strict
+  // write rate limit (30 writes / 5 min / admin) on top of the standard
+  // mutationLimit. Reads (GET /users, /users/:id, /system-config,
+  // /audit-log) skip the strict limit so the dashboard's polling doesn't
+  // throttle.
+  app.use(
+    "/api/admin",
+    bodyLimit(16 * 1024),
+    csrfGuard,
+    authMiddleware,
+    mutationLimit,
+    adminGuard,
+    adminWriteLimit,
+    adminRouter,
   );
 
   // Phase 20-P1: user-reported feedback (bug / idea / other + opt-in

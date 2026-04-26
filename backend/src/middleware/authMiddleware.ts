@@ -70,6 +70,11 @@ declare module "express-serve-static-core" {
   interface Request {
     userId?: string;
     authClaims?: JWTPayload;
+    // Phase 20-P5: role claim from app_metadata.role (Supabase Custom
+    // Access Token hook). null = no role; "admin" = admin gate passes.
+    // Read-only from the perspective of route handlers — only
+    // authMiddleware writes it.
+    userRole?: string | null;
   }
 }
 
@@ -127,6 +132,16 @@ export async function authMiddleware(
     if (!sub) throw new HttpError(401, "token missing sub claim");
     req.userId = sub;
     req.authClaims = payload;
+    // Phase 20-P5: extract role from app_metadata.role (set by the
+    // attach_role_claim Custom Access Token hook in Supabase). Stored on
+    // req.userRole for adminGuard. app_metadata is service-role-only
+    // writeable, which is why we trust it as the role source — unlike
+    // user_metadata which the user can mutate via supabase.auth.updateUser.
+    const appMeta =
+      typeof payload.app_metadata === "object" && payload.app_metadata !== null
+        ? (payload.app_metadata as Record<string, unknown>)
+        : null;
+    req.userRole = typeof appMeta?.role === "string" ? appMeta.role : null;
     next();
   } catch (err) {
     // HttpError from the guards above just propagates — the global

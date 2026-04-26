@@ -331,6 +331,102 @@ export interface AskStreamHandlers {
   signal?: AbortSignal;
 }
 
+// -------------------------------------------------------------------------
+// Phase 20-P5: admin types
+// -------------------------------------------------------------------------
+
+export interface AdminUserOverride {
+  userId: string;
+  dailyQuestionsCap: number | null;
+  dailyUsdCap: number | null;
+  lifetimeUsdCap: number | null;
+  setBy: string | null;
+  setAt: string;
+  reason: string | null;
+}
+
+export interface AdminUserListEntry {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  createdAt: string;
+  lastSignInAt: string | null;
+  questionsToday: number;
+  usdToday: number;
+  usdLifetime: number;
+  override: AdminUserOverride | null;
+  denylisted: boolean;
+}
+
+export interface AdminUsersListResponse {
+  users: AdminUserListEntry[];
+  page: number;
+  perPage: number;
+  hasMore: boolean;
+}
+
+export interface AdminUserDetailResponse {
+  user: {
+    id: string;
+    email: string | null;
+    displayName: string | null;
+    createdAt: string;
+    lastSignInAt: string | null;
+  };
+  questionsToday: number;
+  usdToday: number;
+  usdLifetime: number;
+  override: AdminUserOverride | null;
+  denylisted: boolean;
+}
+
+export type SystemConfigKey =
+  | "free_tier_enabled"
+  | "free_tier_daily_questions"
+  | "free_tier_daily_usd_per_user"
+  | "free_tier_lifetime_usd_per_user"
+  | "free_tier_daily_usd_cap";
+
+export interface SystemConfigEntry {
+  value: boolean | number;
+  source: "override" | "env";
+  envDefault: boolean | number;
+  setBy: string | null;
+  setAt: string | null;
+  reason: string | null;
+}
+
+export interface SystemConfigResponse {
+  config: Record<SystemConfigKey, SystemConfigEntry>;
+}
+
+export type AdminAuditEventType =
+  | "user_override_set"
+  | "user_override_cleared"
+  | "system_config_set"
+  | "system_config_cleared"
+  | "denylist_added"
+  | "denylist_removed"
+  | "tab_opened"
+  | "rejected_attempt";
+
+export interface AdminAuditLogEntry {
+  id: string;
+  actorId: string;
+  eventType: AdminAuditEventType;
+  targetUserId: string | null;
+  targetKey: string | null;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface AdminAuditLogResponse {
+  entries: AdminAuditLogEntry[];
+  nextCursor: string | null;
+}
+
 export const api = {
   startSession: () =>
     post<{ sessionId: string; backendBootId?: string }>("/api/session"),
@@ -768,4 +864,87 @@ export const api = {
       handlers.onError((err as Error).message);
     }
   },
+
+  // ----------------------------------------------------------------------
+  // Phase 20-P5: admin surface. All routes are gated server-side by
+  // adminGuard; the client adds them as a flat namespace inside `api` so
+  // call sites read as `api.adminListUsers()` etc.
+  // ----------------------------------------------------------------------
+
+  adminStatus: () => get<{ isAdmin: boolean }>("/api/user/admin-status"),
+
+  adminListUsers: (opts: { page?: number; perPage?: number; search?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.page) qs.set("page", String(opts.page));
+    if (opts.perPage) qs.set("perPage", String(opts.perPage));
+    if (opts.search) qs.set("search", opts.search);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return get<AdminUsersListResponse>(`/api/admin/users${suffix}`);
+  },
+
+  adminGetUser: (userId: string) =>
+    get<AdminUserDetailResponse>(`/api/admin/users/${encodeURIComponent(userId)}`),
+
+  adminSetUserOverride: (
+    userId: string,
+    body: {
+      dailyQuestionsCap: number | null;
+      dailyUsdCap: number | null;
+      lifetimeUsdCap: number | null;
+      reason: string;
+    },
+  ) =>
+    putJson<{ override: AdminUserOverride }>(
+      `/api/admin/users/${encodeURIComponent(userId)}/override`,
+      body,
+    ),
+
+  adminClearUserOverride: (userId: string) =>
+    del<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}/override`),
+
+  adminGetSystemConfig: () =>
+    get<SystemConfigResponse>("/api/admin/system-config"),
+
+  adminSetSystemConfig: (
+    key: SystemConfigKey,
+    body: {
+      value: boolean | number;
+      reason: string;
+      confirmDisable?: string;
+      confirmReduction?: string;
+    },
+  ) =>
+    putJson<SystemConfigEntry & { key: SystemConfigKey }>(
+      `/api/admin/system-config/${encodeURIComponent(key)}`,
+      body,
+    ),
+
+  adminClearSystemConfig: (key: SystemConfigKey) =>
+    del<{ ok: boolean; value: boolean | number; source: "env" }>(
+      `/api/admin/system-config/${encodeURIComponent(key)}`,
+    ),
+
+  adminGetAuditLog: (opts: { cursor?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.cursor) qs.set("cursor", opts.cursor);
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return get<AdminAuditLogResponse>(`/api/admin/audit-log${suffix}`);
+  },
 };
+
+// PUT JSON helper (the existing post / patch helpers don't cover PUT,
+// and admin routes use PUT for set-override / set-system-config).
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const auth = await authHeaders();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...CSRF_HEADER, ...auth },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    await handle401(res);
+    await throwApiError(res, path);
+  }
+  return res.json() as Promise<T>;
+}

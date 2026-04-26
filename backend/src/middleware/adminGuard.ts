@@ -1,21 +1,51 @@
 import type { Request, Response, NextFunction } from "express";
+import { isAdmin as isAdminInDb } from "../db/userRoles.js";
 
-// Placeholder admin gate. Phase 18a/18b ship without a role system — every
-// authenticated user is a learner, no one is an admin. Any route that should
-// *eventually* require admin privileges (catalog content mutation: adding or
-// removing a lesson / course definition, bulk user ops, etc.) is wired
-// through this middleware so:
+// Phase 20-P5: real admin gate. Two checks, defense-in-depth.
 //
-//   1. The 403 is unambiguous — attackers and honest clients alike get the
-//      same shape no matter which admin route they probe.
-//   2. When we add a role system (new `profiles.role` column in Supabase, or
-//      a JWT custom claim), there is exactly one place to change — the
-//      current `return 403` becomes `if (req.userRole !== 'admin') return 403`.
+//   1. JWT claim (fast path) — `req.userRole` is populated from the
+//      `app_metadata.role` field set by the `attach_role_claim` Auth
+//      Hook in Supabase. app_metadata is service-role-only writeable,
+//      so a user can't grant themselves admin via supabase.auth.updateUser.
 //
-// We deliberately do NOT use this on the user-scoped DELETE /courses/:courseId
-// route — that endpoint resets the *caller's own* progress rows, which is a
-// regular user action, not an admin one.
+//   2. user_roles DB check (truth) — closes the stale-JWT window: a
+//      demoted user's existing JWT carries app_metadata.role = 'admin'
+//      until refresh (~1h), but their user_roles row was deleted, so
+//      the next admin route call returns 403. 30s cache (in
+//      backend/src/db/userRoles.ts) keeps this cheap.
+//
+// Order: claim first (cheap), DB check on cache miss only when the
+// claim says admin (so a normal user doesn't pay the DB hit).
 
-export function adminGuard(_req: Request, res: Response, _next: NextFunction): void {
-  res.status(403).json({ error: "admin role required" });
+export async function adminGuard(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (!req.userId) {
+    res.status(401).json({ error: "authentication required" });
+    return;
+  }
+  if (req.userRole !== "admin") {
+    res.status(403).json({ error: "admin role required" });
+    return;
+  }
+  // Defense in depth: the JWT claim says admin — verify against the
+  // table. If demoted, this returns false even if the cached claim
+  // hasn't refreshed yet.
+  try {
+    const stillAdmin = await isAdminInDb(req.userId);
+    if (!stillAdmin) {
+      res.status(403).json({ error: "admin role required" });
+      return;
+    }
+  } catch (err) {
+    // If the DB check fails (transient), fail closed — better to lock
+    // out a legitimate admin for one request than to allow a demoted
+    // one through during an outage.
+    console.error("[adminGuard] user_roles check failed:", (err as Error).message);
+    res.status(503).json({ error: "admin gate unavailable" });
+    return;
+  }
+  next();
 }

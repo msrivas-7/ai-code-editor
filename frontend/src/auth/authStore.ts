@@ -56,6 +56,11 @@ interface AuthState {
   updateDisplayName: (firstName: string, lastName: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
+  // Phase 20-P5: read role from JWT app_metadata.role. The Supabase
+  // Custom Access Token hook (public.attach_role_claim) injects this
+  // on every JWT issue. app_metadata is service-role-only writeable,
+  // so the user can't grant themselves admin via auth.updateUser.
+  isAdmin: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -187,6 +192,29 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  isAdmin: () => {
+    // Custom Access Token hooks only inject claims into the JWT, not
+    // into auth.users.raw_app_meta_data — so user.app_metadata.role
+    // stays undefined even when the JWT carries role=admin. Decode
+    // the access token instead. Backend's adminGuard re-validates
+    // against user_roles on every admin call so a forged token can't
+    // grant access; this selector is for UI visibility only.
+    const session = useAuthStore.getState().session;
+    const token = session?.access_token;
+    if (!token) return false;
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    try {
+      const padded = parts[1] + "=".repeat((4 - (parts[1].length % 4)) % 4);
+      const payload = JSON.parse(
+        atob(padded.replace(/-/g, "+").replace(/_/g, "/")),
+      ) as { app_metadata?: { role?: unknown } };
+      return payload.app_metadata?.role === "admin";
+    } catch {
+      return false;
+    }
+  },
 }));
 
 /**

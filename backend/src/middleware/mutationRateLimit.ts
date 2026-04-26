@@ -50,3 +50,17 @@ export const mutationLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests; slow down." },
 });
+
+// Phase 20-P5 / safety guard #3: stricter bucket on /api/admin/* writes.
+// 30 admin writes per 5 minutes per admin is plenty for routine ops AND
+// catches both runaway scripts AND fat-fingered double-saves. Skips
+// idempotent reads so the dashboard's GETs aren't throttled.
+export const adminWriteLimit = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 30,
+  keyGenerator: byUserOrIp,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Admin write rate limit exceeded; slow down." },
+  skip: (req) => req.method === "GET" || req.method === "HEAD",
+});

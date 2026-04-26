@@ -31,6 +31,13 @@ import {
   sumPlatformCostTodayForUser,
   sumPlatformCostTodayGlobal,
 } from "../../db/usageLedger.js";
+import {
+  getEffectiveDailyQuestionsCap,
+  getEffectiveDailyUsdCap,
+  getEffectiveDailyUsdCapPerUser,
+  getEffectiveFreeTierEnabled,
+  getEffectiveLifetimeUsdCapPerUser,
+} from "./effectiveCaps.js";
 import { PLATFORM_ALLOWED_MODELS } from "./pricing.js";
 
 export type CredentialNoneReason =
@@ -219,7 +226,9 @@ export async function resolveAICredential(
   // perspective this is identical to "product is in BYOK-only mode": they
   // just need to paste a key. `free_disabled` is reserved for a future
   // path where we can distinguish "you WERE on platform and now you're not."
-  if (!config.freeTier.enabled) return none("no_key");
+  // Phase 20-P5: resolver consults system_config first; env stays as
+  // disaster-recovery default if no override row exists.
+  if (!(await getEffectiveFreeTierEnabled())) return none("no_key");
 
   // L5: targeted kill. Operator INSERTs a row, cache expires within 60s,
   // user hits a 403 on their next request. BYOK users unaffected (we
@@ -248,23 +257,30 @@ export async function resolveAICredential(
 
   // L4: global circuit breaker. Applied before per-user checks so a runaway
   // DAU spike trips the global brake first.
+  // Phase 20-P5: cap resolved via getEffectiveDailyUsdCap() which consults
+  // system_config row first, falls through to env default.
+  const dailyUsdCap = await getEffectiveDailyUsdCap();
   const globalToday = await cachedGlobalToday(dayStart);
-  if (globalToday >= config.freeTier.dailyUsdCap) {
+  if (globalToday >= dailyUsdCap) {
     return none("usd_cap_hit", dayEnd);
   }
 
   // L3: lifetime-per-user brake. Engaged real users will bump into this at
   // ~70 days of moderate use — the exhaustion card already points them to
   // BYOK or paid-access, so it's also the "graduate to paid" funnel.
+  // Phase 20-P5: per-user override > project override > env default.
+  const lifetimeUsdCapPerUser = await getEffectiveLifetimeUsdCapPerUser(userId);
   const userLifetime = await cachedUserLifetime(userId);
-  if (userLifetime >= config.freeTier.lifetimeUsdPerUser) {
+  if (userLifetime >= lifetimeUsdCapPerUser) {
     return none("lifetime_usd_per_user_hit");
   }
 
   // L2: per-user daily dollar brake. Invisible to the user; kicks in only
   // if someone is gaming the 30/day counter (multi-tab race, bypass bug).
+  // Phase 20-P5: same precedence as L3.
+  const dailyUsdCapPerUser = await getEffectiveDailyUsdCapPerUser(userId);
   const userDaily = await cachedUserDaily(userId, dayStart);
-  if (userDaily >= config.freeTier.dailyUsdPerUser) {
+  if (userDaily >= dailyUsdCapPerUser) {
     return none("daily_usd_per_user_hit", dayEnd);
   }
 
@@ -275,8 +291,11 @@ export async function resolveAICredential(
   // H-2: the locked variant wraps the count in a per-user advisory xact
   // lock so multi-tab Ask clicks don't all observe the same pre-insert
   // count. Cross-user concurrency is unaffected.
+  // Phase 20-P5: cap from per-user override or project default; env is
+  // the final fallback.
+  const dailyQuestionsCap = await getEffectiveDailyQuestionsCap(userId);
   const questionsToday = await countPlatformQuestionsTodayLocked(userId, dayStart);
-  if (questionsToday >= config.freeTier.dailyQuestions) {
+  if (questionsToday >= dailyQuestionsCap) {
     return none("free_exhausted", dayEnd);
   }
 
@@ -288,8 +307,8 @@ export async function resolveAICredential(
   return {
     source: "platform",
     key: platformKey,
-    remainingToday: Math.max(0, config.freeTier.dailyQuestions - questionsToday),
-    capToday: config.freeTier.dailyQuestions,
+    remainingToday: Math.max(0, dailyQuestionsCap - questionsToday),
+    capToday: dailyQuestionsCap,
     allowedModels: PLATFORM_ALLOWED_MODELS,
     resetAtUtc: dayEnd,
   };

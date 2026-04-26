@@ -39,9 +39,22 @@ vi.mock("../../db/usageLedger.js", () => ({
   sumPlatformCostTodayGlobal: vi.fn(async () => 0),
 }));
 
+// Phase 20-P5: credential.ts now reads caps via effectiveCaps. Default
+// mocks return the same values the env-mock above declares, so existing
+// tests behave as before. Tests that exercise per-user / project overrides
+// override these mocks at the call site.
+vi.mock("./effectiveCaps.js", () => ({
+  getEffectiveDailyQuestionsCap: vi.fn(async () => 30),
+  getEffectiveDailyUsdCapPerUser: vi.fn(async () => 0.10),
+  getEffectiveLifetimeUsdCapPerUser: vi.fn(async () => 1.0),
+  getEffectiveDailyUsdCap: vi.fn(async () => 2.0),
+  getEffectiveFreeTierEnabled: vi.fn(async () => true),
+}));
+
 const { getOpenAIKey } = await import("../../db/preferences.js");
 const { isDenylisted } = await import("../../db/denylist.js");
 const ledger = await import("../../db/usageLedger.js");
+const caps = await import("./effectiveCaps.js");
 const {
   resolveAICredential,
   markPlatformAuthFailed,
@@ -57,6 +70,14 @@ beforeEach(() => {
   vi.mocked(ledger.sumPlatformCostTodayForUser).mockReset().mockResolvedValue(0);
   vi.mocked(ledger.sumPlatformCostLifetimeForUser).mockReset().mockResolvedValue(0);
   vi.mocked(ledger.sumPlatformCostTodayGlobal).mockReset().mockResolvedValue(0);
+  // Phase 20-P5: reset cap resolvers each test so a per-test override
+  // doesn't leak. Defaults match the mocked env config above so existing
+  // tests behave as before.
+  vi.mocked(caps.getEffectiveDailyQuestionsCap).mockReset().mockResolvedValue(30);
+  vi.mocked(caps.getEffectiveDailyUsdCapPerUser).mockReset().mockResolvedValue(0.10);
+  vi.mocked(caps.getEffectiveLifetimeUsdCapPerUser).mockReset().mockResolvedValue(1.0);
+  vi.mocked(caps.getEffectiveDailyUsdCap).mockReset().mockResolvedValue(2.0);
+  vi.mocked(caps.getEffectiveFreeTierEnabled).mockReset().mockResolvedValue(true);
 });
 
 describe("resolveAICredential", () => {
@@ -223,5 +244,67 @@ describe("UTC day rollover", () => {
       "2026-04-22T00:00:00.000Z",
       "2026-04-22T00:00:00.000Z",
     ]);
+  });
+});
+
+// Phase 20-P5: cap resolver precedence. The L1/L2/L3/L4/L9 sites in
+// credential.ts now read effective caps via effectiveCaps.ts (which
+// itself walks per-user override → project override → env). These tests
+// verify credential.ts correctly reflects the resolver's answer at each
+// site — the actual override → project → env walk is tested in
+// effectiveCaps.test.ts.
+describe("resolveAICredential — Phase 20-P5 cap overrides", () => {
+  it("L1 honors per-user dailyQuestions override (e.g. 200/day instead of 30)", async () => {
+    vi.mocked(caps.getEffectiveDailyQuestionsCap).mockResolvedValueOnce(200);
+    vi.mocked(ledger.countPlatformQuestionsTodayLocked).mockResolvedValueOnce(150);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("platform");
+    if (c.source === "platform") {
+      expect(c.capToday).toBe(200);
+      expect(c.remainingToday).toBe(50);
+    }
+  });
+
+  it("L1 honors a 0-cap override (effectively denylisted via override)", async () => {
+    vi.mocked(caps.getEffectiveDailyQuestionsCap).mockResolvedValueOnce(0);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("none");
+    if (c.source === "none") expect(c.reason).toBe("free_exhausted");
+  });
+
+  it("L4 honors a project-wide global $ cap override", async () => {
+    // Override drops global cap to $0.50. Spend at $0.51 trips the brake.
+    vi.mocked(caps.getEffectiveDailyUsdCap).mockResolvedValueOnce(0.50);
+    vi.mocked(ledger.sumPlatformCostTodayGlobal).mockResolvedValueOnce(0.51);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("none");
+    if (c.source === "none") expect(c.reason).toBe("usd_cap_hit");
+  });
+
+  it("L3 honors per-user lifetime $ override (a high-value beta tester)", async () => {
+    // Override raises lifetime cap to $100 for this user; lifetime spend
+    // of $5 is well under, so platform path proceeds.
+    vi.mocked(caps.getEffectiveLifetimeUsdCapPerUser).mockResolvedValueOnce(100);
+    vi.mocked(ledger.sumPlatformCostLifetimeForUser).mockResolvedValueOnce(5);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("platform");
+  });
+
+  it("L2 honors per-user daily $ override", async () => {
+    // Override drops daily $ cap to $0.05; spend at $0.06 trips it.
+    vi.mocked(caps.getEffectiveDailyUsdCapPerUser).mockResolvedValueOnce(0.05);
+    vi.mocked(ledger.sumPlatformCostTodayForUser).mockResolvedValueOnce(0.06);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("none");
+    if (c.source === "none") expect(c.reason).toBe("daily_usd_per_user_hit");
+  });
+
+  it("L9 honors a project override that disables free tier (admin kill-switch)", async () => {
+    vi.mocked(caps.getEffectiveFreeTierEnabled).mockResolvedValueOnce(false);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("none");
+    // Same user-facing reason as the env-flag-off path so the UI doesn't
+    // need to distinguish.
+    if (c.source === "none") expect(c.reason).toBe("no_key");
   });
 });
