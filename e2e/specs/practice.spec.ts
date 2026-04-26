@@ -203,8 +203,11 @@ test.describe("practice mode", () => {
     // "the lesson goal" while the learner was asking about a
     // sub-exercise. Pin the override here so the body shape stays
     // exercise-shaped while practice mode is active.
-    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    // Order matters: loadProfile calls resetServerState which DELETEs
+    // the BYOK key, so seed AFTER loading the profile (otherwise the
+    // composer renders disabled "Configure API key first").
     await loadProfile(page, "capstones-pending");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
 
     // Capture the POST body sent to /api/ai/ask/stream. mockAllAI
     // (in beforeEach) already installed a fulfill handler; our
@@ -257,8 +260,9 @@ test.describe("practice mode", () => {
     // in practice mode. Same lesson, no ?mode=practice deeplink. The
     // lessonContext should carry the lesson's title + objectives, not
     // any exercise framing.
-    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    // Same order constraint as the prior test (see comment above).
     await loadProfile(page, "capstones-pending");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
 
     let captured: Record<string, unknown> | null = null;
     await page.route("**/api/ai/ask/stream", async (route) => {
