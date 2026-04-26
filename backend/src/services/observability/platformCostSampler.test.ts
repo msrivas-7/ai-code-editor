@@ -15,6 +15,13 @@ vi.mock("../../config.js", () => ({
     },
   },
 }));
+// Phase 20-P5: sampler now reads the daily cap through the resolver
+// chain (per-user/project override > env). Tests stub the resolver
+// directly so they don't need a DB; the resolver fallback to env
+// default is exercised by effectiveCaps.test.ts.
+vi.mock("../ai/effectiveCaps.js", () => ({
+  getEffectiveDailyUsdCap: vi.fn(async () => mockCap),
+}));
 
 const { _sampleOnceForTest } = await import("./platformCostSampler.js");
 
