@@ -84,7 +84,9 @@ export function useLessonLoader({
   const incrementLessonTime = useProgressStore((s) => s.incrementLessonTime);
   const saveCode = useProgressStore((s) => s.saveCode);
   const savePracticeCode = useProgressStore((s) => s.savePracticeCode);
-  const switchChatContext = useAIStore((s) => s.switchChatContext);
+  // Phase 21A: chat context switch moved to LessonPage so it can include
+  // practice mode in the key (otherwise lesson↔practice histories bleed).
+  // Run context still keyed per-lesson here — runs/files don't bleed.
   const switchRunContext = useRunStore((s) => s.switchRunContext);
   const switchProjectContext = useProjectStore((s) => s.switchProjectContext);
   const projectFiles = useProjectStore((s) => s.files);
@@ -96,7 +98,6 @@ export function useLessonLoader({
   useEffect(() => {
     if (!courseId || !lessonId) return;
     const ctxKey = `lesson:${courseId}/${lessonId}`;
-    switchChatContext(ctxKey);
     switchRunContext(ctxKey);
   }, [courseId, lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
 

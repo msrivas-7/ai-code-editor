@@ -18,6 +18,12 @@ import {
   deleteLessonProgress,
 } from "../db/lessonProgress.js";
 import { getEditorProject, saveEditorProject } from "../db/editorProject.js";
+import {
+  countSavedForLesson,
+  deleteSavedTutorMessage,
+  insertSavedTutorMessage,
+  listSavedTutorMessages,
+} from "../db/savedTutorMessages.js";
 import { adminDeleteUser, isAdminAvailable } from "../db/supabaseAdmin.js";
 import { destroyUserSessions } from "../services/session/sessionManager.js";
 import { HttpError } from "../middleware/errorHandler.js";
@@ -389,6 +395,162 @@ userDataRouter.put("/editor-project", async (req, res, next) => {
   try {
     const project = await saveEditorProject(requireUser(req), parsed.data);
     res.json(project);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- saved tutor messages (Phase 21A) ----------
+//
+// Per-user "★ saved" pins on assistant messages from the AI tutor history.
+// Scope tuple (courseId, lessonId, exerciseId) determines where the
+// saved message renders again on re-entry:
+//   (null, null, null)            → /editor view
+//   (course, lesson, null)        → lesson view (not practice)
+//   (course, lesson, exercise)    → specific practice exercise
+// Cap: 100 saves per (course, lesson) bucket; editor shares its own bucket.
+
+const SAVED_PER_LESSON_CAP = 100;
+const SAVED_CONTENT_MAX_BYTES = 64_000;
+
+const messageIdSchema = z
+  .string()
+  .min(1, "messageId required")
+  .max(64, "messageId too long");
+
+const savedScopeSchema = z
+  .object({
+    courseId: slug("courseId").nullable(),
+    lessonId: slug("lessonId").nullable(),
+    exerciseId: slug("exerciseId").nullable(),
+  })
+  .refine(
+    (s) =>
+      (s.courseId === null && s.lessonId === null && s.exerciseId === null) ||
+      (s.courseId !== null && s.lessonId !== null),
+    { message: "scope inconsistent: editor uses all-null; lesson requires courseId+lessonId" },
+  );
+
+const savedBodySchema = z
+  .object({
+    messageId: messageIdSchema,
+    courseId: slug("courseId").nullable(),
+    lessonId: slug("lessonId").nullable(),
+    exerciseId: slug("exerciseId").nullable(),
+    content: z
+      .string()
+      .min(1, "content required")
+      .refine(
+        (v) => Buffer.byteLength(v, "utf8") <= SAVED_CONTENT_MAX_BYTES,
+        { message: `content exceeds ${SAVED_CONTENT_MAX_BYTES} bytes` },
+      ),
+    sections: z.record(z.string(), z.unknown()).nullable().optional(),
+    model: z.string().max(64).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (b) =>
+      (b.courseId === null && b.lessonId === null && b.exerciseId === null) ||
+      (b.courseId !== null && b.lessonId !== null),
+    { message: "scope inconsistent" },
+  );
+
+const savedQuerySchema = z.object({
+  // Treat the literal string "null" as IS NULL, anything else as a slug match.
+  // Mirrors the legitimate URL-encoding boundary between "no value here" and
+  // "value here is the literal courseId 'null'", which our slug regex rejects.
+  courseId: z.string().max(64).optional(),
+  lessonId: z.string().max(64).optional(),
+  exerciseId: z.string().max(64).optional(),
+});
+
+function parseScopeFromQuery(
+  raw: { courseId?: string; lessonId?: string; exerciseId?: string },
+): { ok: true; scope: { courseId: string | null; lessonId: string | null; exerciseId: string | null } } | { ok: false; error: string } {
+  const decode = (v: string | undefined): string | null | { error: string } => {
+    if (v === undefined || v === "null") return null;
+    return SLUG_RE.test(v) ? v : { error: `invalid slug: ${v}` };
+  };
+  const c = decode(raw.courseId);
+  const l = decode(raw.lessonId);
+  const e = decode(raw.exerciseId);
+  if (typeof c === "object" && c !== null && "error" in c) return { ok: false, error: c.error };
+  if (typeof l === "object" && l !== null && "error" in l) return { ok: false, error: l.error };
+  if (typeof e === "object" && e !== null && "error" in e) return { ok: false, error: e.error };
+  const courseId = c as string | null;
+  const lessonId = l as string | null;
+  const exerciseId = e as string | null;
+  // Same scope-consistency rule as POST.
+  const editorScope = courseId === null && lessonId === null && exerciseId === null;
+  const lessonScope = courseId !== null && lessonId !== null;
+  if (!editorScope && !lessonScope) {
+    return { ok: false, error: "scope inconsistent: editor uses all-null; lesson requires courseId+lessonId" };
+  }
+  return { ok: true, scope: { courseId, lessonId, exerciseId } };
+}
+
+userDataRouter.get("/saved-tutor-messages", async (req, res, next) => {
+  const parsedQ = savedQuerySchema.safeParse(req.query);
+  if (!parsedQ.success) {
+    return res.status(400).json({ error: "invalid query" });
+  }
+  const scopeResult = parseScopeFromQuery(parsedQ.data);
+  if (!scopeResult.ok) {
+    return res.status(400).json({ error: scopeResult.error });
+  }
+  try {
+    const messages = await listSavedTutorMessages(requireUser(req), scopeResult.scope);
+    res.json({ messages });
+  } catch (err) {
+    next(err);
+  }
+});
+
+userDataRouter.post("/saved-tutor-messages", async (req, res, next) => {
+  const parsed = savedBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+  }
+  const userId = requireUser(req);
+  const { messageId, courseId, lessonId, exerciseId, content, sections, model } = parsed.data;
+  try {
+    // Cap enforcement BEFORE the upsert. Re-saving an already-saved message
+    // (same message_id) returns the existing row via ON CONFLICT — count
+    // doesn't grow, so we exempt that case. Cheapest check: did the row
+    // already exist? If yes, we're not adding a new save and the cap check
+    // is moot. Otherwise count and 409 if at cap.
+    const existing = await listSavedTutorMessages(userId, { courseId, lessonId, exerciseId });
+    const alreadySaved = existing.some((m) => m.messageId === messageId);
+    if (!alreadySaved) {
+      const count = await countSavedForLesson(userId, courseId, lessonId);
+      if (count >= SAVED_PER_LESSON_CAP) {
+        return res.status(409).json({
+          error: `save limit reached (${SAVED_PER_LESSON_CAP} per lesson)`,
+        });
+      }
+    }
+    const saved = await insertSavedTutorMessage(userId, {
+      messageId,
+      scope: { courseId, lessonId, exerciseId },
+      content,
+      sections: sections ?? null,
+      model: model ?? null,
+    });
+    res.json({ saved });
+  } catch (err) {
+    next(err);
+  }
+});
+
+userDataRouter.delete("/saved-tutor-messages/:id", async (req, res, next) => {
+  const idParsed = z.string().uuid().safeParse(req.params.id);
+  if (!idParsed.success) {
+    return res.status(400).json({ error: "invalid id" });
+  }
+  try {
+    const deleted = await deleteSavedTutorMessage(requireUser(req), idParsed.data);
+    if (!deleted) return res.status(404).json({ error: "not found" });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

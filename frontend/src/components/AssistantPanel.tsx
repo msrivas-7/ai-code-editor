@@ -21,6 +21,9 @@ import { TutorSetupWarning } from "./TutorSetupWarning";
 import { FreeTierPill } from "./FreeTierPill";
 import { ExhaustionCard, formatReset } from "./ExhaustionCard";
 import { SelectionPreview } from "./SelectionPreview";
+import { SavedTutorBookmark } from "./SavedTutorBookmark";
+import { SavedTutorAccordion } from "./SavedTutorAccordion";
+import { useSavedTutorMessages } from "../features/learning/hooks/useSavedTutorMessages";
 import { useShortcutLabels } from "../util/platform";
 
 export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: () => void; onOpenSettings?: () => void }) {
@@ -75,6 +78,15 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
 
   const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
   const { status: aiStatus } = useAIStatus();
+
+  // Phase 21A: saved tutor messages — editor scope (all-null tuple).
+  const {
+    savedIds,
+    savedMessages,
+    loading: savedLoading,
+    save: saveTutorMessage,
+    unsave: unsaveTutorMessage,
+  } = useSavedTutorMessages({ courseId: null, lessonId: null, exerciseId: null });
 
   const activeFile = useProjectStore((s) => s.activeFile);
   const language = useProjectStore((s) => s.language);
@@ -249,6 +261,15 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
         </div>
       </div>
 
+      {/* Phase 21A iter-3: SavedTutorAccordion lives OUTSIDE the chat
+          scroll area so it stays visible no matter how long the live
+          conversation grows. */}
+      <SavedTutorAccordion
+        messages={savedMessages}
+        loading={savedLoading}
+        onRemove={(id) => { void unsaveTutorMessage(id); }}
+      />
+
       <div
         ref={scrollRef}
         role="log"
@@ -278,6 +299,7 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
             </div>
           </div>
         )}
+
         {history.map((m, i) => {
           // Only the most-recent assistant turn gets interactive handlers —
           // older chips/questions in the scrollback would be confusing to
@@ -286,8 +308,31 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
             m.role === "assistant" &&
             i === history.length - 1 &&
             !asking;
+          const isAssistant = m.role === "assistant";
+          const messageId = m.id;
+          const canSave = isAssistant && !!messageId && !m.meta?.scripted;
+          const isSaved = canSave ? savedIds.has(messageId) : false;
+          const handleToggleSave = () => {
+            if (!canSave || !messageId) return;
+            if (isSaved) {
+              const existing = savedMessages.find((s) => s.messageId === messageId);
+              if (existing) void unsaveTutorMessage(existing.id);
+            } else {
+              void saveTutorMessage({
+                messageId,
+                content: m.content,
+                sections: (m.sections ?? null) as Record<string, unknown> | null,
+                model: selectedModel,
+              });
+            }
+          };
+          // Always render the bottom chrome row for assistant messages
+          // with an id (post-Phase-21A iteration 2): bookmark needs a stable
+          // home that's always visible, not absolute-overlayed on response text.
+          const showChrome =
+            isAssistant && (canSave || isLatestAssistant || (m.role === "assistant" && m.usage));
           return (
-            <div key={i} className="flex flex-col gap-2 motion-safe:animate-fadeInUp">
+            <div key={messageId ?? i} className="flex flex-col gap-2 motion-safe:animate-fadeInUp">
               {m.role === "user" ? (
                 <div className="self-end max-w-[90%] rounded-md bg-accent/15 px-3 py-1.5 text-xs text-ink ring-1 ring-accent/30">
                   {m.content}
@@ -304,16 +349,21 @@ export function AssistantPanel({ onCollapse, onOpenSettings }: { onCollapse?: ()
                   {m.content}
                 </div>
               )}
-              {(isLatestAssistant || (m.role === "assistant" && m.usage)) && (
+              {showChrome && (
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
                   {isLatestAssistant ? (
                     <ActionChips onAsk={setPendingAsk} disabled={asking} />
                   ) : (
                     <span />
                   )}
-                  {m.role === "assistant" && m.usage && !onPlatform && (
-                    <UsageChip usage={m.usage} modelId={selectedModel} />
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {m.role === "assistant" && m.usage && !onPlatform && (
+                      <UsageChip usage={m.usage} modelId={selectedModel} />
+                    )}
+                    {canSave && (
+                      <SavedTutorBookmark saved={isSaved} onToggle={handleToggleSave} />
+                    )}
+                  </div>
                 </div>
               )}
             </div>

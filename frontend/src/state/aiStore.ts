@@ -231,14 +231,20 @@ export const useAIStore = create<AIState>((set, get) => ({
   bumpFocusComposer: () => set((s) => ({ focusComposerNonce: s.focusComposerNonce + 1 })),
 
   pushUser: (content) => {
-    set((s) => ({ history: [...s.history, { role: "user", content }] }));
+    set((s) => ({
+      history: [...s.history, { id: crypto.randomUUID(), role: "user", content }],
+    }));
     saveChatToCache(get);
   },
   pushAssistant: (content, sections, usage, meta) => {
+    // Phase 21A: stamp a stable UUID at commit time so the bookmark/save
+    // affordance has something to anchor to. Streaming chunks live on
+    // `pending` (no id) — id is assigned only when the final message
+    // commits into history[].
     set((s) => ({
       history: [
         ...s.history,
-        { role: "assistant", content, sections, usage, meta },
+        { id: crypto.randomUUID(), role: "assistant", content, sections, usage, meta },
       ],
       sessionUsage: usage
         ? {

@@ -427,6 +427,34 @@ export interface AdminAuditLogResponse {
   nextCursor: string | null;
 }
 
+// Phase 21A: saved tutor messages.
+export interface SavedTutorMessage {
+  id: string;
+  courseId: string | null;
+  lessonId: string | null;
+  exerciseId: string | null;
+  messageId: string;
+  role: "assistant";
+  content: string;
+  sections: Record<string, unknown> | null;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedTutorScope {
+  courseId: string | null;
+  lessonId: string | null;
+  exerciseId: string | null;
+}
+
+export interface SaveTutorMessageBody extends SavedTutorScope {
+  messageId: string;
+  content: string;
+  sections?: Record<string, unknown> | null;
+  model?: string | null;
+}
+
 export const api = {
   startSession: () =>
     post<{ sessionId: string; backendBootId?: string }>("/api/session"),
@@ -613,6 +641,25 @@ export const api = {
   getEditorProject: () => get<EditorProjectResponse>("/api/user/editor-project"),
   saveEditorProject: (body: EditorProjectPayload) =>
     put<EditorProjectResponse>("/api/user/editor-project", body),
+
+  // Phase 21A: saved tutor messages — per (course, lesson, exercise) scope.
+  // Editor-scope saves use null for all three.
+  listSavedTutorMessages: (scope: SavedTutorScope) => {
+    const qs = new URLSearchParams({
+      courseId: scope.courseId ?? "null",
+      lessonId: scope.lessonId ?? "null",
+      exerciseId: scope.exerciseId ?? "null",
+    });
+    return get<{ messages: SavedTutorMessage[] }>(
+      `/api/user/saved-tutor-messages?${qs.toString()}`,
+    );
+  },
+  saveTutorMessage: (body: SaveTutorMessageBody) =>
+    post<{ saved: SavedTutorMessage }>("/api/user/saved-tutor-messages", body),
+  deleteSavedTutorMessage: (id: string) =>
+    del<{ ok: boolean }>(
+      `/api/user/saved-tutor-messages/${encodeURIComponent(id)}`,
+    ),
 
   // Phase 20-P0 #9: DELETE with a body for the confirm-email guard. The
   // generic `del<T>` helper doesn't send a body; inline the fetch so we

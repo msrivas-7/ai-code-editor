@@ -17,7 +17,10 @@ import { TutorSetupWarning } from "../../../components/TutorSetupWarning";
 import { FreeTierPill } from "../../../components/FreeTierPill";
 import { ExhaustionCard, formatReset } from "../../../components/ExhaustionCard";
 import { SelectionPreview } from "../../../components/SelectionPreview";
+import { SavedTutorBookmark } from "../../../components/SavedTutorBookmark";
+import { SavedTutorAccordion } from "../../../components/SavedTutorAccordion";
 import { useShortcutLabels } from "../../../util/platform";
+import { useSavedTutorMessages } from "../hooks/useSavedTutorMessages";
 import { useProgressStore } from "../stores/progressStore";
 import type { LessonMeta, PracticeExercise } from "../types";
 
@@ -81,6 +84,22 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
   } = useAIStore();
   const hasKey = usePreferencesStore((s) => s.hasOpenaiKey);
   const { status: aiStatus } = useAIStatus();
+
+  // Phase 21A: saved tutor messages, scoped to this lesson and (if in
+  // practice mode) this specific practice exercise. Editor scope is null;
+  // the AssistantPanel handles that path separately.
+  const savedScope = {
+    courseId: lessonMeta.courseId,
+    lessonId: lessonMeta.id,
+    exerciseId: activePracticeExercise?.id ?? null,
+  };
+  const {
+    savedIds,
+    savedMessages,
+    loading: savedLoading,
+    save: saveTutorMessage,
+    unsave: unsaveTutorMessage,
+  } = useSavedTutorMessages(savedScope);
 
   const { activeFile } = useProjectStore();
   const lastRun = useRunStore((s) => s.result);
@@ -255,6 +274,16 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
         </div>
       </header>
 
+      {/* Phase 21A iter-3: SavedTutorAccordion lives OUTSIDE the chat
+          scroll area so it stays visible no matter how long the live
+          conversation grows. When expanded it bounds its own height
+          and scrolls internally. */}
+      <SavedTutorAccordion
+        messages={savedMessages}
+        loading={savedLoading}
+        onRemove={(id) => { void unsaveTutorMessage(id); }}
+      />
+
       <div
         ref={scrollRef}
         role="log"
@@ -306,8 +335,32 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
             m.role === "assistant" &&
             i === history.length - 1 &&
             !asking;
+          const isAssistant = m.role === "assistant";
+          const messageId = m.id;
+          const canSave = isAssistant && !!messageId && !m.meta?.scripted;
+          const isSaved = canSave ? savedIds.has(messageId) : false;
+          const handleToggleSave = () => {
+            if (!canSave || !messageId) return;
+            if (isSaved) {
+              const existing = savedMessages.find((s) => s.messageId === messageId);
+              if (existing) void unsaveTutorMessage(existing.id);
+            } else {
+              void saveTutorMessage({
+                messageId,
+                content: m.content,
+                sections: (m.sections ?? null) as Record<string, unknown> | null,
+                model: selectedModel,
+              });
+            }
+          };
+          // Always render the bottom chrome row for assistant messages with
+          // an id (post-Phase-21A iteration 2): the bookmark needs a stable
+          // home that's always visible, not absolute-overlayed on the response
+          // text. Hint button + ActionChips still gate on isLatestAssistant.
+          const showChrome =
+            isAssistant && (canSave || isLatestAssistant || (m.role === "assistant" && m.usage));
           return (
-            <div key={i} className="flex flex-col gap-2 motion-safe:animate-fadeInUp">
+            <div key={messageId ?? i} className="flex flex-col gap-2 motion-safe:animate-fadeInUp">
               {m.role === "user" ? (
                 <div className="self-end max-w-[90%] rounded-md bg-accent/15 px-3 py-1.5 text-xs text-ink ring-1 ring-accent/30">
                   {m.content}
@@ -324,7 +377,7 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
                   {m.content}
                 </div>
               )}
-              {(isLatestAssistant || (m.role === "assistant" && m.usage)) && (
+              {showChrome && (
                 <div className="flex flex-col gap-1.5 pt-0.5">
                   {isLatestAssistant && (
                     <div className="flex flex-wrap items-center gap-1">
@@ -363,9 +416,12 @@ export function GuidedTutorPanel({ lessonMeta, totalLessons, progressSummary, pr
                       <ActionChips onAsk={setPendingAsk} disabled={asking || inputLocked} />
                     </div>
                   )}
-                  <div className="flex items-center justify-end">
+                  <div className="flex items-center justify-end gap-1.5">
                     {m.role === "assistant" && m.usage && !onPlatform && (
                       <UsageChip usage={m.usage} modelId={selectedModel} />
+                    )}
+                    {canSave && (
+                      <SavedTutorBookmark saved={isSaved} onToggle={handleToggleSave} />
                     )}
                   </div>
                 </div>

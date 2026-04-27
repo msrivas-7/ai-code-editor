@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LessonInstructionsPanel } from "../components/LessonInstructionsPanel";
 import { PracticeInstructionsView } from "../components/PracticeInstructionsView";
@@ -141,6 +141,31 @@ export default function LessonPage() {
     // when landing here via the cinematic hand-off.
     forceStarter: isFirstRun,
   });
+
+  // Phase 21A: chat context key includes practice scope so lesson↔practice
+  // toggles get distinct chat threads (the bleed bug). Each practice
+  // exercise also gets its own context — matches the user's mental model
+  // of "switching between practice exercises is like switching between
+  // lessons." aiStore's switchChatContext does atomic save-then-restore
+  // against the LRU cache, so toggling preserves both threads.
+  const chatCtxKey = useMemo(() => {
+    if (!courseId || !lessonId) return null;
+    if (practiceMode) {
+      const ex = loader.lesson?.practiceExercises?.[practiceIndex];
+      // Fall through to lesson-view key while lesson loads or if the
+      // index is somehow out of range — better than a flicker to a key
+      // we'll immediately overwrite.
+      if (!ex) return `lesson:${courseId}/${lessonId}`;
+      return `practice:${courseId}/${lessonId}/${ex.id}`;
+    }
+    return `lesson:${courseId}/${lessonId}`;
+  }, [courseId, lessonId, practiceMode, practiceIndex, loader.lesson?.practiceExercises]);
+
+  const switchChatContext = useAIStore((s) => s.switchChatContext);
+  useEffect(() => {
+    if (chatCtxKey) switchChatContext(chatCtxKey);
+  }, [chatCtxKey, switchChatContext]);
+
   const layout = useLessonLayout({ lessonReady: !!loader.lesson && !loader.loading });
   const runner = useLessonRunner({
     lesson: loader.lesson,
@@ -1083,6 +1108,9 @@ export default function LessonPage() {
             This will clear all progress for this lesson — attempts, runs, hints,
             saved code, and completion status. You'll start fresh as if you've
             never opened this lesson.
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-faint">
+            Your saved tutor messages stay.
           </p>
           <div className="mt-4 flex items-center gap-2">
             <button

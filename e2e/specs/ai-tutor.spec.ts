@@ -507,4 +507,106 @@ test.describe("AI tutor", () => {
       .first();
     await expect(assistantContent).toBeVisible({ timeout: 5_000 });
   });
+
+  // ─── Phase 21A: saved tutor messages + lesson↔practice chat scope ──────
+
+  test("Phase 21A: bookmark on assistant message saves it; reload restores accordion", async ({ page }) => {
+    await loadProfile(page, "first-lesson-editing");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    await mockTutorResponse(page, "first-turn-concept");
+
+    await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
+    await waitForMonacoReady(page);
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
+
+    // Ask a question so an assistant message lands.
+    await S.tutorInput(page).fill("What's a function?");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+    await expect(
+      page.getByText(/a function groups reusable steps/i).first(),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Hover the assistant message to reveal the bookmark, then click.
+    // The bookmark is the only "Save tutor message" button on the page.
+    const bookmark = page.getByRole("button", { name: /save tutor message/i }).first();
+    await bookmark.scrollIntoViewIfNeeded();
+    await bookmark.click();
+    // After save, aria-pressed flips to true and the label switches.
+    await expect(
+      page.getByRole("button", { name: /remove from saved/i }).first(),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Reload — accordion should be present from first paint with count 1.
+    await page.reload();
+    await waitForMonacoReady(page);
+    await expect(
+      page.getByRole("button", { name: /^saved · 1$/i }).first(),
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("Phase 21A: lesson view and practice mode have separate chat histories", async ({ page }) => {
+    // Pre-existing pattern: loadProfile must run BEFORE seedApiKey
+    // (loadProfile internally resets state which DELETEs the BYOK key).
+    await loadProfile(page, "capstones-pending");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    await mockTutorQueue(page, ["first-turn-concept", "hint-level-1"]);
+
+    // Land on a lesson that has practice exercises (functions lesson).
+    await page.goto(`/learn/course/${COURSE_ID}/lesson/functions`);
+    await waitForMonacoReady(page);
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
+
+    // Ask Q1 in lesson view.
+    await S.tutorInput(page).fill("What's a function?");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+    await expect(
+      page.getByText(/a function groups reusable steps/i).first(),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Switch to practice mode via the in-app "Practice 0 of 3" button —
+    // SPA navigation preserves the in-memory chat cache (the whole point
+    // of the LRU). Hard `page.goto(...)` would wipe it.
+    await page.getByRole("button", { name: /^practice \d+ of \d+$/i }).click();
+    await expect(
+      page.getByRole("heading", { name: /square function/i }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Practice-mode tutor history should be empty — Q1 stays in lesson scope.
+    await expect(
+      page.getByText(/a function groups reusable steps/i),
+    ).toHaveCount(0);
+
+    // Toggle back to lesson via "Back to lesson" — Q1 should be there again
+    // (chatCache restored its lesson-scope snapshot on the context switch).
+    await page.getByRole("button", { name: /back to lesson/i }).click();
+    await expect(
+      page.getByText(/a function groups reusable steps/i).first(),
+    ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("Phase 21A: scripted first-run messages do NOT show a bookmark icon", async ({ page }) => {
+    // The bookmark gates on `!m.meta?.scripted`. Saving a scripted welcome
+    // line would persist a UI-narrative artifact the learner didn't actually
+    // get value from. The icon must not render on scripted turns.
+    await loadProfile(page, "first-lesson-editing");
+    await seedApiKey(page, { key: "sk-test-e2e-padding-12345", model: "gpt-4o-mini" });
+    await mockTutorResponse(page, "first-turn-concept");
+
+    await page.goto(`/learn/course/${COURSE_ID}/lesson/hello-world`);
+    await waitForMonacoReady(page);
+    await configureTutorKey(page, "sk-test-e2e-padding-12345");
+
+    // Before any user-turn, no assistant messages exist → no bookmark.
+    await expect(
+      page.getByRole("button", { name: /save tutor message/i }),
+    ).toHaveCount(0);
+
+    // Send a real turn → bookmark appears (gated on hover, but aria-label
+    // is queryable regardless of opacity).
+    await S.tutorInput(page).fill("hi");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+    await expect(
+      page.getByRole("button", { name: /save tutor message/i }).first(),
+    ).toBeVisible({ timeout: 10_000 });
+  });
 });

@@ -117,6 +117,12 @@ export interface TokenUsage {
 }
 
 export interface AIMessage {
+  // Phase 21A: stable per-message UUID (generated client-side in
+  // pushUser/pushAssistant inside aiStore). Optional only because old
+  // in-flight messages from a hot-reload during deploy may lack one;
+  // the bookmark/save affordance is gated on `m.id` so saves only fire
+  // on messages that actually have an id.
+  id?: string;
   role: "user" | "assistant";
   content: string;
   sections?: TutorSections;
