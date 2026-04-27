@@ -25,6 +25,23 @@ vi.mock("../../../api/client", () => ({
     deleteCourseProgress,
     listCourseProgress,
     listLessonProgress,
+    // Phase 21B: completeLesson invalidates the streak after the
+    // lesson PATCH resolves, which reaches into api.getUserStreak.
+    // Stub it so the streak refetch is a no-op in these tests
+    // (otherwise: unhandled rejection → CI failure).
+    getUserStreak: () =>
+      Promise.resolve({
+        current: 0,
+        longest: 0,
+        lastActiveDate: null,
+        lastFreezeUsed: null,
+        isActiveToday: false,
+        isAtRisk: false,
+        resetAtUtc: new Date().toISOString(),
+        freezeActive: false,
+        wasFirstToday: false,
+        freezeUsedToday: false,
+      }),
   },
 }));
 
