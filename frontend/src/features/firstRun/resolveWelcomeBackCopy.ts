@@ -68,9 +68,16 @@ export function resolveWelcomeBackCopy(ctx: WelcomeBackContext): WelcomeBackCopy
   // in-progress / catch-up branches because hitting Day 7 / 30 / 100
   // is a moment the product should never miss. STREAK_MILESTONES
   // gates the trigger so non-milestone days fall through silently.
+  //
+  // Iter-2 fix (post-audit): the earlier guard also required
+  // `streakIsActiveToday` — but that would suppress the milestone
+  // copy on the most common path. A returning Day-7 user signs in
+  // FIRST, then qualifies. At sign-in time `isActiveToday` is false,
+  // so the activeToday gate hid the milestone exactly when it should
+  // fire. lastWelcomeBackAt throttles the overlay to once-per-day
+  // anyway, so we don't need the activeToday safety belt.
   if (
     ctx.streakCurrent !== undefined &&
-    ctx.streakIsActiveToday &&
     STREAK_MILESTONES.has(ctx.streakCurrent)
   ) {
     const m = streakMilestoneCopy(ctx.streakCurrent, ctx.firstName);

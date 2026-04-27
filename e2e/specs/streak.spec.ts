@@ -28,10 +28,10 @@ test.describe("Phase 21B: streak chip", () => {
   test("Day 0 (fresh user) renders no chip on StartPage", async ({ page }) => {
     await loadProfile(page, "empty");
     await page.goto("/");
-    // The chip's aria-label always contains "streak" or "Grace" once
-    // it renders. Day 0 returns null → no element with that role.
+    // Chip is a <button> with descriptive aria-label. Day 0 returns
+    // null → no matching button.
     await expect(
-      page.getByRole("status", { name: /streak|grace/i }),
+      page.getByRole("button", { name: /streak|grace/i }),
     ).toHaveCount(0);
   });
 
@@ -47,7 +47,7 @@ test.describe("Phase 21B: streak chip", () => {
     await page.goto("/");
     // Both visible text and aria-label include "1-day streak" so the
     // chip is self-explanatory at a glance, no tooltip required.
-    const chip = page.getByRole("status", { name: /1-day streak/i }).first();
+    const chip = page.getByRole("button", { name: /1-day streak/i }).first();
     await expect(chip).toBeVisible({ timeout: 10_000 });
     await expect(chip).toContainText("1-day streak");
   });
@@ -67,7 +67,7 @@ test.describe("Phase 21B: streak chip", () => {
 
     // Chip appears in the page chrome — descriptive aria-label match.
     await expect(
-      page.getByRole("status", { name: /1-day streak/i }).first(),
+      page.getByRole("button", { name: /1-day streak/i }).first(),
     ).toBeVisible({ timeout: 10_000 });
   });
 });

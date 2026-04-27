@@ -11,6 +11,7 @@ const {
   applyDecay,
   todayUtc,
   getUserStreak,
+  getStreakHistory,
   updateUserStreak,
   __deleteUserStreakForTests,
 } = await import("./userStreak.js");
@@ -266,6 +267,107 @@ describe("getUserStreak (integration)", () => {
     `;
     const r = await getUserStreak(u);
     expect(r.freezeActive).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration — getStreakHistory (Phase 21B iter-3 dot-grid widget data)
+// ---------------------------------------------------------------------------
+
+describe("getStreakHistory (integration)", () => {
+  it("returns a contiguous days-long window with today as last element", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    const h = await getStreakHistory(u, 14);
+    expect(h.windowDates.length).toBe(14);
+    expect(h.windowDates[h.windowDates.length - 1]).toBe(h.todayUtc);
+    // Each entry one day apart, oldest → newest.
+    for (let i = 1; i < h.windowDates.length; i++) {
+      const prev = new Date(`${h.windowDates[i - 1]}T00:00:00Z`).getTime();
+      const cur = new Date(`${h.windowDates[i]}T00:00:00Z`).getTime();
+      expect(cur - prev).toBe(24 * 60 * 60 * 1000);
+    }
+  });
+
+  it("brand-new user has empty active and freeze sets", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    const h = await getStreakHistory(u, 14);
+    expect(h.activeDates).toEqual([]);
+    expect(h.freezeUsedDates).toEqual([]);
+  });
+
+  it("includes today in activeDates when last_active_date is today (qualifying via update)", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    await updateUserStreak(u);
+    const h = await getStreakHistory(u, 14);
+    expect(h.activeDates).toContain(h.todayUtc);
+  });
+
+  it("includes a freeze-used date in the window when set in user_streak", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    // Seed a row with last_freeze_used 3 days ago (inside the 14-day window).
+    await db()`
+      INSERT INTO public.user_streak (user_id, current_streak, longest_streak, last_active_date, last_freeze_used)
+      VALUES (${u}, 5, 5, (NOW() AT TIME ZONE 'UTC')::date, (NOW() AT TIME ZONE 'UTC')::date - INTERVAL '3 days')
+      ON CONFLICT (user_id) DO UPDATE
+        SET current_streak = 5, longest_streak = 5,
+            last_active_date = (NOW() AT TIME ZONE 'UTC')::date,
+            last_freeze_used = (NOW() AT TIME ZONE 'UTC')::date - INTERVAL '3 days'
+    `;
+    const h = await getStreakHistory(u, 14);
+    expect(h.freezeUsedDates).toHaveLength(1);
+    // The date in the freeze list should also appear in windowDates.
+    expect(h.windowDates).toContain(h.freezeUsedDates[0]);
+  });
+
+  it("excludes a freeze-used date that's outside the window (older than `days`)", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    // Seed last_freeze_used 20 days ago — outside a 14-day window.
+    await db()`
+      INSERT INTO public.user_streak (user_id, current_streak, longest_streak, last_active_date, last_freeze_used)
+      VALUES (${u}, 0, 5, NULL, (NOW() AT TIME ZONE 'UTC')::date - INTERVAL '20 days')
+      ON CONFLICT (user_id) DO UPDATE
+        SET current_streak = 0, longest_streak = 5,
+            last_active_date = NULL,
+            last_freeze_used = (NOW() AT TIME ZONE 'UTC')::date - INTERVAL '20 days'
+    `;
+    const h = await getStreakHistory(u, 14);
+    expect(h.freezeUsedDates).toEqual([]);
+  });
+
+  it("includes lesson_progress activity dates in active set (proxy for any lesson interaction)", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    // Seed a lesson_progress row with updated_at 2 days ago.
+    await db()`
+      INSERT INTO public.lesson_progress (user_id, course_id, lesson_id, status, started_at, updated_at)
+      VALUES (
+        ${u}, 'python-fundamentals', 'hello-world', 'in_progress',
+        (NOW() AT TIME ZONE 'UTC') - INTERVAL '2 days',
+        (NOW() AT TIME ZONE 'UTC') - INTERVAL '2 days'
+      )
+    `;
+    const h = await getStreakHistory(u, 14);
+    // The 2-days-ago date should appear in activeDates via the
+    // lesson_progress.updated_at proxy.
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setUTCDate(twoDaysAgo.getUTCDate() - 2);
+    twoDaysAgo.setUTCHours(0, 0, 0, 0);
+    const expected = `${twoDaysAgo.getUTCFullYear()}-${String(twoDaysAgo.getUTCMonth() + 1).padStart(2, "0")}-${String(twoDaysAgo.getUTCDate()).padStart(2, "0")}`;
+    expect(h.activeDates).toContain(expected);
+    // Cleanup
+    await db()`DELETE FROM public.lesson_progress WHERE user_id = ${u}`;
+  });
+
+  it("respects the `days` query parameter (e.g., 7 returns 7 entries)", async () => {
+    if (!dbReachable) return;
+    const u = await mkUser();
+    const h = await getStreakHistory(u, 7);
+    expect(h.windowDates.length).toBe(7);
   });
 });
 

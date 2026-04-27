@@ -10,6 +10,7 @@ import { AmbientGlyphField } from "../../../components/AmbientGlyphField";
 import { StaggerReveal, StaggerItem } from "../../../components/StaggerReveal";
 import { UserMenu } from "../../../components/UserMenu";
 import { FeedbackButton } from "../../../components/FeedbackButton";
+import { StreakChip } from "../components/StreakChip";
 import { Wordmark } from "../../../components/Wordmark";
 import { pickShakyLessons, formatTimeSpent } from "../utils/mastery";
 
@@ -136,6 +137,11 @@ export default function LearningDashboardPage() {
         <Wordmark size="sm" />
         <span className="h-4 w-px bg-border" aria-hidden="true" />
         <h1 className="text-[14px] font-medium tracking-tight text-ink">Guided Learning</h1>
+        {/* Phase 21B (iter-3): streak chip absolute-anchored to header
+            centre — same global position as every other major page. */}
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+          <div className="pointer-events-auto"><StreakChip /></div>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <FeedbackButton />
           <UserMenu />

@@ -24,7 +24,11 @@ import {
   insertSavedTutorMessage,
   listSavedTutorMessages,
 } from "../db/savedTutorMessages.js";
-import { getUserStreak, updateUserStreak } from "../db/userStreak.js";
+import {
+  getStreakHistory,
+  getUserStreak,
+  updateUserStreak,
+} from "../db/userStreak.js";
 import { adminDeleteUser, isAdminAvailable } from "../db/supabaseAdmin.js";
 import { destroyUserSessions } from "../services/session/sessionManager.js";
 import { HttpError } from "../middleware/errorHandler.js";
@@ -428,6 +432,27 @@ userDataRouter.get("/streak", async (req, res, next) => {
   try {
     const streak = await getUserStreak(requireUser(req));
     res.json(streak);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// History for the expand-on-click widget. Returns the past `days` UTC
+// dates with active/freeze annotations so the chip can render a
+// dot-grid + freeze-mark visualization. Default 14 days; cap 30 to
+// keep the query bounded.
+const streakHistoryQuery = z.object({
+  days: z.coerce.number().int().min(1).max(30).default(14),
+});
+
+userDataRouter.get("/streak/history", async (req, res, next) => {
+  const parsed = streakHistoryQuery.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "invalid query" });
+  }
+  try {
+    const history = await getStreakHistory(requireUser(req), parsed.data.days);
+    res.json(history);
   } catch (err) {
     next(err);
   }

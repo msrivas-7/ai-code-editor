@@ -441,6 +441,17 @@ export interface UserStreakResponse {
   freezeUsedToday: boolean;
 }
 
+export interface StreakHistoryResponse {
+  /** UTC dates 'YYYY-MM-DD', oldest → newest, length = days. */
+  windowDates: string[];
+  /** Subset of windowDates where qualifying activity was recorded. */
+  activeDates: string[];
+  /** Subset of windowDates where the freeze covered a missed day. */
+  freezeUsedDates: string[];
+  /** Today's UTC date. */
+  todayUtc: string;
+}
+
 // Phase 21A: saved tutor messages.
 export interface SavedTutorMessage {
   id: string;
@@ -659,6 +670,8 @@ export const api = {
   // Phase 21B: learning streak — read-only; writes are inline server-side
   // from any qualifying-action handler (lesson PATCH, ai/ask/stream).
   getUserStreak: () => get<UserStreakResponse>("/api/user/streak"),
+  getStreakHistory: (days: number = 14) =>
+    get<StreakHistoryResponse>(`/api/user/streak/history?days=${days}`),
 
   // Phase 21A: saved tutor messages — per (course, lesson, exercise) scope.
   // Editor-scope saves use null for all three.

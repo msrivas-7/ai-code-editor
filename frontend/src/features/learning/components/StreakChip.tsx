@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import { useStreak } from "../../../state/useStreak";
+import { StreakDetailPopover } from "./StreakDetailPopover";
 
 // Phase 21B: streak chip — single component, parameterized escalation.
 //
@@ -42,6 +44,15 @@ interface ChipProps {
   /** Compact mode for crowded surfaces (lesson/editor header peer to
    * FreeTierPill). Default = full size for the dashboard. */
   compact?: boolean;
+  /** When false, the chip is a passive display — no click-to-expand
+   * popover, no hover state. Used inside contexts like
+   * LessonCompletePanel where the chip is part of a celebration
+   * moment, not a stats-lookup affordance. Default = true. */
+  interactive?: boolean;
+  /** When true, render the chip larger and more decorative for
+   * high-affect surfaces (lesson-complete celebration). Brighter
+   * glow, larger arc + text. Default = false (toolbar treatment). */
+  prominent?: boolean;
 }
 
 interface ResolvedTier {
@@ -226,13 +237,52 @@ function StreakArc({ segmentsClosed, tier, freezeActive, isAtRisk }: ArcProps) {
   );
 }
 
-export function StreakChip({ override, compact }: ChipProps) {
+export function StreakChip({ override, compact, interactive = true, prominent = false }: ChipProps) {
   const { streak } = useStreak();
   const data = override
     ? { current: override.current, longest: override.longest, isAtRisk: override.isAtRisk, freezeActive: override.freezeActive }
     : streak
       ? { current: streak.current, longest: streak.longest, isAtRisk: streak.isAtRisk, freezeActive: streak.freezeActive }
       : null;
+
+  // Iter-3 (post-feedback): chip is click-to-expand into a dynamic-island
+  // detail popover. Click toggles open; click outside / Esc closes from
+  // inside the popover. Anchored to the chip's bounding rect so the
+  // popover lands directly beneath, regardless of which toolbar the chip
+  // is rendered in. `override` is for tests / cinematic frame snapshots
+  // and never opens the popover.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  // Keep anchorRect fresh while the popover is open. Without this, a
+  // window resize, sidebar collapse, or tablet rotation would leave
+  // the popover anchored to where the chip USED to be — visually
+  // detached from where it actually is now. ResizeObserver tracks the
+  // chip's bounding box; window resize events catch the case where
+  // the chip didn't change size but its position shifted.
+  //
+  // IMPORTANT: this useEffect MUST be declared above any conditional
+  // early-return so React's hook count is stable across renders. The
+  // effect's body short-circuits internally when not open or not
+  // mounted, so the no-op cost is trivial.
+  useEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const update = () => {
+      if (buttonRef.current) {
+        setAnchorRect(buttonRef.current.getBoundingClientRect());
+      }
+    };
+    const ro = new ResizeObserver(update);
+    ro.observe(buttonRef.current);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
 
   // Day 0 — render nothing. Don't lecture.
   if (!data || data.current === 0) return null;
@@ -245,8 +295,15 @@ export function StreakChip({ override, compact }: ChipProps) {
   // hover required.
   const label = `${data.current}-day streak`;
 
-  const padding = compact ? "px-1.5 py-[1px]" : "px-2 py-[1px]";
-  const fontSize = compact ? "text-[10px]" : "text-[11px]";
+  // Iter-4 (post-feedback): `prominent` mode for high-affect surfaces
+  // like the LessonCompletePanel — bigger glyph, bigger text, more
+  // generous padding. Defaults to the toolbar treatment.
+  const padding = prominent
+    ? "px-3 py-1"
+    : compact ? "px-1.5 py-[1px]" : "px-2 py-[1px]";
+  const fontSize = prominent
+    ? "text-[13px]"
+    : compact ? "text-[10px]" : "text-[11px]";
 
   // Tooltip layers:
   //   - Freeze active: "Grace · yesterday held."
@@ -258,28 +315,80 @@ export function StreakChip({ override, compact }: ChipProps) {
       ? `Today's lesson keeps your ${data.current}-day streak going.`
       : `${data.current}-day streak · longest ${data.longest}`;
 
+  // Interactivity gate: override-mode chip (used in cinematics or
+  // panel-internal renders) AND callers that explicitly pass
+  // interactive={false} both disable the popover-on-click behavior.
+  const isInteractive = !override && !!streak && interactive;
+
+  const handleClick = () => {
+    if (!isInteractive) return;
+    if (!open && buttonRef.current) {
+      setAnchorRect(buttonRef.current.getBoundingClientRect());
+    }
+    setOpen((v) => !v);
+  };
+
   return (
-    <span
-      role="status"
-      aria-label={tooltip}
-      title={tooltip}
-      className={`inline-flex items-center gap-1.5 rounded-full border bg-elevated/40 ${padding} ${fontSize} font-medium tabular-nums ${tier.border} ${tier.ink} transition-colors motion-reduce:transition-none`}
-      style={{ boxShadow: tier.glowStyle, letterSpacing: "0.01em" }}
-    >
-      <StreakArc
-        segmentsClosed={segmentsClosed}
-        tier={tier}
-        freezeActive={data.freezeActive}
-        isAtRisk={data.isAtRisk}
-      />
-      <span>{label}</span>
-      <style>{`
-        @keyframes streakBreath {
-          0%, 100% { opacity: 0.7; }
-          50%      { opacity: 1; }
-        }
-        .animate-streakBreath { animation: streakBreath 2400ms cubic-bezier(0.4, 0, 0.2, 1) infinite; }
-      `}</style>
-    </span>
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        // Implicit role="button" from <button> tag is correct — earlier
+        // iter set role="status" (which is a live-region role for
+        // passive announcements) which overrode the button semantics
+        // and confused screen readers. aria-expanded is correct only
+        // for interactive variants; passive renders set it undefined
+        // so AT doesn't announce a stale collapsed/expanded state.
+        aria-label={tooltip}
+        aria-expanded={isInteractive ? open : undefined}
+        aria-haspopup={isInteractive ? "dialog" : undefined}
+        title={tooltip}
+        onClick={handleClick}
+        disabled={!isInteractive}
+        // Touch target a11y (Batch 1 #5): the visible chip is intentionally
+        // compact (~22-26px tall) so it doesn't crowd the toolbar, but
+        // WCAG / Apple HIG want ≥44x44 for tap targets. We extend the
+        // hit area with a `::before` pseudo that sits ~10px around the
+        // chip — invisible, but a child of the button so clicks on it
+        // count as clicks on the button. `prominent` mode is already
+        // ~44px tall so it skips the expansion.
+        className={`relative inline-flex items-center gap-1.5 rounded-full border ${padding} ${fontSize} font-medium tabular-nums ${tier.border} ${tier.ink} transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${isInteractive ? "cursor-pointer" : "cursor-default"} ${
+          // Open state: chip darkens slightly and gains a stronger border
+          // so it visually reads as "active source" — the popover that
+          // ballooned out is anchored to it.
+          open ? "bg-elevated/80 ring-1 ring-accent/30" : "bg-elevated/40 hover:bg-elevated/60"
+        } ${
+          // Tap-target halo. Only on the interactive path — passive
+          // chips don't need expanded hit areas.
+          isInteractive && !prominent
+            ? "before:absolute before:-inset-[10px] before:content-['']"
+            : ""
+        }`}
+        style={{ boxShadow: tier.glowStyle, letterSpacing: "0.01em" }}
+      >
+        <StreakArc
+          segmentsClosed={segmentsClosed}
+          tier={tier}
+          freezeActive={data.freezeActive}
+          isAtRisk={data.isAtRisk}
+        />
+        <span>{label}</span>
+        <style>{`
+          @keyframes streakBreath {
+            0%, 100% { opacity: 0.7; }
+            50%      { opacity: 1; }
+          }
+          .animate-streakBreath { animation: streakBreath 2400ms cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+        `}</style>
+      </button>
+      {streak && (
+        <StreakDetailPopover
+          open={open}
+          onClose={() => setOpen(false)}
+          streak={streak}
+          anchorRect={anchorRect}
+        />
+      )}
+    </>
   );
 }

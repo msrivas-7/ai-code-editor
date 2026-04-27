@@ -4,18 +4,21 @@ import { supabase } from "../auth/supabaseClient";
 
 // Phase 21B: learning streak hook.
 //
-// Module-scoped cache + subscriber set so the StartPage chip, the
-// LessonPage/EditorPage header chip, and the LessonCompletePanel can
-// all read the same value without each one polling its own /streak.
-// Pattern matches useAIStatus.ts.
+// Module-scoped cache + subscriber set so every chip on screen
+// (StartPage, LessonPage / EditorPage / CourseOverview /
+// LearningDashboard toolbars, LessonCompletePanel) reads the same
+// value without each one polling /streak. Pattern matches
+// useAIStatus.ts.
 //
-// `justExtended` is the derived "did the streak go up since last
-// observation" signal that drives the in-place chip cinematic. We
-// compute it in the hook (not the server) by comparing the current
-// value to a previous-render snapshot. wasFirstToday from the server
-// would also work for the first qualifying action of the day, but
-// the local derivation is simpler and survives the read-path (where
-// wasFirstToday is always false).
+// Iter-4 simplification: an earlier iteration tried to derive a
+// `justExtended` flag (streak.current > previously-seen baseline)
+// to drive a "value just changed" cinematic. That dance is dead now —
+// the LessonCompletePanel celebrates the CURRENT streak unconditionally
+// (rationale in that file). Dropping the baseline machinery removed
+// two real bugs: (1) the localStorage baseline could be stale across
+// TOKEN_REFRESHED events and re-fire the cinematic incorrectly, and
+// (2) the post-mount acknowledge call could write the wrong value if
+// streak refetched mid-cinematic.
 
 const TTL_MS = 30_000;
 
@@ -56,7 +59,10 @@ export function invalidateStreak(): void {
   void fetchFresh();
 }
 
-// Sign-out / token-refresh epoch bump matches useAIStatus.
+// Sign-out epoch bump matches useAIStatus.ts so a stale fetch from a
+// pre-sign-out user can't surface to the next signed-in user. Token
+// refresh / user-update events also bump epoch so any in-flight
+// response keyed to the old token is dropped.
 supabase.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT" || event === "USER_UPDATED" || event === "TOKEN_REFRESHED") {
     epoch++;
@@ -70,11 +76,6 @@ supabase.auth.onAuthStateChange((event) => {
 
 export interface UseStreakResult {
   streak: UserStreakResponse | null;
-  /** Computed: true when current > prior current (local snapshot). The hook's
-   * caller resets this by calling acknowledgeExtension() after firing the
-   * cinematic. */
-  justExtended: boolean;
-  acknowledgeExtension: () => void;
   refetch: () => void;
 }
 
@@ -83,10 +84,6 @@ export function useStreak(): UseStreakResult {
     if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
     return null;
   });
-  // Snapshot of last-observed `current` per component instance. We
-  // compare on each update; if the new current > snapshot, the chip
-  // animates and the caller should ack to clear the flag.
-  const [priorCurrent, setPriorCurrent] = useState<number | null>(null);
 
   useEffect(() => {
     subscribers.add(setStreak);
@@ -98,25 +95,11 @@ export function useStreak(): UseStreakResult {
     };
   }, []);
 
-  // Initialize priorCurrent the first time we see a streak value.
-  useEffect(() => {
-    if (streak && priorCurrent === null) {
-      setPriorCurrent(streak.current);
-    }
-  }, [streak, priorCurrent]);
-
-  const justExtended =
-    streak !== null && priorCurrent !== null && streak.current > priorCurrent;
-
-  const acknowledgeExtension = useCallback(() => {
-    if (streak) setPriorCurrent(streak.current);
-  }, [streak]);
-
   const refetch = useCallback(() => {
     cached = null;
     inflight = null;
     void fetchFresh();
   }, []);
 
-  return { streak, justExtended, acknowledgeExtension, refetch };
+  return { streak, refetch };
 }

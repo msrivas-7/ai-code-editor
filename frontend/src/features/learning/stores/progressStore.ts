@@ -8,6 +8,7 @@ import {
   type ServerLessonProgress,
 } from "../../../api/client";
 import { currentGen } from "../../../auth/generation";
+import { invalidateStreak } from "../../../state/useStreak";
 
 // Phase 18b: per-user progress lives in Postgres (tables course_progress +
 // lesson_progress). Read model: a single `hydrate()` on sign-in populates the
@@ -356,6 +357,10 @@ export const useProgressStore = create<ProgressState>()((set, get) => {
         courseProgress: { ...s.courseProgress, [courseId]: nextC },
       });
 
+      // Phase 21B: invalidate the streak after the lesson PATCH resolves
+      // so the LessonCompletePanel's useStreak observes the post-extension
+      // value. Backend updateUserStreak runs inline inside the PATCH
+      // handler; the .then() guarantees the cache busts AFTER it.
       fireAndForget(
         `completeLesson ${courseId}/${lessonId} lesson`,
         api.patchLessonProgress(courseId, lessonId, {
@@ -363,6 +368,9 @@ export const useProgressStore = create<ProgressState>()((set, get) => {
           startedAt: nextL.startedAt,
           completedAt: nextL.completedAt,
           attemptCount: nextL.attemptCount,
+        }).then((row) => {
+          invalidateStreak();
+          return row;
         }),
       );
       const coursePatch: ServerCoursePatch = {

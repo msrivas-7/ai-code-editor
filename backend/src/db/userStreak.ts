@@ -93,10 +93,22 @@ function addDays(d: Date, days: number): Date {
   return r;
 }
 
-/** Number of whole UTC-day differences between two Dates (a - b). */
+/**
+ * Number of whole UTC-day differences between two Dates (a - b).
+ *
+ * Robust to inputs that aren't exactly midnight: each timestamp is
+ * floored to its UTC-day number (days-since-epoch), then subtracted.
+ * Earlier impl used `Math.round(ms / 86400000)` which is correct ONLY
+ * if both inputs are pre-aligned to midnight UTC; if a future caller
+ * ever passed a non-midnight Date (e.g., a `timestamptz` from
+ * `lesson_progress.completed_at`), the round path would silently
+ * lose a day at the half-day boundary.
+ */
 function dayDiff(a: Date, b: Date): number {
-  const ms = a.getTime() - b.getTime();
-  return Math.round(ms / (24 * 60 * 60 * 1000));
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const aDays = Math.floor(a.getTime() / MS_PER_DAY);
+  const bDays = Math.floor(b.getTime() / MS_PER_DAY);
+  return aDays - bDays;
 }
 
 /** Next 00:00 UTC after `now` as ISO string. */
@@ -248,11 +260,22 @@ export async function updateUserStreak(userId: string, now: Date = new Date()): 
   const yesterday = addDays(today, -1);
   const yesterdayStr = fmtDate(yesterday);
 
-  // SERIALIZABLE-ish: do the read+write in a transaction so concurrent
-  // qualifying-actions on the same UTC day don't race the wasFirstToday
-  // flag. postgres.js sql.begin uses BEGIN/COMMIT; we're not changing
-  // isolation level — Postgres' default READ COMMITTED + the row-level
-  // FOR UPDATE lock below is enough for this (single row per user).
+  // Serialized via postgres row-level lock. Audit walked the race and
+  // confirmed it's safe under default READ COMMITTED:
+  //
+  //   Call A: BEGIN → INSERT (acquires row lock on user_id via
+  //           ON CONFLICT path) → SELECT FOR UPDATE (already has lock)
+  //           → UPDATE → COMMIT (releases lock).
+  //   Call B: BEGIN → INSERT (BLOCKS on A's lock) → A commits, B
+  //           unblocks, INSERT triggers ON CONFLICT → SELECT FOR
+  //           UPDATE → reads A's post-commit state (lastActiveDate=
+  //           today) → falls into same-day no-op branch below →
+  //           returns wasFirstToday=false.
+  //
+  // The "same-day no-op" check on line 285 is reached with the row
+  // locked AND the most recent committed state visible (READ COMMITTED
+  // semantics give per-statement snapshots after a lock acquisition).
+  // No race on wasFirstToday.
   let result: UserStreakRow | null = null;
   await sql.begin(async (tx) => {
     // Ensure row exists, then lock it.
@@ -327,6 +350,83 @@ export async function updateUserStreak(userId: string, now: Date = new Date()): 
   });
   if (!result) throw new Error("updateUserStreak: transaction returned no result");
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// History — for the dynamic-island widget. Returns distinct UTC dates from
+// the past `days` days where lesson_progress was touched (a proxy for any
+// activity), plus the freeze-used date if it falls in the window.
+// ---------------------------------------------------------------------------
+
+export interface StreakHistory {
+  /** UTC dates 'YYYY-MM-DD' inclusive, oldest → newest, length = days. */
+  windowDates: string[];
+  /** Subset of windowDates where qualifying activity was recorded. */
+  activeDates: string[];
+  /** Subset of windowDates where the freeze covered a missed day. */
+  freezeUsedDates: string[];
+  /** Today's UTC date (last entry in windowDates). */
+  todayUtc: string;
+}
+
+export async function getStreakHistory(
+  userId: string,
+  days: number = 14,
+  now: Date = new Date(),
+): Promise<StreakHistory> {
+  const sql = db();
+  const today = todayUtc(now);
+  const start = addDays(today, -(days - 1));
+  // Build the contiguous date window from `start` to `today` inclusive.
+  const windowDates: string[] = [];
+  for (let i = 0; i < days; i++) {
+    windowDates.push(fmtDate(addDays(start, i)));
+  }
+  // Distinct activity dates from lesson_progress in the window. updated_at
+  // is the broadest proxy: any progressStore action that PATCHes the row
+  // (start, run, hint, complete, code-save) bumps it. Cheap because the
+  // (user_id, updated_at DESC) index from migration 20260420130000 covers
+  // exactly this query shape.
+  const rows = await sql<Array<{ d: string }>>`
+    SELECT DISTINCT to_char((updated_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS d
+      FROM public.lesson_progress
+     WHERE user_id = ${userId}
+       AND updated_at >= ${fmtDate(start)}::date
+       AND updated_at <  ${fmtDate(addDays(today, 1))}::date
+  `;
+  const active = new Set(rows.map((r) => r.d));
+  // Read both user_streak fields in a single query — earlier impl ran
+  // two separate SELECTs, opening a (microscopic) race window where
+  // an updateUserStreak between the queries could yield an
+  // inconsistent freeze + active-date pair. Single SELECT = atomic.
+  // Both fields are also used: last_freeze_used → mark freeze grace
+  // dates; last_active_date → fallback for qualifying actions that
+  // didn't touch lesson_progress (pure tutor questions on fresh
+  // lessons, future paths).
+  const streakRow = await sql<
+    Array<{ last_freeze_used: Date | null; last_active_date: Date | null }>
+  >`
+    SELECT last_freeze_used, last_active_date
+      FROM public.user_streak
+     WHERE user_id = ${userId}
+  `;
+  const lf = streakRow[0]?.last_freeze_used;
+  const la = streakRow[0]?.last_active_date;
+  const freezeUsedDates: string[] = [];
+  if (lf) {
+    const lfStr = fmtDate(lf);
+    if (windowDates.includes(lfStr)) freezeUsedDates.push(lfStr);
+  }
+  if (la) {
+    const laStr = fmtDate(la);
+    if (windowDates.includes(laStr)) active.add(laStr);
+  }
+  return {
+    windowDates,
+    activeDates: windowDates.filter((d) => active.has(d)),
+    freezeUsedDates,
+    todayUtc: fmtDate(today),
+  };
 }
 
 // Test-only: reset for fixtures.

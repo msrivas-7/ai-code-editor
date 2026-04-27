@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { LessonMeta } from "../types";
 import { formatTimeSpent, type MasteryLevel } from "../utils/mastery";
 import { LessonFeedbackChip } from "./LessonFeedbackChip";
-import { StreakExtensionCinematic } from "./StreakExtensionCinematic";
+import { StreakChip } from "./StreakChip";
+import { RingPulse } from "../../../components/cinema/RingPulse";
 import { invalidateStreak, useStreak } from "../../../state/useStreak";
 
 interface LessonCompletePanelProps {
@@ -42,24 +43,58 @@ export function LessonCompletePanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onDismiss]);
 
-  // Phase 21B: refetch streak on mount so the cinematic observes the
-  // post-completion value. The lesson PATCH already fired updateUserStreak
-  // server-side; this just pulls the fresh shape into the hook cache.
+  // Phase 21B (iter-4, post-feedback): refetch streak on mount, then
+  // celebrate the CURRENT value — not a value-just-changed odometer.
+  //
+  // Why we dropped the justExtended/odometer flow:
+  //   The qualifying action that EXTENDS the streak is almost always
+  //   the first code-run of the day (which fires updateUserStreak
+  //   server-side via the lesson PATCH's runCount bump). By the time
+  //   the LessonCompletePanel mounts, the streak has already
+  //   incremented and the toolbar chip already shows the new value —
+  //   so justExtended would be FALSE here, and the odometer-flip
+  //   cinematic would never fire in the common path.
+  //
+  //   New design: the lesson-complete moment ALWAYS gets a streak
+  //   celebration when streak > 0, regardless of when the increment
+  //   fired. The chip lands prominently with a single RingPulse +
+  //   acknowledge so the learner sees their streak as part of the
+  //   celebration, not as a detached "+1" event.
   useEffect(() => {
     invalidateStreak();
   }, []);
-  const { streak, justExtended, acknowledgeExtension } = useStreak();
-  // Snapshot at first render where justExtended became true. Prevents a
-  // flicker if the chip re-renders mid-cinematic. updateUserStreak only
-  // ever increments by +1, so prior = current - 1.
-  const [cinematicState, setCinematicState] = useState<
-    { current: number; prior: number } | null
-  >(null);
+  const { streak } = useStreak();
+
+  const isMilestone =
+    !!streak && [7, 14, 30, 100, 365].includes(streak.current);
+  // Lazy confetti for milestones — only the most special days earn it.
+  // Reduced-motion users get nothing fired, matching the rest of the
+  // panel's choreography.
   useEffect(() => {
-    if (justExtended && streak && cinematicState === null) {
-      setCinematicState({ current: streak.current, prior: streak.current - 1 });
-    }
-  }, [justExtended, streak, cinematicState]);
+    if (!isMilestone) return;
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mod = await import("canvas-confetti");
+        if (cancelled) return;
+        mod.default({
+          particleCount: 80,
+          spread: 70,
+          origin: { x: 0.85, y: 0.18 },
+          ticks: 220,
+          colors: ["#34D399", "#38BDF8", "#C084FC", "#D9B269"],
+          zIndex: 9999,
+        });
+      } catch {
+        /* swallow — confetti is decoration, not load-bearing */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMilestone]);
 
   // Phase B: full-frame takeover, not a Modal. The lesson-complete
   // beat is the third-act climax — the most emotionally important
@@ -93,19 +128,47 @@ export function LessonCompletePanel({
         onClick={(e) => e.stopPropagation()}
       >
       <div className="relative">
-        {/* Phase 21B: streak-extension cinematic. Renders top-right of
-            the panel; fires the full RingPulse + odometer + glow disc
-            choreography only when the streak just went up via THIS
-            completion. If a mid-session qualifying-action already
-            extended the streak earlier today, justExtended is false
-            here and we render nothing (no double-tick). */}
-        {cinematicState && (
-          <div className="absolute right-0 top-0 z-10">
-            <StreakExtensionCinematic
-              current={cinematicState.current}
-              prior={cinematicState.prior}
-              onComplete={() => acknowledgeExtension()}
-            />
+        {/* Phase 21B (iter-4): always-fire streak celebration on the
+            lesson-complete panel. The chip is rendered in PROMINENT mode
+            (larger glyph + text) and is non-interactive (no click-to-
+            expand popover — this is a celebration moment, not a stats
+            lookup). A single RingPulse + soft glow disc fires once on
+            mount. Milestone days (7/14/30/100/365) get confetti via
+            the effect above.
+            Position: top-right of the panel, sized large enough to read
+            without competing with the heading. */}
+        {streak && streak.current > 0 && (
+          <div className="absolute right-2 top-2 z-10">
+            <div className="relative">
+              {/* Soft glow disc behind the chip — blooms on mount,
+                  fades. Color matches the success-tier celebration. */}
+              <motion.div
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-0 -z-10 rounded-full blur-2xl ${
+                  isMilestone ? "bg-success/40" : "bg-accent/30"
+                }`}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 0.7, scale: 1.6 }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              />
+              {/* Single ring pulse around the chip — quiet companion to
+                  the existing CelebrationHeader rings. Milestones bump
+                  scale + use 3-ring sonar. */}
+              <RingPulse
+                anchor="self"
+                rings={isMilestone ? 3 : 1}
+                maxScale={isMilestone ? 18 : 12}
+                borderClass={isMilestone ? "border-success/60" : "border-accent/50"}
+                delayMs={400}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 6, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+              >
+                <StreakChip prominent interactive={false} />
+              </motion.div>
+            </div>
           </div>
         )}
         <CelebrationHeader

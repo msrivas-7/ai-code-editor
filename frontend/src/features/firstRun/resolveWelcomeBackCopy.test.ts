@@ -244,7 +244,12 @@ describe("resolveWelcomeBackCopy", () => {
       expect(out.hero).toBe("Welcome back, Mehul.");
     });
 
-    it("milestone day but NOT active today (already past) → falls through", () => {
+    it("milestone day, NOT active today yet (returning user, hasn't qualified yet) → STILL fires", () => {
+      // Iter-2: the activeToday guard was dropped because returning
+      // Day-7 users sign in BEFORE qualifying today; the milestone
+      // copy must fire on first sign-in, not be suppressed waiting
+      // for a qualifying action. lastWelcomeBackAt throttles the
+      // overlay to once-per-day, so no risk of repeat-firing.
       const out = resolveWelcomeBackCopy({
         firstName: "Mehul",
         now: NOW,
@@ -254,7 +259,8 @@ describe("resolveWelcomeBackCopy", () => {
         streakCurrent: 7,
         streakIsActiveToday: false,
       });
-      expect(out.hero).toBe("Welcome back, Mehul.");
+      expect(out.hero).toBe("Day 7.");
+      expect(out.subtitle).toBe("A week in, Mehul.");
     });
 
     it("streak data absent → falls through", () => {
