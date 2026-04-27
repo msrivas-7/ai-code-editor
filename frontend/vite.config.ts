@@ -6,6 +6,15 @@ export default defineConfig({
   plugins: [react(), courseRegistryPlugin()],
   server: {
     port: 5173,
+    // Phase 21C (post-audit): backend fetches the canonical course
+    // catalog from this Vite dev server (server-side title lookup
+    // for share creation). Inside docker compose the backend reaches
+    // it via `http://frontend:5173/courses/...`, which Vite would
+    // otherwise reject as an unknown Host header. Allowlist the
+    // service hostname explicitly. `localhost` stays the default for
+    // non-docker dev. Production serves /courses/* statically from
+    // the SWA host — no Vite involved.
+    allowedHosts: ["localhost", "frontend", "127.0.0.1"],
     proxy: {
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:4000",

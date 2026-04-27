@@ -23,6 +23,11 @@ interface ModalProps {
   // Layout of the overlay: "center" vertically centres the panel (confirms),
   // "top" anchors near the top of the viewport (Settings).
   position?: "center" | "top";
+  // Stacking layer for the backdrop. Default 50 covers normal modals.
+  // Higher values are reserved for surfaces that need to overlay
+  // already-fullscreen takeovers — e.g. the ShareDialog opening
+  // FROM the LessonCompletePanel (which sits at z-[55]).
+  zIndex?: number;
 }
 
 // Shared modal wrapper. Owns Esc-to-close, backdrop-click-to-close, portal,
@@ -37,6 +42,7 @@ export function Modal({
   role = "dialog",
   panelClassName = "w-full max-w-md rounded-xl border border-border bg-panel p-5 shadow-xl",
   position = "top",
+  zIndex = 50,
 }: ModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -152,7 +158,8 @@ export function Modal({
         <motion.div
           ref={backdropRef}
           key="backdrop"
-          className={`fixed inset-0 z-50 flex ${overlayPos} bg-black/50 backdrop-blur-sm`}
+          className={`fixed inset-0 flex ${overlayPos} bg-black/50 backdrop-blur-sm`}
+          style={{ zIndex }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: reduce ? 0.1 : 0.16 } }}

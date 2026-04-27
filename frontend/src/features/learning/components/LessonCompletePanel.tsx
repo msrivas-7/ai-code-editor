@@ -15,6 +15,11 @@ interface LessonCompletePanelProps {
   onNext?: () => void;
   onDismiss: () => void;
   onStartPractice?: () => void;
+  // Phase 21C: opens the cinematic Share dialog. When omitted (e.g., we
+  // can't assemble a snippet — practice mode, no lastCode), the button
+  // is hidden rather than shown disabled. Sharing is celebratory; a
+  // dimmed "Share" feels worse than no share at all.
+  onShare?: () => void;
 }
 
 export function LessonCompletePanel({
@@ -25,6 +30,7 @@ export function LessonCompletePanel({
   onNext,
   onDismiss,
   onStartPractice,
+  onShare,
 }: LessonCompletePanelProps) {
   const practiceExercises = lesson.practiceExercises ?? [];
   const practiceCount = practiceExercises.length;
@@ -341,6 +347,42 @@ export function LessonCompletePanel({
             </>
           )}
         </div>
+
+        {/* Phase 21C: cinematic Share. Subordinate to the primary CTA
+            row above — a quiet "Share this win" link, not a competing
+            gradient pill. The dialog itself owns the visual reward
+            (preview, opt-in, "Make public & share" gradient button).
+            Hidden entirely when onShare is not wired (e.g., practice
+            mode, no code to share) — better than a dimmed affordance. */}
+        {onShare && (
+          <div className="mt-3 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={onShare}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/70 px-4 py-1.5 text-[12px] font-medium text-muted transition hover:border-accent/40 hover:bg-accent/5 hover:text-ink"
+              aria-label="Open share dialog for this lesson"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+              Share this win
+            </button>
+          </div>
+        )}
 
         <LessonFeedbackChip lessonId={lesson.id} lessonTitle={lesson.title} />
       </div>

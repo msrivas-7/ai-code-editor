@@ -10,6 +10,7 @@ import { aiRouter } from "./routes/ai.js";
 import { userDataRouter } from "./routes/userData.js";
 import { aiStatusRouter } from "./routes/aiStatus.js";
 import { adminRouter, adminStatusRouter } from "./routes/admin.js";
+import { sharesAuthedRouter, sharesPublicRouter } from "./routes/shares.js";
 import { adminGuard } from "./middleware/adminGuard.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { metricsRouter } from "./routes/metrics.js";
@@ -331,6 +332,25 @@ async function main() {
     authMiddleware,
     mutationLimit,
     feedbackRouter,
+  );
+
+  // Phase 21C: cinematic share. Split-mount: GET /:token is anon-readable
+  // (the share artifact is intentionally public) and skips auth + CSRF;
+  // POST + DELETE are owner-only and use the standard chain. Public GET
+  // is mounted FIRST so Express's path-matching reaches it before the
+  // authed router (which would 401 the anon caller).
+  app.use(
+    "/api/shares",
+    bodyLimit(4 * 1024),
+    sharesPublicRouter,
+  );
+  app.use(
+    "/api/shares",
+    bodyLimit(8 * 1024),
+    csrfGuard,
+    authMiddleware,
+    mutationLimit,
+    sharesAuthedRouter,
   );
 
   app.use(errorHandler);

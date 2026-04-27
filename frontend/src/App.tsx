@@ -16,6 +16,7 @@ const SignupPage = lazy(() => import("./pages/SignupPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage"));
 const FirstRunPage = lazy(() => import("./features/firstRun/pages/FirstRunPage"));
+const SharePage = lazy(() => import("./features/share/pages/SharePage"));
 
 // Dev-only /dev/content dashboard. Guarded by import.meta.env.DEV so the
 // import (and its transitive deps) are stripped from prod bundles.
@@ -77,6 +78,12 @@ export default function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+        {/* Phase 21C: public share route. No auth, no layout chrome —
+            the cinematic page owns the full viewport. The 12-char token
+            is server-generated; the SharePage component handles
+            invalid-token / revoked / load-failed states. */}
+        <Route path="/s/:token" element={<SharePage />} />
 
         {/* Protected routes nested under AuthedLayout. RequireAuth +
             HydrationGate persist across navigations via this layout

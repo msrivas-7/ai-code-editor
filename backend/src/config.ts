@@ -134,6 +134,35 @@ export const config = {
     platformOpenaiApiKey: process.env.PLATFORM_OPENAI_API_KEY,
   },
 
+  // Phase 21C: cinematic share controls. Two kill switches let on-call
+  // disable hot paths without a redeploy if a viral share melts capacity
+  // or a render bug starts producing bad images. `contentOrigin` is where
+  // the backend fetches canonical lesson catalog JSON for snapshot
+  // validation (replaces client-supplied lesson titles, so a malicious
+  // POST can't mint a brand-impersonating share like "I leaked the DB").
+  // Defaults to the frontend host the same way `corsOrigin` does.
+  share: {
+    // Three independent kill switches so on-call can target the
+    // exact failure mode without wider blast radius:
+    //   - publicDisabled: 503s GET /api/shares/:token (drain a
+    //     viral surge or take the public surface down for incident
+    //     response). Does NOT block create — users mid-celebration
+    //     can still publish.
+    //   - createDisabled: 503s POST /api/shares (block new creates
+    //     while letting existing shares stay viewable; useful when
+    //     the catalog or sanitizer is misbehaving).
+    //   - renderDisabled: lets create succeed but skips the image
+    //     render+upload. Row exists with null image paths, dialog
+    //     shows the link + falls back gracefully.
+    publicDisabled: process.env.SHARE_PUBLIC_DISABLED === "1",
+    createDisabled: process.env.SHARE_CREATE_DISABLED === "1",
+    renderDisabled: process.env.SHARE_RENDER_DISABLED === "1",
+    // The lesson catalog used to be fetched from the frontend over
+    // HTTP, but post-audit we now bake `frontend/public/courses` into
+    // the backend image at build time and read from disk — eliminates
+    // the cross-service hard dep AND the SSRF-via-env vector.
+  },
+
   // Phase 20-P3: shared secret for `/api/metrics`. When set, the Prometheus
   // endpoint requires `Authorization: Bearer <METRICS_TOKEN>`; when unset,
   // `/api/metrics` only accepts loopback requests (127.0.0.1 / ::1), so the

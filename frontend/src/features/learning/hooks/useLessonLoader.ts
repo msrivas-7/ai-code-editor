@@ -55,6 +55,7 @@ export function useLessonLoader({
 }: UseLessonLoaderArgs) {
   const navigate = useNavigate();
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [courseTitle, setCourseTitle] = useState<string>("");
   const [totalLessons, setTotalLessons] = useState(10);
   const [lessonOrder, setLessonOrder] = useState<string[]>([]);
   const [priorConcepts, setPriorConcepts] = useState<string[]>([]);
@@ -135,6 +136,7 @@ export function useLessonLoader({
           return;
         }
         setLesson(l);
+        setCourseTitle(course.title);
         setTotalLessons(course.lessonOrder.length);
         setLessonOrder(course.lessonOrder);
         const metaMap = new Map(metas.map((m) => [m.id, m]));
@@ -306,6 +308,7 @@ export function useLessonLoader({
 
   return {
     lesson,
+    courseTitle,
     totalLessons,
     lessonOrder,
     priorConcepts,

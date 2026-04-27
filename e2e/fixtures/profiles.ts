@@ -34,13 +34,13 @@ export type ProfileId =
   | "sandbox";
 
 const SEED_DIR = path.resolve(__dirname, "seeds");
-const BACKEND = process.env.E2E_API_URL ?? "http://localhost:4000";
+export const BACKEND = process.env.E2E_API_URL ?? "http://localhost:4000";
 // Phase 20-P1: backend csrfGuard requires Origin on every mutating call and
 // allowlists it against CORS_ORIGIN. Setting it on the request context means
 // every ctx.patch/put/post/delete inherits it automatically.
 const ORIGIN = process.env.E2E_APP_ORIGIN ?? "http://localhost:5173";
 
-async function newBackendContext() {
+export async function newBackendContext() {
   return request.newContext({ extraHTTPHeaders: { Origin: ORIGIN } });
 }
 

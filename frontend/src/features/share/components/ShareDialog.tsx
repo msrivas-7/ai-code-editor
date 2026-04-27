@@ -1,0 +1,585 @@
+import { useEffect, useRef, useState } from "react";
+import { Modal } from "../../../components/Modal";
+import { api } from "../../../api/client";
+import type {
+  CreateShareBody,
+  ShareMastery,
+} from "../../../api/client";
+import { ApiError } from "../../../api/ApiError";
+import { useAuthStore } from "../../../auth/authStore";
+import { resolveFirstName } from "../../firstRun/resolveFirstName";
+import { ShareCardPreviewScaled } from "./ShareCardPreview";
+
+// "5 minutes ago" / "yesterday" / "on Apr 22" — used in the dialog
+// header when the user is reopening an existing share. Renders an
+// English phrase that fits the prefix "You shared this ___".
+function formatRelativeDate(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diffMs = now - then;
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "earlier";
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  // Older than a week: drop the relative form, use a calendar date so
+  // the user sees "You shared this on Apr 22" — concrete, not vague.
+  return `on ${new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })}`;
+}
+
+// Phase 21C: ShareDialog. Triggered from LessonCompletePanel's
+// "Share this win" button. Three states:
+//
+//   - "compose": preview + display-name toggle + Make-public button.
+//   - "creating": button is busy; the rest stays so the user sees what
+//     they're committing to.
+//   - "created": success — show the canonical URL, copy button, and a
+//     "View page →" link that opens the cinematic page in a new tab.
+//
+// Errors surface inline under the primary button (snippet rejected by
+// sanitizer, rate-limit, etc.) — not via toast, so the user can see
+// what's wrong without losing the modal.
+
+// Two payload shapes:
+//   - `wire` is what gets POSTed (matches CreateShareBody exactly,
+//     minus displayName which the dialog supplies based on opt-in)
+//   - `preview` is what the dialog needs to render the in-browser
+//     ShareCardPreview before the share is created. Title / order /
+//     etc. are pulled from the FRONTEND lesson catalog (cheap, the
+//     client already has it), but only the wire fields go to the
+//     server; the canonical title comes back via getShare(token)
+//     after creation.
+export interface ShareDialogProps {
+  open: boolean;
+  onClose: () => void;
+  payload: {
+    /** Fields submitted to POST /api/shares. */
+    wire: Omit<CreateShareBody, "displayName">;
+    /** Fields used only for the in-browser preview. */
+    preview: {
+      lessonTitle: string;
+      lessonOrder: number;
+      courseTitle: string;
+      courseTotalLessons: number;
+    };
+    /** First name from auth — used as the default for the toggle.
+     *  null means we have no name to suggest, toggle stays off. */
+    suggestedName: string | null;
+  };
+}
+
+export function ShareDialog({ open, onClose, payload }: ShareDialogProps) {
+  // Default OFF (privacy by default). The toggle lifts to ON only when
+  // the user opts in.
+  const [showName, setShowName] = useState(false);
+  // Three-state machine: compose → creating → created.
+  const [phase, setPhase] = useState<"compose" | "creating" | "created">(
+    "compose",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // Phase 21C-ext: the 9:16 Story-format image is rendered in a
+  // separate fire-and-forget pipeline server-side. Poll for it once
+  // the share has been created; surface a "Save for Stories" download
+  // button when the URL lands.
+  const [storyImageUrl, setStoryImageUrl] = useState<string | null>(null);
+  // Track elapsed wait + give up signal so the disabled-button affordance
+  // can show real progress instead of a static "~3s" lie. After 30s of
+  // polling we surface a graceful fallback message instead of leaving
+  // the row in "Preparing…" forever.
+  const [storyWaitElapsedMs, setStoryWaitElapsedMs] = useState(0);
+  const [storyWaitGaveUp, setStoryWaitGaveUp] = useState(false);
+  // When the dialog jumps straight to `created` because an existing
+  // share was found, surface the publish date so the user knows this
+  // wasn't just-created. Null when the share was minted in this
+  // dialog session.
+  const [existingCreatedAt, setExistingCreatedAt] = useState<string | null>(
+    null,
+  );
+  // Phase guard latch — once `handleCreate` starts, the lookup
+  // callback that may resolve later must NOT overwrite the freshly-
+  // created token. Using a ref so the latch is observable inside the
+  // async lookup closure without re-triggering the effect.
+  const lookupSupersededRef = useRef(false);
+
+  // Reset machine whenever we reopen — the prior creation result
+  // shouldn't persist across opens of the same lesson.
+  useEffect(() => {
+    if (!open) return;
+    setShowName(false);
+    setPhase("compose");
+    setError(null);
+    setShareToken(null);
+    setCopyState("idle");
+    setStoryImageUrl(null);
+    setStoryWaitElapsedMs(0);
+    setStoryWaitGaveUp(false);
+    setExistingCreatedAt(null);
+    lookupSupersededRef.current = false;
+  }, [open]);
+
+  // On open, check whether the user already has a share for this
+  // lesson. If yes — and it's at least as new as the most recent
+  // completion — jump straight to the created state. Avoids the
+  // duplicate-share-on-every-click footgun where a learner who shares,
+  // dismisses, then re-opens gets a brand-new token + fresh poll wait
+  // for an artifact that already exists.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const existing = await api.getMyShareForLesson(
+          payload.wire.courseId,
+          payload.wire.lessonId,
+        );
+        if (cancelled) return;
+        // Race guard: if the user clicked "Make public" while the
+        // lookup was in flight, handleCreate has already produced its
+        // own token and flipped phase to `creating`/`created`. The
+        // stale lookup must NOT overwrite the freshly-minted token,
+        // story image url, or display-name toggle state.
+        if (lookupSupersededRef.current) return;
+        setShareToken(existing.shareToken);
+        if (existing.ogStoryImageUrl) {
+          setStoryImageUrl(existing.ogStoryImageUrl);
+        }
+        // Match the toggle state to whatever the original share used
+        // so the (already-published) preview reads truthfully.
+        setShowName(existing.displayName !== null);
+        setExistingCreatedAt(existing.createdAt);
+        setPhase("created");
+      } catch {
+        /* 404 / network error: stay in compose; user creates fresh */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, payload.wire.courseId, payload.wire.lessonId]);
+
+  // Poll for the Story-format image after the share is created. The
+  // image lands ~2-3s post-create via a fire-and-forget pipeline on
+  // the backend; until it lands, ogStoryImageUrl is null. Bail after
+  // 20 attempts (~30s) and surface a graceful fallback so the user
+  // doesn't stare at a frozen "Preparing…" forever.
+  useEffect(() => {
+    if (phase !== "created" || !shareToken) return;
+    if (storyImageUrl) return;
+    let cancelled = false;
+    let attempts = 0;
+    const startedAt = Date.now();
+    // Tick once per second so the elapsed counter advances visibly
+    // even while waiting between polls. The actual /api/shares poll
+    // happens every 1500ms (every other tick).
+    const elapsedTimer = setInterval(() => {
+      if (cancelled) return;
+      setStoryWaitElapsedMs(Date.now() - startedAt);
+    }, 250);
+    const tick = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await api.getShare(shareToken);
+        if (cancelled) return;
+        if (res.ogStoryImageUrl) {
+          setStoryImageUrl(res.ogStoryImageUrl);
+          return;
+        }
+      } catch {
+        /* network blip — keep polling unless we're past budget */
+      }
+      if (attempts >= 20) {
+        if (!cancelled) setStoryWaitGaveUp(true);
+        return;
+      }
+      setTimeout(() => void tick(), 1500);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      clearInterval(elapsedTimer);
+    };
+  }, [phase, shareToken, storyImageUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  if (!open) return null;
+
+  const previewName = showName ? payload.suggestedName : null;
+
+  const handleCreate = async () => {
+    if (phase !== "compose") return;
+    // Tell any in-flight lookup-on-open callback to stop short of
+    // setting state — its result is now stale relative to the fresh
+    // share we're about to create.
+    lookupSupersededRef.current = true;
+    setExistingCreatedAt(null);
+    setPhase("creating");
+    setError(null);
+    try {
+      // Wire-only fields go to the server; preview / suggestedName are
+      // UI state. The backend uses zod.strict() and rejects unknown
+      // keys with 400 — keeping the wire object tight defends that.
+      const res = await api.createShare({
+        ...payload.wire,
+        displayName: showName ? payload.suggestedName : null,
+      });
+      setShareToken(res.shareToken);
+      setPhase("created");
+    } catch (err) {
+      // Keep the user in compose so they can retry / change opt-in.
+      let msg = "Couldn't create share. Please try again.";
+      if (err instanceof ApiError) {
+        // The backend returns { error: "..." } — ApiError exposes the
+        // raw body string. Try to parse it for a clean message.
+        try {
+          const body = JSON.parse(err.body) as { error?: string };
+          if (body.error) msg = body.error;
+        } catch {
+          /* body wasn't JSON; keep the friendly default */
+        }
+      }
+      setError(msg);
+      setPhase("compose");
+    }
+  };
+
+  const shareUrl = shareToken
+    ? `${window.location.origin}/s/${shareToken}`
+    : null;
+
+  const handleCopy = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyState("copied");
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      /* clipboard blocked — let the input remain visible for select */
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (!shareUrl) return;
+    if (typeof navigator.share !== "function") return;
+    try {
+      await navigator.share({
+        title: `${payload.preview.lessonTitle} — ${payload.preview.courseTitle}`,
+        text: `Just finished ${payload.preview.lessonTitle} on CodeTutor.`,
+        url: shareUrl,
+      });
+    } catch {
+      /* user cancelled or platform refused — silent */
+    }
+  };
+
+  return (
+    <Modal
+      onClose={onClose}
+      role="dialog"
+      labelledBy="share-dialog-title"
+      describedBy="share-dialog-desc"
+      position="center"
+      panelClassName="mx-4 w-full max-w-xl rounded-xl border border-border bg-panel p-6 shadow-2xl"
+      // The dialog opens from the LessonCompletePanel's "Share this
+      // win" button, and that panel is a fullscreen takeover at
+      // z-[55]. Default Modal z-50 was placing the backdrop BEHIND
+      // the panel, hiding the dialog from the user. z-[60] lifts it
+      // above.
+      zIndex={60}
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2
+            id="share-dialog-title"
+            className="font-display text-lg font-semibold tracking-tight text-ink"
+          >
+            Share this win
+          </h2>
+          <p
+            id="share-dialog-desc"
+            className="mt-1 text-[12px] leading-relaxed text-muted"
+          >
+            {phase === "created"
+              ? existingCreatedAt
+                ? `You shared this ${formatRelativeDate(existingCreatedAt)}. Here's the link.`
+                : "Public link ready. The page plays a short cinematic — your code, typed out."
+              : "Anyone with the link can see this. The OG image preview below is what unfurls on Twitter, LinkedIn, and iMessage."}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="-m-1 rounded-md p-1 text-muted transition hover:bg-elevated hover:text-ink"
+          aria-label="Close share dialog"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      {/* Preview — locked to 480px wide; the underlying card is
+          1200×630 scaled to fit so the dialog stays portable. */}
+      <div className="mb-4 flex justify-center">
+        <ShareCardPreviewScaled
+          width={480}
+          lessonTitle={payload.preview.lessonTitle}
+          lessonOrder={payload.preview.lessonOrder}
+          courseTitle={payload.preview.courseTitle}
+          courseTotalLessons={payload.preview.courseTotalLessons}
+          mastery={payload.wire.mastery}
+          timeSpentMs={payload.wire.timeSpentMs}
+          attemptCount={payload.wire.attemptCount}
+          codeSnippet={payload.wire.codeSnippet}
+          displayName={previewName}
+          shareToken={shareToken ?? "preview"}
+        />
+      </div>
+
+      {phase !== "created" ? (
+        <>
+          {/* Display-name opt-in. Off by default (privacy by default).
+              Disabled when no name is available. */}
+          <label
+            className={`mb-4 flex items-start gap-3 rounded-lg border border-border bg-elevated/40 p-3 ${
+              payload.suggestedName ? "cursor-pointer" : "opacity-60"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={showName}
+              disabled={!payload.suggestedName}
+              onChange={(e) => setShowName(e.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-accent"
+            />
+            <span className="flex-1 text-[12px] leading-relaxed text-ink/85">
+              {payload.suggestedName ? (
+                <>
+                  Show my name as{" "}
+                  <span className="font-semibold text-ink">
+                    {payload.suggestedName}
+                  </span>
+                  .
+                  <span className="block text-[11px] text-faint">
+                    Otherwise this publishes anonymously.
+                  </span>
+                </>
+              ) : (
+                <>
+                  No name on file — share will publish anonymously.
+                  <span className="block text-[11px] text-faint">
+                    Add your name in Settings to attribute future shares.
+                  </span>
+                </>
+              )}
+            </span>
+          </label>
+
+          {error && (
+            <div
+              role="alert"
+              className="mb-3 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-[12px] leading-relaxed text-warn/90"
+            >
+              {error}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={phase === "creating"}
+              className="rounded-lg bg-gradient-to-r from-violet to-accent px-4 py-2 text-xs font-bold text-bg shadow-glow transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {phase === "creating" ? "Creating link…" : "Make public & share"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Created state — copy URL + native share + view page */}
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-elevated/40 p-2">
+            <input
+              readOnly
+              value={shareUrl ?? ""}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 bg-transparent px-2 text-[12px] text-ink outline-none"
+              aria-label="Share URL"
+            />
+            <button
+              onClick={handleCopy}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                copyState === "copied"
+                  ? "bg-success/20 text-success"
+                  : "bg-accent/15 text-accent hover:bg-accent/25"
+              }`}
+              aria-live="polite"
+            >
+              {copyState === "copied" ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+
+          {/* Save for Stories — pulls down the 9:16 PNG with a stable
+              filename so the user can drop it directly into IG Stories,
+              TikTok, or Snapchat without a screenshot+crop dance.
+              Three states:
+                • storyImageUrl ready → primary affordance, downloads PNG
+                • polling → animated dot triad + live elapsed counter
+                • gave up after ~30s → graceful fallback message */}
+          {storyWaitGaveUp && !storyImageUrl ? (
+            <div className="mb-3 rounded-lg border border-border bg-elevated/40 p-3 text-[12px] text-muted">
+              <span className="block font-medium text-ink">
+                Couldn't generate Stories image
+              </span>
+              <span className="block text-[11px] text-faint">
+                Use the link above instead — your share page is live.
+              </span>
+            </div>
+          ) : (
+            <a
+              href={storyImageUrl ?? undefined}
+              // download attribute hints "save this file" rather than
+              // "navigate to it". Filename mirrors the OG token for
+              // easy re-finding in Downloads.
+              download={
+                storyImageUrl && shareToken
+                  ? `codetutor-${shareToken}-story.png`
+                  : undefined
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled={!storyImageUrl}
+              className={`mb-3 flex items-center justify-between gap-3 rounded-lg border p-3 text-[12px] transition ${
+                storyImageUrl
+                  ? "border-accent/30 bg-accent/5 text-ink hover:border-accent/50 hover:bg-accent/10"
+                  : "pointer-events-none border-border bg-elevated/40 text-muted"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                {/* 9:16 stack icon */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="6" y="3" width="12" height="18" rx="2" />
+                  <line x1="9" y1="8" x2="15" y2="8" />
+                  <line x1="9" y1="12" x2="15" y2="12" />
+                </svg>
+                <span className="flex items-center gap-1 font-medium">
+                  {storyImageUrl ? (
+                    "Save for Stories"
+                  ) : (
+                    <>
+                      Preparing Stories image
+                      {/* Animated dot triad — proper "in flight" cue */}
+                      <span className="inline-flex items-center" aria-hidden="true">
+                        <span className="animate-pulse">.</span>
+                        <span className="animate-pulse [animation-delay:200ms]">.</span>
+                        <span className="animate-pulse [animation-delay:400ms]">.</span>
+                      </span>
+                    </>
+                  )}
+                </span>
+              </span>
+              <span className="text-[11px] text-faint">
+                {storyImageUrl
+                  ? "1080×1920 PNG"
+                  // First 800ms — render the dot triad alone (no
+                  // counter), so the brain reads "starting…" instead
+                  // of jumping to "1s already?". After that, surface
+                  // the live counter.
+                  : storyWaitElapsedMs < 800
+                    ? ""
+                    : `${Math.floor(storyWaitElapsedMs / 1000)}s`}
+              </span>
+            </a>
+          )}
+
+          {/* Action row. Native share is the primary CTA on touch
+              devices (it IS the conversion event there); on desktop
+              "View page →" is primary because there's no native share
+              sheet to invoke. */}
+          {typeof navigator !== "undefined" &&
+          typeof navigator.share === "function" ? (
+            <div className="flex items-center justify-end gap-2">
+              <a
+                href={shareUrl ?? "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-ink"
+              >
+                View page →
+              </a>
+              <button
+                onClick={handleNativeShare}
+                className="rounded-lg bg-gradient-to-r from-violet to-accent px-4 py-2 text-xs font-bold text-bg shadow-glow transition hover:opacity-90"
+              >
+                Share…
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-end gap-2">
+              <a
+                href={shareUrl ?? "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg bg-gradient-to-r from-violet to-accent px-4 py-2 text-xs font-bold text-bg shadow-glow transition hover:opacity-90"
+              >
+                View page →
+              </a>
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/** Small helper for callers — convert a MasteryLevel value to the
+ *  ShareMastery union (they're the same string set today, but typing
+ *  the cast in one place avoids surprises if they diverge later). */
+export function masteryToShareMastery(
+  m: "strong" | "okay" | "shaky",
+): ShareMastery {
+  return m;
+}
+
+/** Small helper to read the current learner's first name from the
+ *  auth store (where ShareDialog's caller usually sits). Returns null
+ *  when the metadata is missing or "there" — we don't want "there" to
+ *  surface as the public name. */
+export function currentDisplayName(): string | null {
+  const user = useAuthStore.getState().user;
+  if (!user) return null;
+  const name = resolveFirstName(user);
+  if (!name || name === "there") return null;
+  return name;
+}

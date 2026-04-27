@@ -452,6 +452,45 @@ export interface StreakHistoryResponse {
   todayUtc: string;
 }
 
+// Phase 21C: shared lesson completions (cinematic share artifact).
+export type ShareMastery = "strong" | "okay" | "shaky";
+
+export interface SharedLessonCompletion {
+  shareToken: string;
+  courseId: string;
+  lessonId: string;
+  lessonTitle: string;
+  lessonOrder: number;
+  courseTitle: string;
+  courseTotalLessons: number;
+  mastery: ShareMastery;
+  timeSpentMs: number;
+  attemptCount: number;
+  codeSnippet: string;
+  displayName: string | null;
+  ogImageUrl: string | null;
+  /** Phase 21C-ext: 9:16 Story-format image (1080×1920). Null until
+   *  the fire-and-forget render+upload pipeline lands; the
+   *  ShareDialog polls until this becomes non-null. */
+  ogStoryImageUrl: string | null;
+  viewCount: number;
+  createdAt: string;
+}
+
+// Post-audit: lesson title / order / course title / total are NOT
+// part of the wire schema anymore. The backend looks them up
+// canonically from the published course catalog (defends against
+// brand-impersonation shares).
+export interface CreateShareBody {
+  courseId: string;
+  lessonId: string;
+  mastery: ShareMastery;
+  timeSpentMs: number;
+  attemptCount: number;
+  codeSnippet: string;
+  displayName: string | null;
+}
+
 // Phase 21A: saved tutor messages.
 export interface SavedTutorMessage {
   id: string;
@@ -690,6 +729,34 @@ export const api = {
   deleteSavedTutorMessage: (id: string) =>
     del<{ ok: boolean }>(
       `/api/user/saved-tutor-messages/${encodeURIComponent(id)}`,
+    ),
+
+  // Phase 21C: cinematic share. createShare/revokeShare are authed +
+  // mutating; getShare is anonymous-readable for the /s/:token route.
+  createShare: (body: CreateShareBody) =>
+    post<{ shareToken: string; url: string }>("/api/shares", body),
+  getShare: (token: string) =>
+    get<SharedLessonCompletion>(
+      `/api/shares/${encodeURIComponent(token)}`,
+    ),
+  revokeShare: (token: string) =>
+    del<{ ok: boolean }>(`/api/shares/${encodeURIComponent(token)}`),
+  // "Have I already shared this lesson?" — owner-scoped lookup. Returns
+  // 404 when no share exists for this (course, lesson), or when the
+  // most recent share predates the lesson's current completion (i.e.,
+  // the lesson was reset+re-completed since). The dialog calls this on
+  // open: 200 → jump straight to created state with the existing token,
+  // 404 → compose state for a fresh share.
+  getMyShareForLesson: (courseId: string, lessonId: string) =>
+    get<{
+      shareToken: string;
+      url: string;
+      ogImageUrl: string | null;
+      ogStoryImageUrl: string | null;
+      createdAt: string;
+      displayName: string | null;
+    }>(
+      `/api/shares/mine?courseId=${encodeURIComponent(courseId)}&lessonId=${encodeURIComponent(lessonId)}`,
     ),
 
   // Phase 20-P0 #9: DELETE with a body for the confirm-email guard. The

@@ -51,6 +51,9 @@ import { StreakChip } from "../components/StreakChip";
 import { FirstSuccessReveal } from "../components/FirstSuccessReveal";
 import { motion } from "framer-motion";
 import { MATERIAL_EASE, CINEMA_DURATIONS } from "../../../components/cinema/easing";
+import { ShareDialog } from "../../share/components/ShareDialog";
+import { LANGUAGE_ENTRYPOINT } from "../../../types";
+import { api } from "../../../api/client";
 
 export default function LessonPage() {
   const { courseId, lessonId } = useParams<{
@@ -295,6 +298,48 @@ export default function LessonPage() {
     validator: { validation: validator.validation ?? null },
   });
 
+  // Phase 21C: ShareDialog mount state. Lifted here so the dialog can
+  // close cleanly even after LessonCompletePanel dismisses, and so the
+  // payload can be assembled from progress + course state in one place.
+  const [shareOpen, setShareOpen] = useState(false);
+  // Pre-fetch: when the lesson is completed AND has code to share,
+  // ask the backend whether this user already published a share for
+  // it. The chip flips from "Share" → "Shared ✓" so the user knows
+  // their click reuses the existing share instead of minting a new
+  // one. Lookup re-runs whenever the dialog closes after a fresh
+  // create (so the chip reflects the new state without a reload).
+  const [hasExistingShare, setHasExistingShare] = useState(false);
+  const lpForShareCheck =
+    courseId && lessonId
+      ? lessonProgressMap[`${courseId}/${lessonId}`]
+      : undefined;
+  const shareCheckTrigger =
+    courseId && lessonId && lpForShareCheck?.status === "completed"
+      ? `${courseId}/${lessonId}`
+      : null;
+  useEffect(() => {
+    if (!shareCheckTrigger) {
+      setHasExistingShare(false);
+      return;
+    }
+    // While the dialog is open we don't poll — let the dialog manage
+    // its own create lifecycle and rely on the post-close re-fetch.
+    if (shareOpen) return;
+    let cancelled = false;
+    const [c, l] = shareCheckTrigger.split("/");
+    void (async () => {
+      try {
+        await api.getMyShareForLesson(c, l);
+        if (!cancelled) setHasExistingShare(true);
+      } catch {
+        if (!cancelled) setHasExistingShare(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shareCheckTrigger, shareOpen]);
+
   if (!courseId || !lessonId) return null;
 
   const lesson = loader.lesson;
@@ -465,19 +510,48 @@ export default function LessonPage() {
                         : `Practice ${practiceDone}/${practiceTotal}`}
                     </button>
                   )}
+                {/* Phase 21C: persistent share affordance. Once a lesson
+                    is completed, the share moment shouldn't be a one-shot
+                    of the post-completion panel — a learner returning a
+                    week later should still be able to share their win.
+                    Hidden when there's no code to share (e.g., progress
+                    row exists but lastCode is empty), and during practice
+                    mode (the chip group is for lesson-scoped state). */}
+                {!practiceMode &&
+                  lesson &&
+                  lp.status === "completed" &&
+                  !!lp.lastCode?.[LANGUAGE_ENTRYPOINT[lesson.language]]?.trim() && (
+                    <button
+                      onClick={() => setShareOpen(true)}
+                      className={`border-l border-bg/40 px-2.5 py-0.5 text-[10px] font-semibold transition ${
+                        hasExistingShare
+                          ? "bg-success/15 text-success hover:bg-success/25"
+                          : "bg-accent/15 text-accent hover:bg-accent/25"
+                      }`}
+                      title={
+                        hasExistingShare
+                          ? "Already shared — click to view or copy link"
+                          : "Share this lesson"
+                      }
+                      aria-label={
+                        hasExistingShare
+                          ? "View existing share for this lesson"
+                          : "Open share dialog for this lesson"
+                      }
+                    >
+                      {hasExistingShare ? "Shared ✓" : "Share"}
+                    </button>
+                  )}
               </div>
             );
           })()}
-          {!practiceMode && showNext && (
-            <button
-              onClick={() => nav(`/learn/course/${courseId}/lesson/${nextLessonId}`)}
-              className="rounded-md border border-violet/30 bg-violet/10 px-2.5 py-1 text-[11px] font-semibold text-violet transition hover:bg-violet/20"
-              title="Go to the next lesson"
-              aria-label="Go to next lesson"
-            >
-              Next →
-            </button>
-          )}
+          {/* Phase 21C UX audit: removed the top "Next →" chip. The
+              LessonCompletePanel "Next Lesson →" CTA at the climactic
+              moment is the contextually-earned one; on returning
+              visits, the in-body Next button at the bottom of the
+              page is far more discoverable than a 10px chip in a
+              crowded toolbar. The de-clutter gives the persistent
+              Share pill room to breathe in the chip group. */}
           {/* Phase B: chrome politeness during framed moments. While
               the first-run scripted choreography is in flight, the
               FeedbackButton dims to 30% and the UserMenu is hidden —
@@ -1065,6 +1139,52 @@ export default function LessonPage() {
                 }
               : undefined
           }
+          onShare={
+            // Only offer Share when we have a code snippet to attach.
+            // Without an entry-point file in lp.lastCode there is no
+            // artifact worth showing, so the button stays hidden.
+            // Practice mode has its own scope/key — sharing a practice
+            // exercise's code through this lesson dialog would mislabel
+            // the artifact, so we hide the button there too.
+            !practiceMode &&
+            !!lp?.lastCode?.[LANGUAGE_ENTRYPOINT[lesson.language]]?.trim()
+              ? () => setShareOpen(true)
+              : undefined
+          }
+        />
+      )}
+      {/* Phase 21C: ShareDialog. Lives outside LessonCompletePanel so
+          the dialog stays open even if the user dismisses the
+          completion panel mid-share, and so its lifecycle is independent
+          of the validator.showComplete state. */}
+      {shareOpen && lesson && lp && (
+        <ShareDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          payload={{
+            // Wire fields — these are what the server actually sees.
+            // Title / order / total live ONLY in `preview` because the
+            // backend looks them up canonically from the catalog.
+            wire: {
+              courseId,
+              lessonId,
+              mastery: computeMastery(lp, lesson)?.level ?? "okay",
+              timeSpentMs: lp.timeSpentMs ?? 0,
+              attemptCount: lp.attemptCount ?? 0,
+              codeSnippet:
+                lp.lastCode?.[LANGUAGE_ENTRYPOINT[lesson.language]] ?? "",
+            },
+            preview: {
+              lessonTitle: lesson.title,
+              lessonOrder: lesson.order,
+              courseTitle: loader.courseTitle || courseId,
+              courseTotalLessons: loader.totalLessons,
+            },
+            suggestedName: (() => {
+              const n = resolveFirstName(user);
+              return n && n !== "there" ? n : null;
+            })(),
+          }}
         />
       )}
       {layout.showSettings && (

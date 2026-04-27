@@ -42,6 +42,13 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY --from=builder /build/dist ./dist
 
+# Phase 21C (post-audit): bake the lesson catalog into the runtime
+# image so share-creation no longer HTTP-fetches the frontend at
+# runtime. Eliminates the cross-service hard dep AND the SSRF-via-env
+# vector in lessonCatalog. The build context must be the repo root
+# for this COPY to work (docker-compose passes `context: .`).
+COPY frontend/public/courses ./courses
+
 RUN chown -R app:app /app
 
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
