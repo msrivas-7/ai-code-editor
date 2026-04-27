@@ -10,6 +10,7 @@ import { usePreferencesStore } from "../state/preferencesStore";
 import { useProgressStore } from "../features/learning/stores/progressStore";
 import { listPublicCourses, loadAllLessonMetas } from "../features/learning/content/courseLoader";
 import { ResumeLearningCard } from "../features/learning/components/ResumeLearningCard";
+import { StreakChip } from "../features/learning/components/StreakChip";
 import type { Course, CourseProgress, LessonMeta } from "../features/learning/types";
 
 interface ResumeTarget {
@@ -124,9 +125,19 @@ export default function StartPage() {
   return (
     <div className="relative flex h-full flex-col bg-bg text-ink">
       <AmbientGlyphField />
-      <div className="absolute right-4 top-3 z-10 flex items-center gap-2">
-        <FeedbackButton />
-        <UserMenu />
+      {/* Phase 21B (iter-3): top toolbar — streak chip absolute-anchored
+          to viewport centre; Feedback + UserMenu cluster anchors right.
+          Identical positioning to LessonPage / CourseOverview / EditorPage
+          headers so the chip lands in the exact same screen position no
+          matter which page the learner is on. */}
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-10">
+        <div className="absolute left-1/2 -translate-x-1/2">
+          <div className="pointer-events-auto"><StreakChip /></div>
+        </div>
+        <div className="pointer-events-auto absolute right-4 flex items-center gap-2">
+          <FeedbackButton />
+          <UserMenu />
+        </div>
       </div>
       <StaggerReveal className="flex flex-1 flex-col items-center justify-center px-6">
         <StaggerItem>
@@ -155,6 +166,7 @@ export default function StartPage() {
             />
           </StaggerItem>
         )}
+
 
         <StaggerItem className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
           <motion.button

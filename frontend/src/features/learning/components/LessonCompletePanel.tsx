@@ -1,8 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { LessonMeta } from "../types";
 import { formatTimeSpent, type MasteryLevel } from "../utils/mastery";
 import { LessonFeedbackChip } from "./LessonFeedbackChip";
+import { StreakExtensionCinematic } from "./StreakExtensionCinematic";
+import { invalidateStreak, useStreak } from "../../../state/useStreak";
 
 interface LessonCompletePanelProps {
   lesson: LessonMeta;
@@ -40,6 +42,25 @@ export function LessonCompletePanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onDismiss]);
 
+  // Phase 21B: refetch streak on mount so the cinematic observes the
+  // post-completion value. The lesson PATCH already fired updateUserStreak
+  // server-side; this just pulls the fresh shape into the hook cache.
+  useEffect(() => {
+    invalidateStreak();
+  }, []);
+  const { streak, justExtended, acknowledgeExtension } = useStreak();
+  // Snapshot at first render where justExtended became true. Prevents a
+  // flicker if the chip re-renders mid-cinematic. updateUserStreak only
+  // ever increments by +1, so prior = current - 1.
+  const [cinematicState, setCinematicState] = useState<
+    { current: number; prior: number } | null
+  >(null);
+  useEffect(() => {
+    if (justExtended && streak && cinematicState === null) {
+      setCinematicState({ current: streak.current, prior: streak.current - 1 });
+    }
+  }, [justExtended, streak, cinematicState]);
+
   // Phase B: full-frame takeover, not a Modal. The lesson-complete
   // beat is the third-act climax — the most emotionally important
   // moment in the product. Pre-Phase B it shipped in a `max-w-md`
@@ -72,6 +93,21 @@ export function LessonCompletePanel({
         onClick={(e) => e.stopPropagation()}
       >
       <div className="relative">
+        {/* Phase 21B: streak-extension cinematic. Renders top-right of
+            the panel; fires the full RingPulse + odometer + glow disc
+            choreography only when the streak just went up via THIS
+            completion. If a mid-session qualifying-action already
+            extended the streak earlier today, justExtended is false
+            here and we render nothing (no double-tick). */}
+        {cinematicState && (
+          <div className="absolute right-0 top-0 z-10">
+            <StreakExtensionCinematic
+              current={cinematicState.current}
+              prior={cinematicState.prior}
+              onComplete={() => acknowledgeExtension()}
+            />
+          </div>
+        )}
         <CelebrationHeader
           orderLabel={`Lesson ${lesson.order}: ${lesson.title}`}
         />

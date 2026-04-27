@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useAuthStore } from "../../auth/authStore";
 import { usePreferencesStore } from "../../state/preferencesStore";
 import { useProgressStore } from "../learning/stores/progressStore";
+import { useStreak } from "../../state/useStreak";
 import { resolveFirstName } from "./resolveFirstName";
 import {
   resolveWelcomeBackCopy,
@@ -110,6 +111,7 @@ export function useWelcomeBack(): UseWelcomeBackResult {
   ]);
 
   const firstName = useMemo(() => resolveFirstName(user), [user]);
+  const { streak } = useStreak();
 
   const copy = useMemo<WelcomeBackCopy | null>(() => {
     if (!shouldShow) return null;
@@ -118,8 +120,10 @@ export function useWelcomeBack(): UseWelcomeBackResult {
       lastWelcomeBackAt,
       courseProgressMap,
       lessonProgressMap,
+      streakCurrent: streak?.current,
+      streakIsActiveToday: streak?.isActiveToday,
     });
-  }, [shouldShow, firstName, lastWelcomeBackAt, courseProgressMap, lessonProgressMap]);
+  }, [shouldShow, firstName, lastWelcomeBackAt, courseProgressMap, lessonProgressMap, streak?.current, streak?.isActiveToday]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);

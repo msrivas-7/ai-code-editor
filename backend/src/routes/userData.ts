@@ -24,6 +24,7 @@ import {
   insertSavedTutorMessage,
   listSavedTutorMessages,
 } from "../db/savedTutorMessages.js";
+import { getUserStreak, updateUserStreak } from "../db/userStreak.js";
 import { adminDeleteUser, isAdminAvailable } from "../db/supabaseAdmin.js";
 import { destroyUserSessions } from "../services/session/sessionManager.js";
 import { HttpError } from "../middleware/errorHandler.js";
@@ -320,12 +321,27 @@ userDataRouter.patch(
       return res.status(400).json({ error: "invalid lesson patch" });
     }
     try {
+      const userId = requireUser(req);
       const row = await upsertLessonProgress(
-        requireUser(req),
+        userId,
         courseId.data,
         lessonId.data,
         parsed.data,
       );
+      // Phase 21B: a qualifying-action signal for the streak. Lesson
+      // completion or any run/attempt counts as engagement. Same-day
+      // repeats are no-ops inside updateUserStreak. Fire-and-forget so
+      // the route response isn't blocked on streak math; the frontend
+      // refetches /streak after the patch resolves to drive the chip.
+      const isQualifying =
+        parsed.data.status === "completed" ||
+        typeof parsed.data.runCount === "number" ||
+        typeof parsed.data.attemptCount === "number";
+      if (isQualifying) {
+        void updateUserStreak(userId).catch(() => {
+          /* silent — streak is non-critical to the patch path */
+        });
+      }
       res.json(row);
     } catch (err) {
       next(err);
@@ -395,6 +411,23 @@ userDataRouter.put("/editor-project", async (req, res, next) => {
   try {
     const project = await saveEditorProject(requireUser(req), parsed.data);
     res.json(project);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- learning streak (Phase 21B) ----------
+//
+// Read-only endpoint for the StartPage chip + LessonPage/EditorPage
+// header chip. Writes happen inline from qualifying-action handlers
+// (lesson PATCH above; ai/ask/stream below). The hook on the frontend
+// refetches this after any qualifying action resolves so the chip
+// reflects the new state without an extra round-trip in the response.
+
+userDataRouter.get("/streak", async (req, res, next) => {
+  try {
+    const streak = await getUserStreak(requireUser(req));
+    res.json(streak);
   } catch (err) {
     next(err);
   }

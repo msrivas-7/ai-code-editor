@@ -1,8 +1,10 @@
 import type { CourseProgress, LessonMeta, LessonProgress } from "../learning/types";
 
 // Welcome-back hero + subtitle copy. One helper, tested in isolation,
-// so the overlay component stays a dumb renderer. Four branches,
-// first match wins — ordering encodes priority:
+// so the overlay component stays a dumb renderer. Branches ordered
+// by priority — first match wins:
+//   0. Phase 21B — milestone streak day → celebrate quietly
+//      ("Day 7.", "A week in.")
 //   1. Something in-flight → pick up there
 //   2. Freshly finished a course → celebrate forward
 //   3. Has progress, nothing in-flight → dashboard wait
@@ -32,9 +34,26 @@ export interface WelcomeBackContext {
     string,
     { title: string; lessons: readonly Pick<LessonMeta, "id" | "title" | "order">[] }
   >;
+  // Phase 21B: optional streak data for milestone copy. When current
+  // matches a milestone (7, 14, 30, 100, 365) AND we're on the day
+  // the streak is still active, the hero swaps to a quiet "Day N."
+  // celebration line. Absent or zero → fall through to the existing
+  // branches.
+  streakCurrent?: number;
+  streakIsActiveToday?: boolean;
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const STREAK_MILESTONES: ReadonlySet<number> = new Set([7, 14, 30, 100, 365]);
+
+function streakMilestoneCopy(current: number, firstName: string): WelcomeBackCopy | null {
+  if (current === 7) return { hero: "Day 7.", subtitle: `A week in, ${firstName}.` };
+  if (current === 14) return { hero: "Day 14.", subtitle: "Two weeks. The habit is forming." };
+  if (current === 30) return { hero: "Day 30.", subtitle: "A month of showing up." };
+  if (current === 100) return { hero: "Day 100.", subtitle: "Triple digits. That's rare air." };
+  if (current === 365) return { hero: "Day 365.", subtitle: "A year. Take a breath." };
+  return null;
+}
 
 export function resolveWelcomeBackCopy(ctx: WelcomeBackContext): WelcomeBackCopy {
   const now = (ctx.now ?? new Date()).getTime();
@@ -44,6 +63,19 @@ export function resolveWelcomeBackCopy(ctx: WelcomeBackContext): WelcomeBackCopy
   const hero = longAbsence
     ? `Good to see you again, ${ctx.firstName}.`
     : `Welcome back, ${ctx.firstName}.`;
+
+  // Branch 0: streak milestone day. Most celebratory — wins over
+  // in-progress / catch-up branches because hitting Day 7 / 30 / 100
+  // is a moment the product should never miss. STREAK_MILESTONES
+  // gates the trigger so non-milestone days fall through silently.
+  if (
+    ctx.streakCurrent !== undefined &&
+    ctx.streakIsActiveToday &&
+    STREAK_MILESTONES.has(ctx.streakCurrent)
+  ) {
+    const m = streakMilestoneCopy(ctx.streakCurrent, ctx.firstName);
+    if (m) return m;
+  }
 
   // Branch 1: an in-progress lesson anywhere. Prefer the most recently
   // updated one — a learner who bounces between two lessons should

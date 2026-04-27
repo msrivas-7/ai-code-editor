@@ -427,6 +427,20 @@ export interface AdminAuditLogResponse {
   nextCursor: string | null;
 }
 
+// Phase 21B: learning streak.
+export interface UserStreakResponse {
+  current: number;
+  longest: number;
+  lastActiveDate: string | null;
+  lastFreezeUsed: string | null;
+  isActiveToday: boolean;
+  isAtRisk: boolean;
+  resetAtUtc: string;
+  freezeActive: boolean;
+  wasFirstToday: boolean;
+  freezeUsedToday: boolean;
+}
+
 // Phase 21A: saved tutor messages.
 export interface SavedTutorMessage {
   id: string;
@@ -641,6 +655,10 @@ export const api = {
   getEditorProject: () => get<EditorProjectResponse>("/api/user/editor-project"),
   saveEditorProject: (body: EditorProjectPayload) =>
     put<EditorProjectResponse>("/api/user/editor-project", body),
+
+  // Phase 21B: learning streak — read-only; writes are inline server-side
+  // from any qualifying-action handler (lesson PATCH, ai/ask/stream).
+  getUserStreak: () => get<UserStreakResponse>("/api/user/streak"),
 
   // Phase 21A: saved tutor messages — per (course, lesson, exercise) scope.
   // Editor-scope saves use null for all three.

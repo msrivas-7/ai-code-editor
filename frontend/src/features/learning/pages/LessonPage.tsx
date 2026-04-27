@@ -47,6 +47,7 @@ import { resolveFirstName } from "../../firstRun/resolveFirstName";
 import { useFirstRunStore } from "../../firstRun/useFirstRunStore";
 import { FirstRunSpotlight } from "../../firstRun/FirstRunSpotlight";
 import { FirstRunHandoffReveal } from "../../firstRun/FirstRunHandoffReveal";
+import { StreakChip } from "../components/StreakChip";
 import { FirstSuccessReveal } from "../components/FirstSuccessReveal";
 import { motion } from "framer-motion";
 import { MATERIAL_EASE, CINEMA_DURATIONS } from "../../../components/cinema/easing";
@@ -393,6 +394,15 @@ export default function LessonPage() {
             confusion made structural. Editor mode is now reachable
             via the user menu and the StartPage tertiary affordance. */}
 
+        {/* Phase 21B (iter-3): streak chip absolute-anchored to header
+            center so it lands at the exact midpoint regardless of how
+            wide the left or right content is. `pointer-events-none` on
+            the wrapper keeps mouse events flowing to anything that may
+            sit beneath; the chip itself (a button/status) re-enables
+            them with `pointer-events-auto`. */}
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+          <div className="pointer-events-auto"><StreakChip /></div>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           {runner.sessionPhase === "starting" && (
             <span className="flex items-center gap-1 text-[10px] text-muted">

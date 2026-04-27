@@ -9,6 +9,7 @@ import { AnimatedProgressBar } from "../components/AnimatedProgressBar";
 import { StaggerReveal, StaggerItem } from "../../../components/StaggerReveal";
 import { UserMenu } from "../../../components/UserMenu";
 import { FeedbackButton } from "../../../components/FeedbackButton";
+import { StreakChip } from "../components/StreakChip";
 import { Wordmark } from "../../../components/Wordmark";
 import { Modal } from "../../../components/Modal";
 import {
@@ -166,6 +167,12 @@ export default function CourseOverviewPage() {
             Complete
           </motion.span>
         )}
+        {/* Phase 21B (iter-3): streak chip absolute-anchored to header
+            centre — exact midpoint regardless of left content width
+            (course title may be long). */}
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+          <div className="pointer-events-auto"><StreakChip /></div>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <FeedbackButton />
           <UserMenu />

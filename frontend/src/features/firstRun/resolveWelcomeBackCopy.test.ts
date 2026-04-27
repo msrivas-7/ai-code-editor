@@ -201,4 +201,71 @@ describe("resolveWelcomeBackCopy", () => {
     });
     expect(out.subtitle).toBe("Picking up where you left off.");
   });
+
+  // Phase 21B — milestone streak copy.
+  describe("streak milestone branch (Phase 21B)", () => {
+    it("Day 7 active → 'A week in'", () => {
+      const out = resolveWelcomeBackCopy({
+        firstName: "Mehul",
+        now: NOW,
+        lastWelcomeBackAt: null,
+        courseProgressMap: {},
+        lessonProgressMap: {},
+        streakCurrent: 7,
+        streakIsActiveToday: true,
+      });
+      expect(out.hero).toBe("Day 7.");
+      expect(out.subtitle).toBe("A week in, Mehul.");
+    });
+
+    it("Day 30 active → 'A month of showing up'", () => {
+      const out = resolveWelcomeBackCopy({
+        firstName: "Mehul",
+        now: NOW,
+        lastWelcomeBackAt: null,
+        courseProgressMap: {},
+        lessonProgressMap: {},
+        streakCurrent: 30,
+        streakIsActiveToday: true,
+      });
+      expect(out.hero).toBe("Day 30.");
+    });
+
+    it("non-milestone day (Day 5) falls through to existing branches", () => {
+      const out = resolveWelcomeBackCopy({
+        firstName: "Mehul",
+        now: NOW,
+        lastWelcomeBackAt: null,
+        courseProgressMap: {},
+        lessonProgressMap: {},
+        streakCurrent: 5,
+        streakIsActiveToday: true,
+      });
+      expect(out.hero).toBe("Welcome back, Mehul.");
+    });
+
+    it("milestone day but NOT active today (already past) → falls through", () => {
+      const out = resolveWelcomeBackCopy({
+        firstName: "Mehul",
+        now: NOW,
+        lastWelcomeBackAt: null,
+        courseProgressMap: {},
+        lessonProgressMap: {},
+        streakCurrent: 7,
+        streakIsActiveToday: false,
+      });
+      expect(out.hero).toBe("Welcome back, Mehul.");
+    });
+
+    it("streak data absent → falls through", () => {
+      const out = resolveWelcomeBackCopy({
+        firstName: "Mehul",
+        now: NOW,
+        lastWelcomeBackAt: null,
+        courseProgressMap: {},
+        lessonProgressMap: {},
+      });
+      expect(out.hero).toBe("Welcome back, Mehul.");
+    });
+  });
 });

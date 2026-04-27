@@ -25,6 +25,7 @@ import { SettingsModal } from "../components/SettingsModal";
 import { UserMenu } from "../components/UserMenu";
 import { FeedbackButton } from "../components/FeedbackButton";
 import { Wordmark } from "../components/Wordmark";
+import { StreakChip } from "../features/learning/components/StreakChip";
 import { SessionErrorBanner } from "../components/SessionErrorBanner";
 import { SessionRestartBanner } from "../components/SessionRestartBanner";
 import { SessionReplacedModal } from "../components/SessionReplacedModal";
@@ -143,6 +144,12 @@ export default function EditorPage() {
               Learning
             </button>
           </nav>
+        </div>
+        {/* Phase 21B (iter-3): streak chip absolute-anchored to header
+            centre — exact midpoint regardless of left/right content
+            widths. */}
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+          <div className="pointer-events-auto"><StreakChip /></div>
         </div>
         <div className="flex items-center gap-4">
           <Toolbar langPickerRef={langPickerRef} runButtonRef={runButtonRef} />

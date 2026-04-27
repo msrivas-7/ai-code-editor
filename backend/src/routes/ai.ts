@@ -32,6 +32,7 @@ import {
   unregisterAbortController,
 } from "../services/shutdown/abortRegistry.js";
 import { hashUserId } from "../services/crypto/logHash.js";
+import { updateUserStreak } from "../db/userStreak.js";
 
 // Wire a per-request AbortController to (a) a config-driven deadline and
 // (b) the response's `close` event, so OpenAI calls stop burning tokens
@@ -451,6 +452,16 @@ aiRouter.post("/ask/stream", async (req, res) => {
   }
   if (!enforceModelAllowlist(cred, parsed.data.model, res, "ask_stream")) return;
   const requestId = randomUUID();
+
+  // Phase 21B: a substantive tutor question is a qualifying streak signal.
+  // Fire-and-forget so the SSE stream isn't blocked on streak math; the
+  // frontend refetches /streak on stream completion to drive the chip.
+  // ≥4 chars after trim avoids "hi"/"k" no-ops counting as engagement.
+  if (parsed.data.question.trim().length >= 4) {
+    void updateUserStreak(userId).catch(() => {
+      /* silent — streak is non-critical to the ask path */
+    });
+  }
 
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream");
