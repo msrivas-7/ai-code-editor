@@ -26,7 +26,7 @@ test.describe("settings panel", () => {
   });
 
   test("Theme toggle applies data-theme on <html> and persists pref", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "appearance");
 
     // Light — Phase 18b: theme persists through `preferences.theme` on the
@@ -51,7 +51,7 @@ test.describe("settings panel", () => {
   });
 
   test("Persona radio group updates aria-checked and blurb", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "ai");
 
     const beginner = page.getByRole("radio", { name: /^beginner$/i });
@@ -71,7 +71,7 @@ test.describe("settings panel", () => {
   });
 
   test("Show / hide API key toggle flips the input type on the draft input", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "ai");
 
     // Phase 18e: the input is a local draft for a new key (the saved key
@@ -89,7 +89,7 @@ test.describe("settings panel", () => {
   });
 
   test("Save key → model picker loads → model change persists", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "ai");
 
     // Type a key and save — mockAllAI's validate returns {valid:true} and
@@ -124,7 +124,7 @@ test.describe("settings panel", () => {
         body: JSON.stringify({ valid: false, error: "bad key format" }),
       });
     });
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "ai");
 
     await page
@@ -141,7 +141,7 @@ test.describe("settings panel", () => {
 
   test("Remove API key is a two-step confirm (Cancel keeps, Remove wipes)", async ({ page }) => {
     await seedApiKey(page, { key: "sk-about-to-be-removed-padding-123" });
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "ai");
 
     // With a key saved server-side, the status pill reads "key saved" and
@@ -200,7 +200,7 @@ test.describe("settings panel", () => {
       return route.continue();
     });
 
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "account");
 
     const openDelete = page.getByRole("button", { name: /^delete account$/i });
@@ -242,7 +242,7 @@ test.describe("settings panel", () => {
     // the last button would move focus into the page behind (close button in
     // the header, UserMenu avatar, etc.) — a WCAG failure and a confusing
     // UX because the overlay swallows clicks but not keystrokes.
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "appearance");
 
     // Collect the focusable buttons/inputs inside the dialog. "Appearance" is
@@ -309,7 +309,7 @@ test.describe("settings panel", () => {
 
   test("Escape closes the settings modal cleanly", async ({ page }) => {
     await seedApiKey(page, { key: "sk-escape-test-padding-1234567890" });
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "ai");
 
     await page.keyboard.press("Escape");
@@ -340,7 +340,7 @@ test.describe("settings panel", () => {
       await route.continue();
     });
 
-    await page.goto("/");
+    await page.goto("/start");
     await openSettings(page, "account");
 
     // Round 1: edit firstName only, leave lastName empty. The save should
