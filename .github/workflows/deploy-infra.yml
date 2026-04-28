@@ -53,36 +53,45 @@ jobs:
       - name: Resolve params
         id: params
         run: |
-          # Pull the most recent values from the last full deployment so
-          # we don't drift on reboots-of-RG. adminPublicKey is empty
-          # because newVm=false (the VM exists; we're not recreating).
-          # sshSourceIp is unused when newVm=false but the param is
-          # required by main.bicep so we pass a placeholder.
+          # Pull stable values for incremental redeploys. adminPublicKey
+          # MUST equal the value already on the VM — passing "" causes
+          # PropertyChangeNotAllowed on linuxConfiguration.ssh.publicKeys
+          # because ARM sees the change as "remove existing key". Stored
+          # as the VM_ADMIN_PUBLIC_KEY secret (seed: read from the live
+          # VM via `az vm show ... osProfile.linuxConfiguration.ssh
+          # .publicKeys[0].keyData`).
+          # sshSourceIp is only consumed by network.bicep's NSG rule on
+          # initial provisioning; pass current admin IP for any future
+          # NSG rule re-assertions.
           echo "ssh_src=152.44.241.79/32" >> "$GITHUB_OUTPUT"
           echo "principal_id=86bf71cc-6f21-490f-9142-eba8634cb7f7" >> "$GITHUB_OUTPUT"
 
       - name: What-if (preview diff)
         if: inputs.mode == 'what-if'
         working-directory: infra/azure
+        env:
+          ADMIN_PUBLIC_KEY: ${{ secrets.VM_ADMIN_PUBLIC_KEY }}
         run: |
           az deployment group what-if \
             -g codetutor-ai-prod-rg \
             --template-file main.bicep \
             --parameters \
-              adminPublicKey="" \
+              adminPublicKey="$ADMIN_PUBLIC_KEY" \
               sshSourceIp="${{ steps.params.outputs.ssh_src }}" \
               bootstrapPrincipalObjectId="${{ steps.params.outputs.principal_id }}"
 
       - name: Deploy (apply)
         if: inputs.mode == 'deploy'
         working-directory: infra/azure
+        env:
+          ADMIN_PUBLIC_KEY: ${{ secrets.VM_ADMIN_PUBLIC_KEY }}
         run: |
           az deployment group create \
             -g codetutor-ai-prod-rg \
             -n "main-$(date +%Y%m%d-%H%M%S)" \
             --template-file main.bicep \
             --parameters \
-              adminPublicKey="" \
+              adminPublicKey="$ADMIN_PUBLIC_KEY" \
               sshSourceIp="${{ steps.params.outputs.ssh_src }}" \
               bootstrapPrincipalObjectId="${{ steps.params.outputs.principal_id }}"
 
