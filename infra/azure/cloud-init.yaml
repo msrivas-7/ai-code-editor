@@ -92,6 +92,15 @@ write_files:
         echo "ACS_CONNECTION_STRING=$(fetch_optional ACS-CONNECTION-STRING)"
         echo "ACS_SENDER_EMAIL=$(fetch_optional ACS-SENDER-EMAIL)"
         echo "OPERATOR_ALERT_EMAIL=$(fetch_optional OPERATOR-ALERT-EMAIL)"
+        # Phase 22D: HMAC secret for one-click unsubscribe links in the
+        # streak nudge email. Tokens never expire, so rotating this
+        # secret invalidates ALL outstanding unsubscribe links at once.
+        # Optional — if missing, digestSweeper logs and refuses to send
+        # (CAN-SPAM floor: never send without a working unsub link).
+        # Generate with: openssl rand -base64 48
+        # Then store: az keyvault secret set --vault-name <kv> \
+        #               --name EMAIL-UNSUBSCRIBE-SECRET --value "<value>"
+        echo "EMAIL_UNSUBSCRIBE_SECRET=$(fetch_optional EMAIL-UNSUBSCRIBE-SECRET)"
         # Non-secret prod config. CORS is sourced from KV (`CORS-ORIGIN`)
         # so the frontend hostname is never hardcoded in the provisioning
         # template — avoids the template/live-script drift that bit us when

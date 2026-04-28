@@ -94,6 +94,10 @@ describe("DB row parsers", () => {
       ui_layout: { panel: "split" },
       has_openai_key: true,
       last_welcome_back_at: null,
+      // Phase 22D: streak-nudge opt-in. Defaults true at the DB layer
+      // via the migration, but the row parser still requires the
+      // boolean to be present in the SELECT result.
+      email_opt_in: true,
       updated_at: new Date(),
     };
 

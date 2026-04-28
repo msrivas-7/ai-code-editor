@@ -41,6 +41,9 @@ interface PreferencesState {
   // overlay shown. Null = never shown since account creation. Written
   // via patch() on every dismissal — same contract as welcomeDone &c.
   lastWelcomeBackAt: string | null;
+  // Phase 22D: streak-nudge email opt-in. Defaults TRUE on new accounts;
+  // Settings panel toggle + email's one-click unsubscribe both flip it.
+  emailOptIn: boolean;
 
   hydrate: (gen?: number) => Promise<void>;
   reset: () => void;
@@ -68,6 +71,7 @@ const DEFAULTS: Omit<
   uiLayout: {},
   hasOpenaiKey: false,
   lastWelcomeBackAt: null,
+  emailOptIn: true,
 };
 
 function applyServer(prefs: UserPreferences): Partial<PreferencesState> {
@@ -81,6 +85,7 @@ function applyServer(prefs: UserPreferences): Partial<PreferencesState> {
     uiLayout: prefs.uiLayout ?? {},
     hasOpenaiKey: prefs.hasOpenaiKey,
     lastWelcomeBackAt: prefs.lastWelcomeBackAt,
+    emailOptIn: prefs.emailOptIn,
     hydrated: true,
   };
 }
@@ -133,6 +138,7 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
     if (body.uiLayout !== undefined) optimistic.uiLayout = body.uiLayout;
     if (body.lastWelcomeBackAt !== undefined)
       optimistic.lastWelcomeBackAt = body.lastWelcomeBackAt;
+    if (body.emailOptIn !== undefined) optimistic.emailOptIn = body.emailOptIn;
     set(optimistic);
 
     try {
@@ -149,6 +155,7 @@ export const usePreferencesStore = create<PreferencesState>()((set, get) => ({
         editorCoachDone: prior.editorCoachDone,
         uiLayout: prior.uiLayout,
         lastWelcomeBackAt: prior.lastWelcomeBackAt,
+        emailOptIn: prior.emailOptIn,
       });
       throw err;
     }
@@ -205,6 +212,17 @@ export function useOpenAIModel(): string | null {
 
 export async function setOpenAIModel(model: string | null): Promise<void> {
   await usePreferencesStore.getState().patch({ openaiModel: model });
+}
+
+// Phase 22D: streak-nudge email opt-in. Same pattern as theme/persona —
+// optimistic patch with rollback on failure. Used by SettingsPanel's
+// Notifications row.
+export function useEmailOptIn(): boolean {
+  return usePreferencesStore((s) => s.emailOptIn);
+}
+
+export async function setEmailOptIn(optIn: boolean): Promise<void> {
+  await usePreferencesStore.getState().patch({ emailOptIn: optIn });
 }
 
 export function useUiLayoutValue<T>(path: string, fallback: T): T {

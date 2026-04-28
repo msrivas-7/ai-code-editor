@@ -4,7 +4,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { HOUSE_EASE } from "./cinema/easing";
 import { api } from "../api/client";
 import { useAIStore } from "../state/aiStore";
-import { usePreferencesStore } from "../state/preferencesStore";
+import {
+  setEmailOptIn,
+  useEmailOptIn,
+  usePreferencesStore,
+} from "../state/preferencesStore";
 import { useAuthStore } from "../auth/authStore";
 import type { Persona } from "../types";
 import { useThemePref, type ThemePref } from "../util/theme";
@@ -346,6 +350,10 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
 
       <hr className="border-border" />
 
+      <NotificationsSection />
+
+      <hr className="border-border" />
+
       <section className="flex flex-col gap-2">
         <h3 className="text-xs font-semibold text-ink">Replay opening</h3>
         {replayErr && (
@@ -390,6 +398,73 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
         <DeleteAccountModal onClose={() => setShowDelete(false)} />
       )}
     </>
+  );
+}
+
+// Phase 22D: streak-nudge email opt-in. Defaults TRUE on a new account
+// (industry norm for retention email sent to people who created an
+// account); the toggle here + the email's own one-click unsubscribe
+// link are the two off-ramps. Optimistic patch — UI flips instantly,
+// rolls back on PATCH failure.
+function NotificationsSection() {
+  const optIn = useEmailOptIn();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onToggle = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await setEmailOptIn(!optIn);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-semibold text-ink">Email notifications</h3>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="text-[12px] font-medium text-ink">Streak nudges</div>
+          <p className="mt-0.5 text-[10px] leading-relaxed text-faint">
+            One short email when you skip a day, so your streak doesn't
+            quietly slip away. We'll never send more than one per day.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={optIn}
+          aria-label="Toggle streak nudge emails"
+          aria-busy={busy}
+          disabled={busy}
+          onClick={onToggle}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 ${
+            optIn
+              ? "border-accent/60 bg-accent/80"
+              : "border-border bg-elevated"
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-bg shadow transition ${
+              optIn ? "translate-x-[18px]" : "translate-x-[3px]"
+            }`}
+          />
+        </button>
+      </div>
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger"
+        >
+          {error}
+        </div>
+      )}
+    </section>
   );
 }
 

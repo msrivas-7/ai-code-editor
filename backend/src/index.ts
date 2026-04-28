@@ -11,6 +11,7 @@ import { userDataRouter } from "./routes/userData.js";
 import { aiStatusRouter } from "./routes/aiStatus.js";
 import { adminRouter, adminStatusRouter } from "./routes/admin.js";
 import { sharesAuthedRouter, sharesPublicRouter } from "./routes/shares.js";
+import { emailRouter } from "./routes/email.js";
 import { adminGuard } from "./middleware/adminGuard.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { metricsRouter } from "./routes/metrics.js";
@@ -35,6 +36,7 @@ import {
   startSweeper,
 } from "./services/session/sessionManager.js";
 import { startBudgetWatcher } from "./services/budgetWatcher.js";
+import { startDigestSweeper } from "./services/email/digestSweeper.js";
 import { reapAbandonedLessonProgress } from "./db/lessonProgress.js";
 import { backendUnhandledRejections } from "./services/metrics.js";
 import { startPlatformCostSampler } from "./services/observability/platformCostSampler.js";
@@ -204,6 +206,12 @@ async function main() {
   // because Prom scrapers can't carry a Supabase JWT — the router owns its
   // own auth story. See routes/metrics.ts for the rationale.
   app.use("/api/metrics", metricsRouter);
+
+  // Phase 22D: streak-nudge unsubscribe link target. No csrfGuard, no
+  // authMiddleware — a one-click unsubscribe link is opened from
+  // a mail client where neither applies. The router owns its own
+  // per-IP rate limit and HMAC token verification (see routes/email.ts).
+  app.use("/api/email", emailRouter);
 
   // Middleware chain per route group (Phase 18a):
   //
@@ -378,6 +386,12 @@ async function main() {
   // fires once per UTC day. EmailNotConfiguredError is treated as a
   // logged-once-per-day event (dev / first boot without ACS configured).
   startBudgetWatcher();
+  // Phase 22D: daily streak-nudge sweeper. Fires at 18:00 UTC; on boot
+  // past today's window, fires immediately to catch container restarts
+  // (idempotency guard on user_preferences.last_streak_email_sent_at
+  // prevents double-sends). No-op in dev when ACS or the unsubscribe
+  // secret aren't configured — sweeper logs and returns without sending.
+  startDigestSweeper();
 
   // QA-M4: hourly reap of abandoned lesson_progress rows. A drive-by URL
   // visit calls startLesson, which writes an in_progress row even when the
