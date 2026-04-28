@@ -170,7 +170,13 @@ export function CodeTypewriter({
   const showCursor = !reduce && revealed < visible.length;
 
   return (
-    <div className="font-mono text-[15px] leading-[1.55] sm:text-[17px] md:text-[19px]">
+    // Phase 22E: tightened mobile font from 15px → 13.5px and slightly
+    // tighter leading. At iPhone 13 width (390px) inside the share
+    // panel's p-4 padding, ~38 chars of 13.5px mono fit without
+    // horizontal scroll on most lessons. The parent wraps in
+    // overflow-x-auto so the very rare 50+ char line still renders
+    // intact and the user can swipe to read.
+    <div className="font-mono text-[13.5px] leading-[1.5] sm:text-[17px] sm:leading-[1.55] md:text-[19px]">
       {renderedLines.map((rendered, lineIdx) => {
         // Full line — drives the color tokens. Then we trim each token
         // text to fit the rendered prefix.

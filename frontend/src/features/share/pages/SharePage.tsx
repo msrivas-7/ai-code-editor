@@ -296,9 +296,14 @@ function SharePageReady({ share }: SharePageReadyProps) {
       />
       <FilmGrain intensity="hero" fadeInMs={reduce ? 0 : 400} />
 
-      {/* Header row — wordmark + share URL */}
+      {/* Header row — wordmark + share URL.
+          Phase 22E: at iPhone-13-class widths (≤640px) the full
+          codetutor.msrivas.com/s/<12-char> URL is right at the edge of
+          fitting beside a 24px-padded wordmark. Hide the URL on narrow
+          and rely on the address bar for the link — saves a horizontal-
+          overflow risk and keeps the header airy. */}
       <motion.header
-        className="relative mx-auto flex max-w-5xl items-center justify-between px-6 pt-10 sm:px-10"
+        className="relative mx-auto flex max-w-5xl items-center justify-between px-5 pt-8 sm:px-10 sm:pt-10"
         initial={reduce ? false : { opacity: 0, y: -4 }}
         animate={
           inMoneyShot
@@ -311,16 +316,18 @@ function SharePageReady({ share }: SharePageReadyProps) {
           ease: [0.22, 1, 0.36, 1],
         }}
       >
-        <div className="font-display text-2xl font-semibold tracking-tight text-ink">
+        <div className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
           CodeTutor
         </div>
-        <div className="font-mono text-xs text-faint sm:text-sm">
+        <div className="hidden font-mono text-xs text-faint sm:block sm:text-sm">
           codetutor.msrivas.com/s/{share.shareToken}
         </div>
       </motion.header>
 
-      {/* Body — title + code, the centered headline */}
-      <main className="relative mx-auto max-w-5xl px-6 pt-10 pb-16 sm:px-10">
+      {/* Body — title + code, the centered headline.
+          Phase 22E: tighter horizontal padding on mobile so the code
+          panel + title get every pixel of usable width. */}
+      <main className="relative mx-auto max-w-5xl px-5 pt-8 pb-12 sm:px-10 sm:pt-10 sm:pb-16">
         {/* Course context eyebrow */}
         <motion.div
           className="text-xs font-medium uppercase tracking-wider text-muted sm:text-sm"
@@ -390,9 +397,15 @@ function SharePageReady({ share }: SharePageReadyProps) {
           </motion.h1>
 
           {/* Code block — THE artifact. Padding generous, monospace,
-              4-color tokenization, typewriter reveal. */}
+              4-color tokenization, typewriter reveal.
+              Phase 22E: tighter padding on mobile (p-4 vs p-6) so a
+              ~40-char line fits without horizontal scroll at iPhone 13
+              width. The inner wrapper carries `overflow-x-auto` so the
+              rare long line scrolls horizontally rather than wrapping
+              mid-token (which would break the 4-color tokenization
+              colors across visual lines). */}
           <motion.div
-            className="mt-6 rounded-2xl border border-border bg-panel/95 p-6 shadow-2xl sm:p-8"
+            className="mt-5 rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl sm:mt-6 sm:p-6 md:p-8"
             initial={reduce ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -401,14 +414,16 @@ function SharePageReady({ share }: SharePageReadyProps) {
               ease: [0.22, 1, 0.36, 1],
             }}
           >
-            <CodeTypewriter
-              code={share.codeSnippet}
-              // Typewriter starts immediately on phase=typing (the
-              // outer schedule fires that at t=900ms post-mount).
-              // Prior 200ms padding made the first ~1.4s feel stalled.
-              startDelayMs={0}
-              onDone={onTypewriterDone}
-            />
+            <div className="overflow-x-auto">
+              <CodeTypewriter
+                code={share.codeSnippet}
+                // Typewriter starts immediately on phase=typing (the
+                // outer schedule fires that at t=900ms post-mount).
+                // Prior 200ms padding made the first ~1.4s feel stalled.
+                startDelayMs={0}
+                onDone={onTypewriterDone}
+              />
+            </div>
           </motion.div>
         </motion.div>
 
@@ -508,9 +523,112 @@ function SharePageReady({ share }: SharePageReadyProps) {
           <div className="text-[11px] text-faint">
             No signup needed for the first lesson.
           </div>
+          {/* Phase 22E: secondary download / share-out for the Story
+              image. Hidden until the 9:16 image is rendered — we don't
+              fall back to the 16:9 OG card because saving that to a
+              phone's camera roll is the wrong aspect ratio for IG /
+              Stories use. */}
+          {share.ogStoryImageUrl && (
+            <div className="mt-1">
+              <SaveImageButton
+                storyImageUrl={share.ogStoryImageUrl}
+                authorLabel={share.displayName ?? "A learner"}
+              />
+            </div>
+          )}
         </motion.div>
       </main>
     </div>
+  );
+}
+
+// Phase 22E: download / share-out button for the Story image. The
+// 9:16 ogStoryImageUrl is the artifact a visitor (or the sharer
+// themselves on mobile) would save to camera roll or re-share to
+// Instagram / X / Threads.
+//
+// Behavior progression:
+//   - Touch device with navigator.share + canShare(files) → fetch
+//     the image as a Blob, wrap in File, hand to the native share
+//     sheet. iOS users tap "Save to Photos"; Android users get the
+//     standard Android share UI with media-aware targets.
+//   - Anywhere else (desktop, Safari without files-share, in-app
+//     browsers without canShare) → open the image URL in a new tab.
+//     iOS Safari renders the bare PNG with native long-press → Save
+//     Image; desktop users get right-click save.
+//
+// Hidden when ogStoryImageUrl is null — the Story image is rendered
+// fire-and-forget after share creation, so a freshly-published share
+// won't have one for a few seconds. Better to hide than to show a
+// disabled button that briefly does nothing.
+interface SaveImageButtonProps {
+  storyImageUrl: string;
+  /** Display name for sharing — used as the title in navigator.share's
+   *  share data. */
+  authorLabel: string;
+}
+
+function SaveImageButton({ storyImageUrl, authorLabel }: SaveImageButtonProps) {
+  const [busy, setBusy] = useState(false);
+
+  const onClick = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const canShareFiles =
+        typeof navigator !== "undefined" &&
+        "share" in navigator &&
+        "canShare" in navigator;
+      if (canShareFiles) {
+        try {
+          const res = await fetch(storyImageUrl);
+          const blob = await res.blob();
+          // Prefer .png extension; the OG pipeline always produces
+          // PNG (Satori → resvg → PNG buffer).
+          const file = new File([blob], `codetutor-share.png`, {
+            type: blob.type || "image/png",
+          });
+          if (
+            navigator.canShare &&
+            navigator.canShare({ files: [file] })
+          ) {
+            await navigator.share({
+              files: [file],
+              title: `${authorLabel} on CodeTutor`,
+            });
+            return;
+          }
+        } catch (err) {
+          // Fall through to the new-tab fallback. AbortError means the
+          // user tapped Cancel on the share sheet — silently ignore.
+          const name = (err as Error).name;
+          if (name === "AbortError") return;
+          console.warn(
+            "[share] navigator.share with files failed, falling back to new tab:",
+            (err as Error).message,
+          );
+        }
+      }
+      // Fallback: open the bare PNG in a new tab. iOS Safari shows it
+      // with native long-press → Save Image; desktop users right-
+      // click → Save.
+      window.open(storyImageUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-label="Save image to share"
+      className="inline-flex items-center gap-1.5 rounded-full border border-borderSoft bg-panel/60 px-3.5 py-1.5 text-[11.5px] font-medium text-muted transition hover:border-accent/40 hover:bg-panel hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <span aria-hidden="true">↓</span>
+      Save image
+    </button>
   );
 }
 
