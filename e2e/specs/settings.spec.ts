@@ -320,4 +320,62 @@ test.describe("settings panel", () => {
     await openSettings(page, "ai");
     await expect(page.getByText(/● key saved/i)).toBeVisible();
   });
+
+  test("Phase 22B: profile name save with first-only and with optional last", async ({
+    page,
+  }) => {
+    // Capture both Supabase updateUser PATCH bodies so the test asserts the
+    // exact metadata shape — `last_name` MUST only appear when the user
+    // typed something. Empty input must be omitted (preserve any legacy
+    // last_name on the account), not sent as "".
+    const patchBodies: Array<Record<string, unknown>> = [];
+    await page.route("**/auth/v1/user**", async (route) => {
+      if (route.request().method() === "PUT") {
+        try {
+          patchBodies.push(JSON.parse(route.request().postData() ?? "{}"));
+        } catch {
+          patchBodies.push({});
+        }
+      }
+      await route.continue();
+    });
+
+    await page.goto("/");
+    await openSettings(page, "account");
+
+    // Round 1: edit firstName only, leave lastName empty. The save should
+    // succeed (lastName is optional) and the PATCH `data` block should
+    // contain ONLY first_name — no last_name key whatsoever.
+    const firstInput = page.getByLabel(/^first name$/i);
+    await firstInput.fill("Round1Name");
+    const lastInput = page.getByLabel(/last name/i);
+    await lastInput.fill(""); // ensure empty
+    const save = page.getByRole("button", { name: /^save$/i });
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.getByText(/changes saved/i)).toBeVisible({ timeout: 5_000 });
+
+    // Round 2: now type a lastName and save again. PATCH should include
+    // BOTH first_name and last_name.
+    await firstInput.fill("Round2Name");
+    await lastInput.fill("Lovelace");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.getByText(/changes saved/i)).toBeVisible({ timeout: 5_000 });
+
+    // Inspect the captured PATCH bodies. Two saves → two bodies.
+    expect(patchBodies.length).toBeGreaterThanOrEqual(2);
+    const round1 = patchBodies[patchBodies.length - 2]?.data as
+      | Record<string, unknown>
+      | undefined;
+    const round2 = patchBodies[patchBodies.length - 1]?.data as
+      | Record<string, unknown>
+      | undefined;
+    expect(round1).toMatchObject({ first_name: "Round1Name" });
+    expect(round1).not.toHaveProperty("last_name");
+    expect(round2).toMatchObject({
+      first_name: "Round2Name",
+      last_name: "Lovelace",
+    });
+  });
 });
