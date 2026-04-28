@@ -31,11 +31,18 @@ jobs:
   deploy-infra:
     name: Deploy bicep to prod RG
     runs-on: ubuntu-latest
-    # No `environment:` — the codetutor-ai-gh-deploy SP's federated identity
-    # credential is bound to `repo:msrivas-7/CodeTutor-AI:ref:refs/heads/main`
-    # (branch-based). Setting `environment: prod` would change the OIDC
-    # subject claim to `:environment:prod`, which doesn't have a matching FIC
-    # and fails Entra auth with AADSTS700213.
+    # Phase 22A audit hardening: bind the workflow to the GitHub
+    # `prod` environment so each dispatch surfaces a manual-approval
+    # gate (required reviewer = repo owner). The codetutor-ai-gh-deploy
+    # SP has TWO federated identity credentials:
+    #   - subject = repo:msrivas-7/CodeTutor-AI:ref:refs/heads/main
+    #   - subject = repo:msrivas-7/CodeTutor-AI:environment:prod
+    # When environment: prod is set on the job, GH issues an OIDC token
+    # with the environment subject claim — the second FIC matches.
+    # Approval-gate compensates for the SP holding Contributor on the RG
+    # (a malicious main commit would still need a human approval click
+    # to actually deploy).
+    environment: prod
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
 
@@ -98,12 +105,19 @@ jobs:
       - name: Drop pruned alert rules
         # Bicep incremental deploys never delete resources that were
         # removed from the template — they only create/update what the
-        # template references. Phase 22A.4 dropped two alerts; this step
-        # is the ARM-level GC. List is hand-curated; future drops append
-        # here. `|| true` keeps the step idempotent across re-runs.
+        # template references. This step is the ARM-level GC; append
+        # names here when an alert is dropped from alerts.bicep so the
+        # rule actually disappears from the RG. `|| true` keeps the step
+        # idempotent across re-runs (delete on a non-existent name is a
+        # no-op).
+        #
+        # Phase 22A audit revert: vm-cpu-high + vm-disk-warning are back
+        # in the template, so the list is empty for now. Keep the
+        # scaffolding so the next drop only requires adding a name.
         if: inputs.mode == 'deploy'
         run: |
-          for name in codetutor-vm-cpu-high codetutor-vm-disk-warning; do
+          DROPPED_ALERTS=()
+          for name in "${DROPPED_ALERTS[@]}"; do
             echo "Deleting alert: $name"
             az monitor scheduled-query delete \
               -g codetutor-ai-prod-rg \

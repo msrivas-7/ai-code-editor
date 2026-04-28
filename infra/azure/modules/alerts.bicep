@@ -61,10 +61,42 @@ resource memAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
   }
 }
 
-// Phase 22A: codetutor-vm-cpu-high removed. April 2026 audit measured
-// VM CPU at 1.7% avg / 4.4% peak on Standard_B2s — the alert can never
-// legitimately fire at the 85% threshold. Saved ~$0.50/mo on alert-rule
-// cost. Re-add if a workload change ever pushes baseline CPU above 30%.
+// Phase 22A audit re-add: vm-cpu-high at 85% over 10min. Originally
+// dropped post-22A.4 because B2s baseline was 1.7% avg / 4.4% peak. SRE
+// audit flagged the regret: with launch-day traffic on B2ms (2 vCPU)
+// and runner workloads, sustained CPU pressure becomes a real failure
+// mode and we'd otherwise diagnose latency from user complaints. The
+// 85% threshold is high enough to dodge baseline noise, low enough to
+// catch genuine saturation. Severity 2: degraded, not down.
+resource cpuAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'codetutor-vm-cpu-high'
+  location: location
+  tags: tags
+  properties: {
+    enabled: true
+    severity: 2
+    scopes: [ workspaceId ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT10M'
+    criteria: {
+      allOf: [
+        {
+          query: 'Perf | where ObjectName == "Processor" and CounterName == "% Processor Time" and InstanceName == "_Total" | summarize AggregatedValue = avg(CounterValue) by bin(TimeGenerated, 5m)'
+          timeAggregation: 'Average'
+          metricMeasureColumn: 'AggregatedValue'
+          operator: 'GreaterThan'
+          threshold: 85
+          failingPeriods: {
+            minFailingPeriodsToAlert: 1
+            numberOfEvaluationPeriods: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: actions
+  }
+}
 
 // OS disk at 80% leaves ~6 GB headroom on a 32 GB disk — enough runway to
 // triage (usually stale session workspaces or journald) before compose or
@@ -142,9 +174,12 @@ resource oomAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
 // pieces need App Insights deployed + container log → Log Analytics plumbing
 // that we don't have yet; shipping the heartbeat piece closes the biggest
 // "we'd never know the site was down" gap for ~$1.50/mo.
-// Phase 22A retime: 5min → 15min eval. Heartbeat itself fires every
-// 1min; a 15-min window catches an outage within 30min worst case —
-// acceptable for indie ops. Saves ~$3/mo at the watch cadence.
+// Phase 22A audit revert: heartbeat back to 5min eval. The 15min
+// retime was a cost-savings move ($3/mo); SRE audit flagged the
+// 30min-worst-case detection window as a launch killer (PH front-page
+// peak is ~90min, so a VM-dark at T+0 detected at T+30 means we'd
+// discover the outage when the spike has already moved on). Reverting
+// to 5min eval costs $1.50/mo extra; non-negotiable for launch-week.
 resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
   name: 'codetutor-vm-heartbeat-missing'
   location: location
@@ -153,7 +188,7 @@ resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
     enabled: true
     severity: 1
     scopes: [ workspaceId ]
-    evaluationFrequency: 'PT15M'
+    evaluationFrequency: 'PT5M'
     windowSize: 'PT15M'
     criteria: {
       allOf: [
@@ -184,11 +219,43 @@ resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
 // signup / reset dead-ends. Metric alerts live at `global` location
 // regardless of the scoped resource's region. Gated by communicationServiceId
 // so this module still deploys cleanly in environments without ACS.
-// Phase 22A: codetutor-vm-disk-warning removed. Redundant with the
-// 80%-threshold codetutor-vm-disk-high above — two alerts on the same
-// metric just split paging volume. The single 80% rule is the right
-// trade-off for an indie single-VM product; cleanup capacity is fine
-// without the 70% lead indicator. Saved ~$0.50/mo on alert-rule cost.
+// Phase 22A audit re-add: vm-disk-warning at 70% over 30min. Originally
+// dropped post-22A.4 as redundant with the 80% disk-high. QA audit
+// flagged the regret: B2ms doubled RAM but disk is unchanged (32GB OS
+// disk). Postgres logs / container logs / daily_usage ledger / share
+// artifacts all live there. Heartbeat doesn't help — the VM stays
+// reachable while disk fills to 100%. The 70% lead indicator gives
+// triage runway before disk-high pages and before docker pulls /
+// compose start failing. Severity 3: warning, not critical.
+resource diskWarningAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'codetutor-vm-disk-warning'
+  location: location
+  tags: tags
+  properties: {
+    enabled: true
+    severity: 3
+    scopes: [ workspaceId ]
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT30M'
+    criteria: {
+      allOf: [
+        {
+          query: 'Perf | where ObjectName == "Logical Disk" and CounterName == "% Used Space" and InstanceName == "_Total" | summarize AggregatedValue = avg(CounterValue) by bin(TimeGenerated, 15m)'
+          timeAggregation: 'Average'
+          metricMeasureColumn: 'AggregatedValue'
+          operator: 'GreaterThan'
+          threshold: 70
+          failingPeriods: {
+            minFailingPeriodsToAlert: 1
+            numberOfEvaluationPeriods: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: actions
+  }
+}
 
 // S-18 (bucket 6): BYOK decrypt failures. byok.ts emits a structured JSON
 // error line `{"err":"byok_decrypt_failed",...}` on every GCM tag-verify

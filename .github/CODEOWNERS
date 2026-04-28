@@ -1,0 +1,23 @@
+# Phase 22A audit hardening (security advisor F4):
+# Any change to deploy workflows or Azure infra requires CODEOWNERS
+# (operator) approval before merge. With branch protection set to
+# "Require review from Code Owners", this means a malicious PR landing
+# on main can't carry workflow / Bicep changes through silently.
+#
+# Solo-operator caveat: this is informational only without a branch
+# protection rule that requires codeowner review. Set up via:
+#   gh api -X PUT repos/msrivas-7/CodeTutor-AI/branches/main/protection
+# with `required_pull_request_reviews.require_code_owner_reviews=true`.
+# For a solo product, the value is the audit trail + the explicit
+# "second look" pause before merging high-blast-radius changes.
+
+# Deploy workflows + GitHub Actions definitions
+/.github/workflows/      @msrivas-7
+/.github/CODEOWNERS      @msrivas-7
+
+# Azure Bicep infrastructure
+/infra/azure/            @msrivas-7
+
+# Backend boot path + service-role-touching modules
+/backend/src/index.ts    @msrivas-7
+/backend/src/config.ts   @msrivas-7

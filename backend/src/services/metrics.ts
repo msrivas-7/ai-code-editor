@@ -105,6 +105,19 @@ export const backendUnhandledRejections = new Counter({
   registers: [registry],
 });
 
+// Phase 22A audit: email_confirmed_at DB read failures. The L5b gate in
+// services/ai/credential.ts fails closed on DB errors — a transient
+// Supabase blip therefore denies free-tier AI to every user mid-flight.
+// A non-zero rate here is observable in the same dashboard as the rest
+// of the abuse signals; alert on >10/min sustained for 5min, which is
+// the Supabase-reachability signal we'd otherwise diagnose from user
+// support tickets.
+export const emailConfirmCheckFailures = new Counter({
+  name: "email_confirm_check_failures_total",
+  help: "Failures reading auth.users.email_confirmed_at; sustained non-zero => Supabase reachability.",
+  registers: [registry],
+});
+
 export const execDuration = new Histogram({
   name: "exec_duration_seconds",
   help: "Wall-clock duration of a runProject call.",

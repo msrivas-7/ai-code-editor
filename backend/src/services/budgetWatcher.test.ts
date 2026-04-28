@@ -1,17 +1,20 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
 // Phase 22A: budgetWatcher contract tests.
-// We mock both the spend query (sumPlatformCostTodayGlobal) and the
-// email send (acsClient.sendEmail), then assert:
+// We mock the spend query (sumPlatformCostTodayGlobal), the effective-cap
+// resolver (getEffectiveDailyUsdCap), and the email send (acsClient
+// .sendEmail), then assert:
 //   - 50/80/100% transitions fire exactly once each
 //   - same threshold doesn't re-fire same day
 //   - lower threshold doesn't fire after higher one already did today
 //   - email failure on a transient error doesn't dedup (next cycle retries)
 //   - EmailNotConfiguredError is treated as "logged, dedup applied"
-//     (we don't want the watcher to spam logs every minute when ACS is unset)
+//   - cap change mid-day resets the dedup ladder (audit fix #3)
+//   - re-entrancy guard prevents overlapping ticks (audit fix #8)
 
 const mockSumPlatform = vi.fn();
 const mockSendEmail = vi.fn();
+const mockGetEffectiveDailyUsdCap = vi.fn();
 
 vi.mock("../db/usageLedger.js", () => ({
   sumPlatformCostTodayGlobal: (...args: unknown[]) => mockSumPlatform(...args),
@@ -24,10 +27,14 @@ vi.mock("./email/acsClient.js", () => ({
   },
 }));
 
+vi.mock("./ai/effectiveCaps.js", () => ({
+  getEffectiveDailyUsdCap: () => mockGetEffectiveDailyUsdCap(),
+}));
+
 vi.mock("../config.js", () => ({
   config: {
     freeTier: {
-      dailyUsdCap: 10, // $10 cap → 50%=$5, 80%=$8, 100%=$10
+      dailyUsdCap: 10, // disaster-recovery fallback if effectiveCaps throws
     },
     email: {
       operatorAlertEmail: "ops@example.com",
@@ -35,13 +42,21 @@ vi.mock("../config.js", () => ({
   },
 }));
 
-import { watchBudgetOnce, _resetBudgetWatcherForTests } from "./budgetWatcher.js";
+import {
+  watchBudgetOnce,
+  startBudgetWatcher,
+  stopBudgetWatcher,
+  _resetBudgetWatcherForTests,
+} from "./budgetWatcher.js";
 import { EmailNotConfiguredError } from "./email/acsClient.js";
 
 beforeEach(() => {
   _resetBudgetWatcherForTests();
   mockSumPlatform.mockReset();
   mockSendEmail.mockReset();
+  mockGetEffectiveDailyUsdCap.mockReset();
+  // Default: effectiveCaps returns $10 (50%=$5, 80%=$8, 100%=$10).
+  mockGetEffectiveDailyUsdCap.mockResolvedValue(10);
   mockSendEmail.mockResolvedValue({ id: "op-fake" });
 });
 
@@ -153,15 +168,86 @@ describe("watchBudgetOnce", () => {
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
-  it("returns 'cap-invalid' when cap is 0", async () => {
-    const { config } = await import("../config.js");
-    // @ts-expect-error mutate the mocked config
-    config.freeTier.dailyUsdCap = 0;
+  it("returns 'cap-invalid' when effective cap is 0", async () => {
+    mockGetEffectiveDailyUsdCap.mockResolvedValueOnce(0);
     const r = await watchBudgetOnce();
     expect(r.fired).toBe(null);
     expect(r.reason).toBe("cap-invalid");
-    // restore
-    // @ts-expect-error mutate the mocked config
-    config.freeTier.dailyUsdCap = 10;
+  });
+
+  it("uses the effective cap (not the env default) for threshold math", async () => {
+    // Effective cap = $20; env default is mocked at $10. 50% of $20 is $10.
+    mockGetEffectiveDailyUsdCap.mockResolvedValue(20);
+    mockSumPlatform.mockResolvedValue(10);
+    const r = await watchBudgetOnce();
+    expect(r.fired).toBe(0.5);
+    expect(r.capUsd).toBe(20);
+    expect(mockSendEmail.mock.calls[0][0].subject).toContain("$20.00");
+  });
+
+  it("falls back to env cap when effectiveCaps throws (Supabase blip)", async () => {
+    mockGetEffectiveDailyUsdCap.mockRejectedValue(new Error("supabase down"));
+    mockSumPlatform.mockResolvedValue(5);
+    const r = await watchBudgetOnce();
+    expect(r.fired).toBe(0.5);
+    expect(r.capUsd).toBe(10); // env default
+  });
+
+  it("cap change after 100% trip resets the ladder (audit fix #3)", async () => {
+    // Day starts at $10 cap, we trip 100%.
+    mockGetEffectiveDailyUsdCap.mockResolvedValue(10);
+    mockSumPlatform.mockResolvedValue(10.5);
+    const r1 = await watchBudgetOnce();
+    expect(r1.fired).toBe(1.0);
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+
+    // Operator raises cap to $50 in admin panel. Spend is still $10.5.
+    // Ratio is now 0.21 → no trip. Watcher must NOT keep saying "100%
+    // already fired" — different cap, different ladder.
+    mockGetEffectiveDailyUsdCap.mockResolvedValue(50);
+    mockSumPlatform.mockResolvedValue(10.5);
+    const r2 = await watchBudgetOnce();
+    expect(r2.fired).toBe(null);
+    expect(r2.reason).toBe("below-50");
+
+    // Spend climbs to $25 → 50% of new $50 cap. Must fire fresh 50% email.
+    mockSumPlatform.mockResolvedValue(25);
+    const r3 = await watchBudgetOnce();
+    expect(r3.fired).toBe(0.5);
+    expect(mockSendEmail).toHaveBeenCalledTimes(2);
+    expect(mockSendEmail.mock.calls[1][0].subject).toContain("$50.00");
+  });
+});
+
+describe("startBudgetWatcher re-entrancy guard (audit fix #8)", () => {
+  it("skips overlapping ticks while a previous one is still in-flight", async () => {
+    vi.useFakeTimers();
+    // Make the spend query slow — simulates ACS poll latency.
+    let release: (() => void) | null = null;
+    mockSumPlatform.mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          release = () => resolve(5.0);
+        }),
+    );
+
+    startBudgetWatcher(); // fires once immediately
+    // Advance past two 60s intervals — both interval ticks should see
+    // `running === true` and bail out without calling sumPlatform.
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // Only the first invocation (immediate boot tick) hit sumPlatform;
+    // the next two interval ticks were guarded.
+    expect(mockSumPlatform).toHaveBeenCalledTimes(1);
+
+    // Stop the watcher BEFORE releasing so we don't loop forever on the
+    // test cleanup. The release allows the in-flight tick to settle.
+    stopBudgetWatcher();
+    release!();
+    // Yield to microtasks so the in-flight tick's .then() handlers run.
+    await Promise.resolve();
+    await Promise.resolve();
+    vi.useRealTimers();
   });
 });

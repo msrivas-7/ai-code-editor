@@ -198,6 +198,10 @@ delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 delete process.env.DATABASE_URL;
 delete process.env.METRICS_TOKEN;
 delete process.env.PLATFORM_OPENAI_API_KEY;
+// Phase 22A audit: ACS connection string carries an embedded access key
+// (the "accesskey=" segment). Treat it like every other secret and drop
+// it from process.env once acsClient.ts has captured it via config.
+delete process.env.ACS_CONNECTION_STRING;
 
 export function assertConfigValid(): void {
   if (!config.supabase.url || config.supabase.url.trim() === "") {
