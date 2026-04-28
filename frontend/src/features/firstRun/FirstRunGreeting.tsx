@@ -69,7 +69,10 @@ export function FirstRunGreeting() {
 
   const handleSkip = async () => {
     await persistOrTimeout();
-    nav("/", { replace: true });
+    // Phase 22C: in-product home moved from `/` to `/start` (the public
+    // marketing page now lives at `/`). Skipping the cinematic must land
+    // on /start, not the marketing surface.
+    nav("/start", { replace: true });
   };
 
   // Subtitle + support line are the SAME regardless of whether this

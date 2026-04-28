@@ -5,7 +5,7 @@ import { GlobalShortcuts } from "./components/GlobalShortcuts";
 import { RequireAuth } from "./auth/RequireAuth";
 import { HydrationGate } from "./auth/HydrationGate";
 import { WelcomeBackOverlay } from "./features/firstRun/WelcomeBackOverlay";
-
+const MarketingPage = lazy(() => import("./pages/MarketingPage"));
 const StartPage = lazy(() => import("./pages/StartPage"));
 const EditorPage = lazy(() => import("./pages/EditorPage"));
 const LearningDashboardPage = lazy(() => import("./features/learning/pages/LearningDashboardPage"));
@@ -67,12 +67,25 @@ function AuthedLayout() {
   );
 }
 
+// Phase 22C: `/` ALWAYS renders the marketing page, regardless of auth
+// state. This matches the Linear / Stripe / Vercel pattern — the
+// marketing surface is part of the brand experience, not auth-gated.
+// Logged-in users are signaled via the nav: the "Sign in" link in
+// MarketingNav becomes "Dashboard" (→ /start) when a session is
+// active. They retain the option to view the marketing page itself
+// without being bounced.
+
 export default function App() {
   return (
     <Suspense fallback={<Loading />}>
       <StorageQuotaBanner />
       <GlobalShortcuts />
       <Routes>
+        {/* Phase 22C: `/` is the public marketing page for everyone.
+            No auth gate; logged-in users see the same page with a
+            nav-level "Dashboard" affordance instead of "Sign in". */}
+        <Route path="/" element={<MarketingPage />} />
+
         {/* Public auth routes — no layout wrapper, no RequireAuth. */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
@@ -87,10 +100,10 @@ export default function App() {
 
         {/* Protected routes nested under AuthedLayout. RequireAuth +
             HydrationGate persist across navigations via this layout
-            route; only the <Outlet /> content re-mounts (with animated
-            enter/exit transitions). */}
+            route; only the <Outlet /> content re-mounts. */}
         <Route element={<AuthedLayout />}>
-          <Route path="/" element={<StartPage />} />
+          {/* Phase 22C: in-product home moved from `/` to `/start`. */}
+          <Route path="/start" element={<StartPage />} />
           <Route path="/welcome" element={<FirstRunPage />} />
           <Route path="/editor" element={<EditorPage />} />
           <Route path="/learn" element={<LearningDashboardPage />} />
@@ -99,7 +112,10 @@ export default function App() {
           {ContentHealthPage && (
             <Route path="/dev/content" element={<ContentHealthPage />} />
           )}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Catch-all under the auth layout: send authed users to
+              /start. Anonymous users get bounced to /login by RequireAuth
+              before this rule matches. */}
+          <Route path="*" element={<Navigate to="/start" replace />} />
         </Route>
       </Routes>
     </Suspense>

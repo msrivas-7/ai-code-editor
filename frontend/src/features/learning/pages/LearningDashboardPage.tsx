@@ -129,7 +129,7 @@ export default function LearningDashboardPage() {
       <AmbientGlyphField />
       <header className="relative z-20 flex items-center gap-3 border-b border-border bg-panel/80 px-4 py-2 backdrop-blur">
         <button
-          onClick={() => nav("/")}
+          onClick={() => nav("/start")}
           className="rounded px-2 py-1 text-xs text-muted transition hover:bg-elevated hover:text-ink"
         >
           ← Home

@@ -85,7 +85,8 @@ export default function AuthCallbackPage() {
     };
   }, []);
 
-  if (ready && user) return <Navigate to="/" replace />;
+  // Phase 22C: in-product home is /start (/ is the public marketing page).
+  if (ready && user) return <Navigate to="/start" replace />;
 
   return (
     <AuthShell

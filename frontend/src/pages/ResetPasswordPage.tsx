@@ -113,7 +113,7 @@ export default function ResetPasswordPage() {
         footer={
           <button
             type="button"
-            onClick={() => nav("/", { replace: true })}
+            onClick={() => nav("/start", { replace: true })}
             className="text-accent hover:underline"
           >
             Continue to the app

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { MeshGradient } from "@paper-design/shaders-react";
 import { AmbientGlyphField } from "../components/AmbientGlyphField";
 import { CinematicLighting } from "../components/cinema/CinematicLighting";
 import { FilmGrain } from "../components/cinema/FilmGrain";
@@ -16,6 +17,13 @@ import { Wordmark } from "../components/Wordmark";
 // hit chrome that read like a different product. Now the auth shell
 // has AmbientGlyphField + scene-tier FilmGrain underfoot, the
 // Wordmark is sized hero, and the form fades up on mount.
+//
+// Phase 22C: bridge to the marketing page. The MarketingPage backdrop
+// is a WebGL mesh gradient; without it here, a visitor crossing from
+// /  → /signup hits a visible color jump. We render the SAME mesh at
+// reduced opacity so the auth pages feel from the same world. The
+// auth chrome (form card + key-light) sits on top, so the form still
+// reads as the focus.
 export function AuthShell({
   title,
   subtitle,
@@ -27,8 +35,41 @@ export function AuthShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const reduce = useReducedMotion();
   return (
-    <div className="relative flex min-h-screen flex-col bg-bg text-ink">
+    // No `bg-bg` — the WebGL mesh + lighting stack is the background.
+    // A solid color layer here would paint over the mesh.
+    <div className="relative flex min-h-screen flex-col text-ink">
+      {/* Atmospheric backdrop — same palette as MarketingPage at 50%
+          opacity. The dimming turns the mesh into "shared world"
+          texture without competing with the form for attention. */}
+      {!reduce ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 -z-30 opacity-50"
+        >
+          <MeshGradient
+            colors={[
+              "#0a0e22",
+              "#1d1758",
+              "#5b2cb0",
+              "#1d5b9e",
+            ]}
+            distortion={0.7}
+            swirl={0.6}
+            speed={0.18}
+            scale={1.3}
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
+      ) : (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 -z-30 bg-gradient-to-br from-[#0a0e22] via-[#1d1758] to-[#1d5b9e] opacity-60"
+        />
+      )}
+      {/* Glyph field stays as the existing brand-detail layer; it
+          reads on top of the mesh. */}
       <AmbientGlyphField />
       {/* Soft key light + vignette — `key-only` + `soft` intensity
           gives the auth surface a subtle warm accent glow with the
@@ -63,8 +104,8 @@ export function AuthShell({
           )}
         </motion.div>
       </div>
-      <footer className="relative z-10 border-t border-border bg-panel/60 px-4 py-2 text-center text-[10px] text-faint">
-        CodeTutor AI © 2026 Mehul Srivastava — All rights reserved
+      <footer className="relative z-10 border-t border-border-soft/60 bg-panel/40 px-4 py-2 text-center text-[10px] text-faint backdrop-blur-sm">
+        © {new Date().getFullYear()} Mehul Srivastava
       </footer>
     </div>
   );

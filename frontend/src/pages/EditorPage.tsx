@@ -118,7 +118,7 @@ export default function EditorPage() {
       <header className="relative z-30 flex items-center justify-between border-b border-border bg-panel/80 px-4 py-2 backdrop-blur">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => nav("/")}
+            onClick={() => nav("/start")}
             className="rounded px-2 py-1 text-xs font-medium text-ink/80 transition hover:bg-elevated hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="Back to home"
           >

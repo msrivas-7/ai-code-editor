@@ -46,14 +46,15 @@ export default function SignupPage() {
   // signUp completes with a live session attached. The auth subscriber will
   // push that into the store within a tick; when it does, we want the user
   // on the app — not parked on the "check your email" panel.
+  // Phase 22C: in-product home is /start, not / (marketing page is /).
   useEffect(() => {
     if (sent && user) {
-      nav("/", { replace: true });
+      nav("/start", { replace: true });
     }
   }, [sent, user, nav]);
 
   if (!loading && user && !sent) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/start" replace />;
   }
 
   const emailValid = email === "" || isValidEmail(email);

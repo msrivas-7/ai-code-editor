@@ -30,9 +30,12 @@ export default function LoginPage() {
   // If the user is already authenticated (eg. came here by typing the URL)
   // bounce straight through. Preserve `from` if present for symmetry with
   // RequireAuth's redirect state.
+  // Phase 22C: in-product home moved from `/` (marketing page) to
+  // `/start`. After login the user expects to land inside the product,
+  // not back on the marketing surface they just opted in from.
   if (!loading && user) {
     const to =
-      (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/";
+      (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/start";
     return <Navigate to={to} replace />;
   }
 
@@ -47,8 +50,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await signInWithPassword(email.trim(), password);
+      // Phase 22C: default to /start (in-product home), not / (marketing).
       const to =
-        (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/";
+        (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/start";
       nav(to, { replace: true });
     } catch (e) {
       // GoTrue returns `email_not_confirmed` when a user who signed up via

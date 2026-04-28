@@ -178,12 +178,14 @@ test.describe("auth flow", () => {
     await expect(page.getByRole("button", { name: /^sign in$/i })).toBeVisible();
   });
 
-  test("unauthenticated visit to / redirects to /login", async ({ page }) => {
-    await page.goto("/");
+  test("unauthenticated visit to /start redirects to /login", async ({ page }) => {
+    // Phase 22C: in-product home moved from `/` to `/start`. The public
+    // `/` is the marketing page (no auth gate). Hitting any protected
+    // route while anonymous still bounces to /login with the original
+    // location stashed in router state — assertion is the same gate,
+    // just on the new path.
+    await page.goto("/start");
     await expect(page).toHaveURL(/\/login$/);
-    // Sanity: the page actually rendered the login form (not a crashed
-    // route). Using a resilient selector — the page's visible labels are
-    // "Email" and "Password".
     await expect(page.getByRole("heading", { name: /sign in|welcome/i })).toBeVisible();
   });
 
@@ -303,18 +305,20 @@ test.describe("auth flow", () => {
     // Brand-new admin-created user: welcomeDone=false, so StartPage
     // redirects into the first-run cinematic at /welcome. The
     // cinematic's "Skip intro" link flips welcomeDone=true and
-    // returns to /. That's the "landed at /" state this test is
-    // really asserting.
+    // returns to /start. That's the "landed at home" state this test
+    // is really asserting.
+    // Phase 22C: in-product home moved from `/` to `/start` (the public
+    // marketing page now lives at `/`).
     await expect(page).toHaveURL(/\/welcome$/, { timeout: 15_000 });
     const skipIntro = page.getByRole("button", { name: /skip intro/i });
     await skipIntro.waitFor({ state: "visible", timeout: 5_000 });
     await skipIntro.click();
-    await expect(page).toHaveURL(/\/$/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/start$/, { timeout: 10_000 });
 
     // Reload → still signed in (session hydrated from localStorage)
     // and no re-route through /welcome (welcomeDone was persisted).
     await page.reload();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/start$/);
     await expect(page.getByRole("link", { name: /log in|sign in/i })).toHaveCount(0);
 
     // Sign out from the UserMenu (avatar in the top-right corner).
