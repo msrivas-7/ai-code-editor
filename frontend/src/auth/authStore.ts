@@ -53,7 +53,7 @@ interface AuthState {
   resendSignupConfirmation: (email: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
-  updateDisplayName: (firstName: string) => Promise<void>;
+  updateDisplayName: (firstName: string, lastName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
   // Phase 20-P5: read role from JWT app_metadata.role. The Supabase
@@ -169,16 +169,18 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  updateDisplayName: async (firstName) => {
+  updateDisplayName: async (firstName, lastName) => {
     set({ error: null });
-    // Phase 22B: only first_name is written. We deliberately do NOT clear
-    // any pre-existing `last_name` field on legacy accounts (omitting it
-    // from `data` leaves it untouched in raw_user_meta_data). If we ever
-    // want to fully remove lastName we'd POST `{ first_name, last_name: null }`,
-    // but the harmless-metadata approach matches the no-migration plan.
-    const { error } = await supabase.auth.updateUser({
-      data: { first_name: firstName },
-    });
+    // Phase 22B: lastName is now OPTIONAL at the API surface. The
+    // settings UI only passes `lastName` when the user actually typed
+    // one — `undefined` means "leave existing last_name untouched in
+    // raw_user_meta_data" (Supabase merges shallow-keys, so a missing
+    // key is preserved). This way users who never had a last_name keep
+    // not having one, users who had one keep it on every save, and
+    // users who want to add one for the first time can just type it.
+    const data: Record<string, string> = { first_name: firstName };
+    if (lastName !== undefined) data.last_name = lastName;
+    const { error } = await supabase.auth.updateUser({ data });
     if (error) {
       set({ error: error.message });
       throw error;
