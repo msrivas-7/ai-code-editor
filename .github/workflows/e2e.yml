@@ -32,7 +32,10 @@ jobs:
   e2e:
     name: Playwright (chromium)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Bumped from 15 → 25 in Phase 22C: full e2e sweep grew past the 15-min
+    # ceiling once the marketing specs landed (~200 tests, 2 CI workers).
+    # Headroom for 22D's email-unsubscribe spec + 22F curriculum tests.
+    timeout-minutes: 25
     # Phase 18d: cloud-only Supabase model. These feed both docker compose
     # (which reads process env for ${VAR} interpolation in docker-compose.yml)
     # and the Playwright specs (fixtures + auth.spec.ts read process.env).
