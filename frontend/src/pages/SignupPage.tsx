@@ -24,8 +24,11 @@ export default function SignupPage() {
   );
   const clearError = useAuthStore((s) => s.clearError);
 
+  // Phase 22B: lastName dropped — the cinematic onboarding is firstName-only
+  // (3 spoken beats: hero "Hi, ${firstName}", greet, praise) and lastName
+  // appeared nowhere else in the experience. Cutting one field is a
+  // measurable conversion win on the signup wall without any narrative loss.
   const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -38,7 +41,6 @@ export default function SignupPage() {
   // characters. We check only length + non-emptiness; everything stricter
   // tends to reject real people.
   const firstNameValid = firstName.trim().length > 0 && firstName.trim().length <= 50;
-  const lastNameValid = lastName.trim().length > 0 && lastName.trim().length <= 50;
 
   // If the Supabase project has email confirmation OFF (local dev default),
   // signUp completes with a live session attached. The auth subscriber will
@@ -59,7 +61,6 @@ export default function SignupPage() {
   const passwordOk = isPasswordAcceptable(password);
   const canSubmit =
     firstNameValid &&
-    lastNameValid &&
     isValidEmail(email) &&
     passwordOk &&
     password === confirm &&
@@ -73,7 +74,6 @@ export default function SignupPage() {
     try {
       await signUpWithPassword(email.trim(), password, {
         firstName: firstName.trim(),
-        lastName: lastName.trim(),
       });
       // Supabase default: email confirmation is ON. Show the check-inbox
       // panel rather than bouncing to `/` (which they can't access yet).
@@ -149,41 +149,22 @@ export default function SignupPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="firstName" className="text-[11px] font-medium text-muted">
-              First name
-            </label>
-            <input
-              id="firstName"
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Ada"
-              autoComplete="given-name"
-              maxLength={50}
-              aria-invalid={firstName.length > 0 && !firstNameValid}
-              disabled={submitting}
-              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger/60"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="lastName" className="text-[11px] font-medium text-muted">
-              Last name
-            </label>
-            <input
-              id="lastName"
-              type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="Lovelace"
-              autoComplete="family-name"
-              maxLength={50}
-              aria-invalid={lastName.length > 0 && !lastNameValid}
-              disabled={submitting}
-              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger/60"
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="firstName" className="text-[11px] font-medium text-muted">
+            First name
+          </label>
+          <input
+            id="firstName"
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Ada"
+            autoComplete="given-name"
+            maxLength={50}
+            aria-invalid={firstName.length > 0 && !firstNameValid}
+            disabled={submitting}
+            className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-danger/60"
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">

@@ -43,7 +43,7 @@ interface AuthState {
   signUpWithPassword: (
     email: string,
     password: string,
-    meta?: { firstName: string; lastName: string },
+    meta?: { firstName: string },
   ) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
   signInWithOAuth: (provider: "google" | "github") => Promise<void>;
@@ -53,7 +53,7 @@ interface AuthState {
   resendSignupConfirmation: (email: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
-  updateDisplayName: (firstName: string, lastName: string) => Promise<void>;
+  updateDisplayName: (firstName: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
   // Phase 20-P5: read role from JWT app_metadata.role. The Supabase
@@ -90,11 +90,13 @@ export const useAuthStore = create<AuthState>((set) => ({
         emailRedirectTo: `${window.location.origin}/auth/callback`,
         // Display name lives in `auth.users.raw_user_meta_data` — Supabase
         // stores this jsonb alongside the user row, no DB schema change
-        // needed. We read it back as `user.user_metadata.{first,last}_name`
-        // to drive the avatar initials and the menu greeting.
-        data: meta
-          ? { first_name: meta.firstName, last_name: meta.lastName }
-          : undefined,
+        // needed. We read it back as `user.user_metadata.first_name` to
+        // drive the avatar initials and the menu greeting.
+        // Phase 22B: lastName dropped from the password signup path; the
+        // cinematic onboarding only uses firstName, and lastName never
+        // appeared elsewhere in the experience. Existing accounts keep
+        // their `last_name` metadata harmlessly until they re-edit it.
+        data: meta ? { first_name: meta.firstName } : undefined,
       },
     });
     if (error) {
@@ -167,10 +169,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  updateDisplayName: async (firstName, lastName) => {
+  updateDisplayName: async (firstName) => {
     set({ error: null });
+    // Phase 22B: only first_name is written. We deliberately do NOT clear
+    // any pre-existing `last_name` field on legacy accounts (omitting it
+    // from `data` leaves it untouched in raw_user_meta_data). If we ever
+    // want to fully remove lastName we'd POST `{ first_name, last_name: null }`,
+    // but the harmless-metadata approach matches the no-migration plan.
     const { error } = await supabase.auth.updateUser({
-      data: { first_name: firstName, last_name: lastName },
+      data: { first_name: firstName },
     });
     if (error) {
       set({ error: error.message });

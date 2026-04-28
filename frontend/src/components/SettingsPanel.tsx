@@ -132,20 +132,22 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
   const patchPreferences = usePreferencesStore((s) => s.patch);
   const nav = useNavigate();
 
+  // Phase 22B: lastName dropped from collection. Legacy accounts may still
+  // have a `last_name` in their metadata — UserMenu reads it for display
+  // when present — but we no longer offer to edit it here. Keeping the
+  // type field optional so the (read) call stays type-safe.
   const meta = (user?.user_metadata ?? {}) as {
     first_name?: string;
     last_name?: string;
   };
   const [firstName, setFirstName] = useState(meta.first_name ?? "");
-  const [lastName, setLastName] = useState(meta.last_name ?? "");
-  // Re-sync local inputs when auth pushes a fresh user object (USER_UPDATED
+  // Re-sync local input when auth pushes a fresh user object (USER_UPDATED
   // after save, or a token refresh carrying newer metadata). The effect is
   // idempotent for same-value updates so it won't stomp mid-edit state.
   useEffect(() => {
     setFirstName(meta.first_name ?? "");
-    setLastName(meta.last_name ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta.first_name, meta.last_name]);
+  }, [meta.first_name]);
 
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ kind: "saved" | "error"; text: string } | null>(null);
@@ -169,23 +171,15 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
   }, [saveMsg]);
 
   const firstTrim = firstName.trim();
-  const lastTrim = lastName.trim();
-  const dirty =
-    firstTrim !== (meta.first_name ?? "").trim() ||
-    lastTrim !== (meta.last_name ?? "").trim();
+  const dirty = firstTrim !== (meta.first_name ?? "").trim();
   const canSave =
-    !saving &&
-    dirty &&
-    firstTrim.length > 0 &&
-    firstTrim.length <= 50 &&
-    lastTrim.length > 0 &&
-    lastTrim.length <= 50;
+    !saving && dirty && firstTrim.length > 0 && firstTrim.length <= 50;
 
   const handleSave = async () => {
     setSaving(true);
     setSaveMsg(null);
     try {
-      await updateDisplayName(firstTrim, lastTrim);
+      await updateDisplayName(firstTrim);
       setSaveMsg({ kind: "saved", text: "Changes saved" });
     } catch (e) {
       setSaveMsg({ kind: "error", text: (e as Error).message });
@@ -257,34 +251,19 @@ function AccountTab({ onClose }: { onClose?: () => void }) {
             {user.email ?? user.id}
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted">First name</span>
-            <input
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Ada"
-              autoComplete="given-name"
-              maxLength={50}
-              disabled={saving}
-              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted">Last name</span>
-            <input
-              type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="Lovelace"
-              autoComplete="family-name"
-              maxLength={50}
-              disabled={saving}
-              className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
-        </div>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-muted">First name</span>
+          <input
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Ada"
+            autoComplete="given-name"
+            maxLength={50}
+            disabled={saving}
+            className="rounded-md border border-border bg-elevated px-2.5 py-1.5 text-xs text-ink transition placeholder:text-faint focus:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </label>
         <div className="flex items-center gap-2">
           <button
             type="button"

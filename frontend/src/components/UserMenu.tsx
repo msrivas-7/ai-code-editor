@@ -33,11 +33,16 @@ function displayNameFrom(user: User): string | null {
 // OAuth-provided full_name/name, then email local-part. Two characters
 // instead of one so alex@... and alice@... don't collapse to the same
 // avatar glyph.
+// Phase 22B: signup is firstName-only now, so most password-signup users
+// no longer have last_name. Use the first two letters of first_name when
+// only one name is present, before falling through to email-based glyphs.
 function initialsFrom(user: User): string {
   const meta = (user.user_metadata ?? {}) as UserMeta;
   const first = meta.first_name?.trim();
   const last = meta.last_name?.trim();
   if (first && last) return (first[0]! + last[0]!).toUpperCase();
+  if (first && first.length >= 2) return first.slice(0, 2).toUpperCase();
+  if (first) return first[0]!.toUpperCase();
   const full = (meta.full_name ?? meta.name)?.trim();
   if (full) {
     const parts = full.split(/\s+/);

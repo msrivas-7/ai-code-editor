@@ -197,7 +197,17 @@ test.describe("auth flow", () => {
     // regardless of previous signup traffic. Response shape matches what
     // GoTrue returns when confirmation is enabled: user object, no session.
     const email = uniqueEmail("signup");
+    // Phase 22B: capture the signup payload so the test can assert the
+    // request body shape (first_name only; no last_name). The form-level
+    // assertion alone wouldn't catch a regression where the FE accidentally
+    // re-introduces last_name into the metadata write.
+    let signupPayload: Record<string, unknown> | null = null;
     await page.route("**/auth/v1/signup**", async (route) => {
+      try {
+        signupPayload = JSON.parse(route.request().postData() ?? "{}");
+      } catch {
+        signupPayload = {};
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -226,8 +236,8 @@ test.describe("auth flow", () => {
     });
 
     await page.goto("/signup");
+    // Phase 22B: signup is firstName-only; lastName field was removed.
     await page.getByLabel(/first name/i).fill("E2E");
-    await page.getByLabel(/last name/i).fill("Tester");
     await page.getByLabel(/email/i).fill(email);
     // Two password fields on the signup page — target by exact label.
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
@@ -253,6 +263,15 @@ test.describe("auth flow", () => {
       localStorage.getItem("codetutor-auth"),
     );
     expect(authBlob, "no session until email verified").toBeFalsy();
+
+    // Phase 22B: assert the actual request body shape. The metadata
+    // section MUST contain first_name and MUST NOT contain last_name —
+    // otherwise we've reintroduced the field we just removed.
+    expect(signupPayload, "signup endpoint was hit").not.toBeNull();
+    const data = (signupPayload as { data?: Record<string, unknown> } | null)?.data;
+    expect(data, "data block present in signup payload").toBeDefined();
+    expect(data).toMatchObject({ first_name: "E2E" });
+    expect(data).not.toHaveProperty("last_name");
   });
 
   test("login persists across reload; signout clears it", async ({ page }) => {
