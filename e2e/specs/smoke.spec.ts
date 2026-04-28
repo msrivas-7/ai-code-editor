@@ -65,7 +65,7 @@ test.describe("smoke", () => {
     await mockAllAI(page);
     await loadProfile(page, "mid-course-healthy");
     await markOnboardingDone(page);
-    await page.goto("/");
+    await page.goto("/start");
 
     const resumeBtn = page.getByRole("button", { name: /^resume$/i });
     await expect(resumeBtn).toBeVisible({ timeout: 10_000 });

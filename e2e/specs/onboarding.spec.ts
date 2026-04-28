@@ -33,7 +33,7 @@ test.describe("onboarding", () => {
 
   test("StartPage redirects fresh users to /welcome and Skip persists the flag", async ({ page }) => {
     await loadProfile(page, "empty", { onboarded: false });
-    await page.goto("/");
+    await page.goto("/start");
 
     // StartPage now redirects a welcomeDone=false user into the /welcome
     // cinematic instead of rendering WelcomeOverlay in-place.
@@ -120,7 +120,7 @@ test.describe("onboarding", () => {
     // welcomed-not-started seeds all three onboarding flags. Neither the
     // WelcomeOverlay (StartPage) nor EditorCoach (Editor) should appear.
     await loadProfile(page, "welcomed-not-started");
-    await page.goto("/");
+    await page.goto("/start");
     await page.waitForTimeout(1_000);
     await expect(page.getByRole("button", { name: /skip onboarding/i })).toHaveCount(0);
 

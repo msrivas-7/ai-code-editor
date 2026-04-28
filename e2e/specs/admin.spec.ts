@@ -34,7 +34,7 @@ test.describe("Admin Controls — visibility gate", () => {
 
   test("non-admin user: Settings opens; no Admin tab in the nav", async ({ page }) => {
     await loadProfile(page, "empty");
-    await page.goto("/");
+    await page.goto("/start");
     await S.openSettings(page);
 
     // Settings panel renders. The four standard tabs are visible.

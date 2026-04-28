@@ -27,7 +27,7 @@ test.describe("Phase 21B: streak chip", () => {
 
   test("Day 0 (fresh user) renders no chip on StartPage", async ({ page }) => {
     await loadProfile(page, "empty");
-    await page.goto("/");
+    await page.goto("/start");
     // Chip is a <button> with descriptive aria-label. Day 0 returns
     // null → no matching button.
     await expect(
@@ -44,7 +44,7 @@ test.describe("Phase 21B: streak chip", () => {
       attemptCount: 1,
     });
 
-    await page.goto("/");
+    await page.goto("/start");
     // Both visible text and aria-label include "1-day streak" so the
     // chip is self-explanatory at a glance, no tooltip required.
     const chip = page.getByRole("button", { name: /1-day streak/i }).first();

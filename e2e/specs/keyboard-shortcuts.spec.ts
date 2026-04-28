@@ -32,7 +32,7 @@ test.describe("keyboard shortcuts + schema-error branch", () => {
 
   test("pressing '?' opens the keyboard cheatsheet; Esc closes it", async ({ page }) => {
     await loadProfile(page, "empty");
-    await page.goto("/");
+    await page.goto("/start");
 
     // Dialog is absent until the shortcut fires.
     await expect(page.getByRole("dialog", { name: /keyboard shortcuts/i })).toHaveCount(0);

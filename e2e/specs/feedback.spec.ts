@@ -32,7 +32,7 @@ test.describe("feedback modal", () => {
   test("FeedbackButton is rendered on the Start page and opens the modal", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/start");
     const button = page.getByTestId("feedback-button");
     await expect(button).toBeVisible();
     await button.click();
@@ -63,7 +63,7 @@ test.describe("feedback modal", () => {
     page,
   }) => {
     const marker = `e2e no-diag ${Date.now()}`;
-    await page.goto("/");
+    await page.goto("/start");
     await page.getByTestId("feedback-button").click();
     // Pick category: idea.
     await page.getByRole("radio", { name: /idea/i }).click();
@@ -115,7 +115,7 @@ test.describe("feedback modal", () => {
   test("body validation rejects empty submissions (send button disabled)", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/start");
     await page.getByTestId("feedback-button").click();
     const dialog = page.getByRole("dialog");
     const send = dialog.getByRole("button", { name: /send feedback/i });
