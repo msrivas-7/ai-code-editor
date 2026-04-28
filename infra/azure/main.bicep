@@ -59,6 +59,9 @@ param mailDomain string = 'mail.codetutor.msrivas.com'
 @description('Set true ONLY on initial VM creation (or intentional recreate). Gates VM `customData` — Azure rejects any deployment that sends customData against a running VM, so idempotent redeploys must default to false.')
 param newVm bool = false
 
+@description('Set true ONLY on initial provisioning (or when reseating role assignments). Gates the KV-scoped role assignments (vmKvAccess + bootstrapAccess) so the deploy-infra workflow SP — which only has Contributor and cannot write Microsoft.Authorization/roleAssignments — does not fail incremental deploys. Role assignments are set-once and stay valid across redeploys.')
+param manageRoleAssignments bool = false
+
 var tags = {
   project: 'codetutor'
   environment: 'prod'
@@ -103,6 +106,7 @@ module keyvault 'modules/keyvault.bicep' = {
     location: location
     bootstrapPrincipalObjectId: bootstrapPrincipalObjectId
     tags: tags
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 
@@ -204,6 +208,7 @@ module vmKvAccess 'modules/vm-kv-access.bicep' = {
   params: {
     keyVaultName: keyvault.outputs.name
     principalId: vm.outputs.principalId
+    manageRoleAssignments: manageRoleAssignments
   }
 }
 

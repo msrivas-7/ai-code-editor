@@ -7,6 +7,9 @@ param location string
 param bootstrapPrincipalObjectId string
 param tags object
 
+@description('When true, (re)assert the bootstrap principal role assignment. Default false — the deploy-infra workflow SP cannot write role assignments, and this assignment is set-once at initial provisioning.')
+param manageRoleAssignments bool = false
+
 // KV names are globally unique and capped at 24 chars. Prefix eats 16, so
 // truncate the uniqueness hash to 8 to stay in bounds.
 var keyVaultName = 'codetutor-ai-kv-${take(uniqueString(subscription().id, resourceGroup().id), 8)}'
@@ -37,7 +40,7 @@ resource kv 'Microsoft.KeyVault/vaults@2024-11-01' = {
 // of secrets. Scoped to this KV only.
 var secretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 
-resource bootstrapAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource bootstrapAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageRoleAssignments) {
   scope: kv
   name: guid(kv.id, bootstrapPrincipalObjectId, secretsOfficerRoleId)
   properties: {
