@@ -23,6 +23,11 @@ import {
 } from "../services/share/ogRenderer.js";
 import { withRenderSlot } from "../services/share/renderQueue.js";
 import {
+  isShareCreateDisabled,
+  isSharePublicDisabled,
+  isShareRenderDisabled,
+} from "../services/share/killSwitches.js";
+import {
   deleteShareImages,
   publicUrl,
   uploadOgPng,
@@ -154,7 +159,7 @@ sharesPublicRouter.get("/:token", async (req, res, next) => {
     // invalid-token pass-through so a malformed-token attacker can't
     // bypass them by sending shapes the regex rejects. Public surface
     // gating sits outside the token-shape branch.
-    if (config.share.publicDisabled) {
+    if (await isSharePublicDisabled()) {
       return res.status(503).json({ error: "share temporarily unavailable" });
     }
     const ip = req.ip ?? "unknown";
@@ -279,11 +284,11 @@ const createShareBody = z
   .strict();
 
 sharesAuthedRouter.post("/", async (req, res, next) => {
-  // Kill switch — `SHARE_CREATE_DISABLED=1` blocks new shares only.
+  // Kill switch — `share_create_disabled` blocks new shares only.
   // The viral GET surface and existing-share lookups stay live, so
   // viewers keep loading shares already in the wild. `publicDisabled`
   // and `renderDisabled` are independent and gate different surfaces.
-  if (config.share.createDisabled) {
+  if (await isShareCreateDisabled()) {
     return res.status(503).json({ error: "share creation temporarily disabled" });
   }
   const parsed = createShareBody.safeParse(req.body ?? {});
@@ -397,12 +402,12 @@ sharesAuthedRouter.post("/", async (req, res, next) => {
       displayName: share.displayName,
       shareToken: share.shareToken,
     };
-    // SHARE_RENDER_DISABLED=1 short-circuits the render+upload — the
+    // `share_render_disabled` short-circuits the render+upload — the
     // share row still gets created (so the URL is valid), images stay
     // null, and the dialog / share page gracefully degrade. The
     // POST /:token/rerender endpoint (also gated on this flag) lets
     // operators re-attempt rendering after the flag is flipped off.
-    if (!config.share.renderDisabled) {
+    if (!(await isShareRenderDisabled())) {
       kickOffRenders(artifactProps);
     }
 
@@ -512,7 +517,7 @@ sharesAuthedRouter.get("/mine", async (req, res, next) => {
 //      degraded window.
 sharesAuthedRouter.post("/:token/rerender", async (req, res, next) => {
   try {
-    if (config.share.renderDisabled) {
+    if (await isShareRenderDisabled()) {
       return res
         .status(503)
         .json({ error: "share rendering temporarily disabled" });

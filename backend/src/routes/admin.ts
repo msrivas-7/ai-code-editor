@@ -72,6 +72,9 @@ const KEY_BOUNDS: Record<
   free_tier_daily_usd_per_user: { type: "number", min: 0, max: 10 },
   free_tier_lifetime_usd_per_user: { type: "number", min: 0, max: 100 },
   free_tier_daily_usd_cap: { type: "number", min: 0, max: 50 },
+  share_public_disabled: { type: "boolean" },
+  share_create_disabled: { type: "boolean" },
+  share_render_disabled: { type: "boolean" },
 };
 
 // Env defaults exposed in GET /api/admin/system-config so the UI can
@@ -88,6 +91,12 @@ function envDefaultFor(key: SystemConfigKey): boolean | number {
       return config.freeTier.lifetimeUsdPerUser;
     case "free_tier_daily_usd_cap":
       return config.freeTier.dailyUsdCap;
+    case "share_public_disabled":
+      return config.share.publicDisabled;
+    case "share_create_disabled":
+      return config.share.createDisabled;
+    case "share_render_disabled":
+      return config.share.renderDisabled;
   }
 }
 

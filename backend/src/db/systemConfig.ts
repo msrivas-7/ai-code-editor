@@ -18,6 +18,13 @@ export const KNOWN_KEYS = [
   "free_tier_daily_usd_per_user",
   "free_tier_lifetime_usd_per_user",
   "free_tier_daily_usd_cap",
+  // Phase 21C kill switches — admin-toggleable so an operator can
+  // drain a viral-share melt or block render-side bugs without
+  // SSH-ing the VM. Boolean flags; env vars are the safety-net
+  // fallback when the DB is unreachable (see config.share.*).
+  "share_public_disabled",
+  "share_create_disabled",
+  "share_render_disabled",
 ] as const;
 export type SystemConfigKey = (typeof KNOWN_KEYS)[number];
 

@@ -30,6 +30,24 @@ const KEY_LABEL: Record<SystemConfigKey, string> = {
   free_tier_daily_usd_per_user: "Daily $ per user",
   free_tier_lifetime_usd_per_user: "Lifetime $ per user",
   free_tier_daily_usd_cap: "Daily $ cap (global)",
+  // Phase 21C kill switches. Labels read "Block X" so that
+  // toggle=Enabled ⇔ "yes, the block is on" ⇔ feature killed,
+  // toggle=Disabled ⇔ "the block is off" ⇔ feature working normally
+  // (the default state).
+  share_public_disabled: "Block public share viewing",
+  share_create_disabled: "Block new share creation",
+  share_render_disabled: "Block share image rendering",
+};
+
+// Inline help for each row — surfaced as a one-line description so the
+// admin doesn't have to remember which kill switch does what at 2am.
+const KEY_DESCRIPTION: Partial<Record<SystemConfigKey, string>> = {
+  share_public_disabled:
+    "503s the public /api/shares/:token GET. Existing shares stop loading; creation still works.",
+  share_create_disabled:
+    "503s POST /api/shares. New shares blocked; existing shares stay viewable.",
+  share_render_disabled:
+    "Skips Satori render+upload. Share row still gets created (URL works), images stay null, dialog falls back gracefully.",
 };
 
 const KEY_BOUNDS: Record<
@@ -41,6 +59,9 @@ const KEY_BOUNDS: Record<
   free_tier_daily_usd_per_user: { type: "number", min: 0, max: 10, step: "0.01" },
   free_tier_lifetime_usd_per_user: { type: "number", min: 0, max: 100, step: "0.01" },
   free_tier_daily_usd_cap: { type: "number", min: 0, max: 50, step: "0.01" },
+  share_public_disabled: { type: "boolean" },
+  share_create_disabled: { type: "boolean" },
+  share_render_disabled: { type: "boolean" },
 };
 
 const PHRASE_DISABLE = "I understand this stops free AI for everyone";
@@ -119,7 +140,12 @@ function CapRow({ configKey, entry, editing, onEdit, onCancel, onSaved }: CapRow
           <div className="text-[12px] font-semibold text-ink">
             {KEY_LABEL[configKey]}
           </div>
-          <div className="mt-0.5 flex items-baseline gap-2 text-[11px]">
+          {KEY_DESCRIPTION[configKey] && (
+            <div className="mt-0.5 text-[10px] leading-relaxed text-faint">
+              {KEY_DESCRIPTION[configKey]}
+            </div>
+          )}
+          <div className="mt-1 flex items-baseline gap-2 text-[11px]">
             <span className="font-mono text-ink">{fmtValue(entry.value)}</span>
             <span
               className={`rounded px-1.5 py-0.5 text-[10px] ${

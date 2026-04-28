@@ -385,7 +385,12 @@ export type SystemConfigKey =
   | "free_tier_daily_questions"
   | "free_tier_daily_usd_per_user"
   | "free_tier_lifetime_usd_per_user"
-  | "free_tier_daily_usd_cap";
+  | "free_tier_daily_usd_cap"
+  // Phase 21C kill switches — admin-toggleable for fast incident
+  // response. Boolean: `true` = the kill is engaged.
+  | "share_public_disabled"
+  | "share_create_disabled"
+  | "share_render_disabled";
 
 export interface SystemConfigEntry {
   value: boolean | number;
