@@ -126,12 +126,27 @@ export const config = {
     dailyUsdPerUser: Number(process.env.FREE_TIER_DAILY_USD_PER_USER ?? "0.10"),
     lifetimeUsdPerUser: Number(process.env.FREE_TIER_LIFETIME_USD_PER_USER ?? "1.00"),
     // Global circuit breaker: once the product-wide daily spend crosses this
-    // all platform calls short-circuit. Sized at 20x headroom for 5 DAU.
-    dailyUsdCap: Number(process.env.FREE_TIER_DAILY_USD_CAP ?? "2.00"),
+    // all platform calls short-circuit. Phase 22A: bumped default $2 → $15
+    // so a Product-Hunt-tier launch (~50 active users on the free tier)
+    // doesn't silently degrade at 7am PT. Live override happens via the
+    // admin panel (system_config); env default is the bare-deploy fallback.
+    dailyUsdCap: Number(process.env.FREE_TIER_DAILY_USD_CAP ?? "15.00"),
     // Operator's OpenAI key used when the learner has no BYOK and free tier
     // is enabled. Required when freeTier.enabled is true — assertConfigValid
     // fails fast otherwise so a misconfig doesn't land as a 500-per-request.
     platformOpenaiApiKey: process.env.PLATFORM_OPENAI_API_KEY,
+  },
+
+  // Phase 22A: backend-originated email via Azure Communication Services.
+  // Used for operational alerts (budgetWatcher 50/80/100%) and user-facing
+  // re-engagement (Phase 22D streak nudge). All three values come from
+  // Azure Key Vault via cloud-init's refresh-env script. Empty strings are
+  // valid in dev — the email send path throws EmailNotConfiguredError so a
+  // local dev backend can boot without ACS configured.
+  email: {
+    acsConnectionString: process.env.ACS_CONNECTION_STRING ?? "",
+    acsSenderEmail: process.env.ACS_SENDER_EMAIL ?? "",
+    operatorAlertEmail: process.env.OPERATOR_ALERT_EMAIL ?? "",
   },
 
   // Phase 21C: cinematic share controls. Two kill switches let on-call

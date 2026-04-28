@@ -83,6 +83,15 @@ write_files:
         echo "FREE_TIER_LIFETIME_USD_PER_USER=$(fetch_optional FREE-TIER-LIFETIME-USD-PER-USER)"
         echo "FREE_TIER_DAILY_USD_CAP=$(fetch_optional FREE-TIER-DAILY-USD-CAP)"
         echo "PLATFORM_OPENAI_API_KEY=$(fetch_optional PLATFORM-OPENAI-API-KEY)"
+        # Phase 22A: backend-originated email via Azure Communication
+        # Services. Used for budget alerts (50/80/100% of daily $ cap) and
+        # the Phase 22D streak-nudge retention email. Optional fetches —
+        # in dev or first-boot envs where these aren't seeded yet, the
+        # backend boots fine and email-send paths throw
+        # EmailNotConfiguredError (caught + logged by callers).
+        echo "ACS_CONNECTION_STRING=$(fetch_optional ACS-CONNECTION-STRING)"
+        echo "ACS_SENDER_EMAIL=$(fetch_optional ACS-SENDER-EMAIL)"
+        echo "OPERATOR_ALERT_EMAIL=$(fetch_optional OPERATOR-ALERT-EMAIL)"
         # Non-secret prod config. CORS is sourced from KV (`CORS-ORIGIN`)
         # so the frontend hostname is never hardcoded in the provisioning
         # template — avoids the template/live-script drift that bit us when

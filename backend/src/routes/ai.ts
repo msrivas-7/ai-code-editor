@@ -142,6 +142,7 @@ async function resolveCredentialOrRespond(
     usd_cap_hit: "killed_usd_cap",
     denylisted: "denylisted",
     provider_auth_failed: "provider_auth_failed",
+    email_not_confirmed: "email_not_confirmed",
   };
   aiPlatformRequests.inc({ outcome: outcomeByReason[reason], route });
 
@@ -151,6 +152,15 @@ async function resolveCredentialOrRespond(
   }
   if (reason === "denylisted") {
     res.status(403).json({ error: "USER_DENYLISTED", reason });
+    return null;
+  }
+  if (reason === "email_not_confirmed") {
+    // Phase 22A: defense-in-depth gate. The user has a JWT (so reached
+    // authMiddleware) but auth.users.email_confirmed_at is null. Surface
+    // a distinct error code so the frontend can prompt them to check
+    // their inbox / resend the confirmation link rather than blaming
+    // BYOK or the free tier.
+    res.status(403).json({ error: "EMAIL_NOT_CONFIRMED", reason });
     return null;
   }
   if (reason === "no_key") {

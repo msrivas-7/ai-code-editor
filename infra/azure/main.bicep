@@ -30,8 +30,11 @@ param adminPublicKey string
 param sshSourceIp string
 
 @description('VM SKU. B2s (2 vCPU / 4 GB) is needed so first-boot docker builds of the backend image do not OOM; runtime-only would fit on B1s.')
-param vmSize string = 'Standard_B2s'
+param vmSize string = 'Standard_B2ms'
 
+// Phase 22A: bumped B2s → B2ms (2 vCPU, 8 GB RAM) for launch-tier
+// memory headroom. B2s's 4 GB couldn't safely support MAX_SESSIONS_GLOBAL=20
+// × 512 MB runner containers. ~$30 → ~$60/mo.
 @description('OS disk size in GB.')
 param osDiskSizeGB int = 32
 
@@ -173,6 +176,22 @@ module alerts 'modules/alerts.bicep' = {
     appInsightsId: monitoring.outputs.appInsightsId
     healthEndpoint: 'https://${network.outputs.fqdn}/api/health/deep'
     swaEndpoint: 'https://${swa.outputs.defaultHostname}/'
+  }
+}
+
+// Phase 22A: native Cost Management Budget for infra-side spend.
+// Application-side $ alerts (backend's budgetWatcher) only see what
+// our backend tracks. The Budget here catches runaway Azure resource
+// spend (Monitor, Storage, VM resize, etc.) that the backend wouldn't
+// otherwise see. Fires the same action group → email at 50/80/100%.
+// $80/mo cap is ~25% above expected $64/mo run rate post-22A.
+module budget 'modules/budget.bicep' = {
+  name: 'budget'
+  params: {
+    actionGroupId: monitoring.outputs.actionGroupId
+    operatorEmail: alertEmail
+    monthlyCapUsd: 80
+    startDate: '2026-05-01'
   }
 }
 

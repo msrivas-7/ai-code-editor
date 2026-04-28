@@ -26,6 +26,13 @@ vi.mock("../../db/denylist.js", () => ({
   isDenylisted: vi.fn(async () => false),
 }));
 
+// Phase 22A: defense-in-depth email-confirm gate. Default-true so the
+// existing per-user / global cap tests don't have to set this up. The
+// dedicated email-confirm-gate test below flips it to false.
+vi.mock("../../db/userEmailConfirm.js", () => ({
+  isEmailConfirmed: vi.fn(async () => true),
+}));
+
 vi.mock("../../db/usageLedger.js", () => ({
   startOfUtcDay: () => {
     const d = new Date();
@@ -306,5 +313,32 @@ describe("resolveAICredential — Phase 20-P5 cap overrides", () => {
     // Same user-facing reason as the env-flag-off path so the UI doesn't
     // need to distinguish.
     if (c.source === "none") expect(c.reason).toBe("no_key");
+  });
+
+  // Phase 22A: defense-in-depth email-confirm gate.
+  it("L5b returns email_not_confirmed when auth.users.email_confirmed_at is null", async () => {
+    const emailConfirm = await import("../../db/userEmailConfirm.js");
+    vi.mocked(emailConfirm.isEmailConfirmed).mockResolvedValueOnce(false);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("none");
+    if (c.source === "none") expect(c.reason).toBe("email_not_confirmed");
+  });
+
+  it("L5b: BYOK users bypass the email-confirm gate (their key, their bill)", async () => {
+    vi.mocked(getOpenAIKey).mockResolvedValueOnce("sk-byok-test");
+    const emailConfirm = await import("../../db/userEmailConfirm.js");
+    vi.mocked(emailConfirm.isEmailConfirmed).mockResolvedValueOnce(false);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("byok");
+  });
+
+  it("L5b: denylist check fires BEFORE email-confirm (a denylisted unconfirmed user gets denylisted, not email_not_confirmed)", async () => {
+    const denylist = await import("../../db/denylist.js");
+    vi.mocked(denylist.isDenylisted).mockResolvedValueOnce(true);
+    const emailConfirm = await import("../../db/userEmailConfirm.js");
+    vi.mocked(emailConfirm.isEmailConfirmed).mockResolvedValueOnce(false);
+    const c = await resolveAICredential("u-1");
+    expect(c.source).toBe("none");
+    if (c.source === "none") expect(c.reason).toBe("denylisted");
   });
 });

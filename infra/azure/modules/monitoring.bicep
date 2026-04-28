@@ -137,6 +137,12 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     IngestionMode: 'LogAnalytics'
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
+    // Phase 22A: explicit 30-day retention (was implicit 90-day).
+    // In workspace-based ingestion mode the LA workspace's 30-day
+    // retention is what actually bills, but pinning the component's
+    // retention too prevents drift if Azure ever surfaces a way for
+    // the component-level setting to take effect.
+    RetentionInDays: 30
   }
 }
 

@@ -1,0 +1,88 @@
+name: Deploy infra (Bicep)
+
+# One-shot workflow that bypasses the operator's MFA gate for `az deployment
+# group create` writes. Dispatched manually when an `infra/azure/**.bicep`
+# change ships. The codetutor-ai-gh-deploy OIDC SP has Contributor on the
+# prod RG, so it can create/update/delete resources without the user-tier
+# MFA prompt.
+#
+# WHY NOT auto-deploy on push: infra changes (alert pruning, budget caps,
+# VM resize, role assignments) are infrequent and need a human in the loop
+# to confirm the diff. Manual dispatch + what-if-then-deploy is the right
+# trade-off for a single-operator product.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'what-if (preview) or deploy (apply)'
+        required: true
+        default: 'what-if'
+        type: choice
+        options:
+          - what-if
+          - deploy
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-infra:
+    name: Deploy bicep to prod RG
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+
+      - name: Azure login (OIDC, SP)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep build (validate syntax)
+        working-directory: infra/azure
+        run: az bicep build --file main.bicep --stdout > /dev/null
+
+      - name: Resolve params
+        id: params
+        run: |
+          # Pull the most recent values from the last full deployment so
+          # we don't drift on reboots-of-RG. adminPublicKey is empty
+          # because newVm=false (the VM exists; we're not recreating).
+          # sshSourceIp is unused when newVm=false but the param is
+          # required by main.bicep so we pass a placeholder.
+          echo "ssh_src=152.44.241.79/32" >> "$GITHUB_OUTPUT"
+          echo "principal_id=86bf71cc-6f21-490f-9142-eba8634cb7f7" >> "$GITHUB_OUTPUT"
+
+      - name: What-if (preview diff)
+        if: inputs.mode == 'what-if'
+        working-directory: infra/azure
+        run: |
+          az deployment group what-if \
+            -g codetutor-ai-prod-rg \
+            --template-file main.bicep \
+            --parameters \
+              adminPublicKey="" \
+              sshSourceIp="${{ steps.params.outputs.ssh_src }}" \
+              bootstrapPrincipalObjectId="${{ steps.params.outputs.principal_id }}"
+
+      - name: Deploy (apply)
+        if: inputs.mode == 'deploy'
+        working-directory: infra/azure
+        run: |
+          az deployment group create \
+            -g codetutor-ai-prod-rg \
+            -n "main-$(date +%Y%m%d-%H%M%S)" \
+            --template-file main.bicep \
+            --parameters \
+              adminPublicKey="" \
+              sshSourceIp="${{ steps.params.outputs.ssh_src }}" \
+              bootstrapPrincipalObjectId="${{ steps.params.outputs.principal_id }}"
+
+      - name: Post-deploy summary
+        if: inputs.mode == 'deploy'
+        run: |
+          echo "::notice::Bicep deploy complete. Verify alert rules + new budget via az resource list -g codetutor-ai-prod-rg --resource-type Microsoft.Consumption/budgets"

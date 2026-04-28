@@ -28,6 +28,9 @@ var actions = {
 // Sustained high memory → OOM is imminent. 90% used on 4 GB leaves ~400 MB
 // which is the plan's stated ceiling. 10m window + 1 failing period means a
 // single one-off backup pass won't page.
+// Phase 22A retime: 5min → 15min eval. Memory leaks build over hours;
+// catching them within a 15-min window gives equivalent fidelity at a
+// third of the alert-rule cost.
 resource memAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
   name: 'codetutor-vm-memory-high'
   location: location
@@ -36,8 +39,8 @@ resource memAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
     enabled: true
     severity: 2
     scopes: [ workspaceId ]
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT10M'
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT15M'
     criteria: {
       allOf: [
         {
@@ -58,38 +61,10 @@ resource memAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
   }
 }
 
-// CPU-credit exhaustion on Bs-series manifests as sustained 100% throttling.
-// 15m window at 85% is the plan trigger; shorter windows would false-fire on
-// the first-boot docker build.
-resource cpuAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
-  name: 'codetutor-vm-cpu-high'
-  location: location
-  tags: tags
-  properties: {
-    enabled: true
-    severity: 3
-    scopes: [ workspaceId ]
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT15M'
-    criteria: {
-      allOf: [
-        {
-          query: 'Perf | where ObjectName == "Processor" and CounterName == "% Processor Time" and InstanceName == "_Total" | summarize AggregatedValue = avg(CounterValue) by bin(TimeGenerated, 5m)'
-          timeAggregation: 'Average'
-          metricMeasureColumn: 'AggregatedValue'
-          operator: 'GreaterThan'
-          threshold: 85
-          failingPeriods: {
-            minFailingPeriodsToAlert: 1
-            numberOfEvaluationPeriods: 1
-          }
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: actions
-  }
-}
+// Phase 22A: codetutor-vm-cpu-high removed. April 2026 audit measured
+// VM CPU at 1.7% avg / 4.4% peak on Standard_B2s — the alert can never
+// legitimately fire at the 85% threshold. Saved ~$0.50/mo on alert-rule
+// cost. Re-add if a workload change ever pushes baseline CPU above 30%.
 
 // OS disk at 80% leaves ~6 GB headroom on a 32 GB disk — enough runway to
 // triage (usually stale session workspaces or journald) before compose or
@@ -167,6 +142,9 @@ resource oomAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
 // pieces need App Insights deployed + container log → Log Analytics plumbing
 // that we don't have yet; shipping the heartbeat piece closes the biggest
 // "we'd never know the site was down" gap for ~$1.50/mo.
+// Phase 22A retime: 5min → 15min eval. Heartbeat itself fires every
+// 1min; a 15-min window catches an outage within 30min worst case —
+// acceptable for indie ops. Saves ~$3/mo at the watch cadence.
 resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
   name: 'codetutor-vm-heartbeat-missing'
   location: location
@@ -175,7 +153,7 @@ resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
     enabled: true
     severity: 1
     scopes: [ workspaceId ]
-    evaluationFrequency: 'PT5M'
+    evaluationFrequency: 'PT15M'
     windowSize: 'PT15M'
     criteria: {
       allOf: [
@@ -206,47 +184,21 @@ resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
 // signup / reset dead-ends. Metric alerts live at `global` location
 // regardless of the scoped resource's region. Gated by communicationServiceId
 // so this module still deploys cleanly in environments without ACS.
-// S-11 (bucket 6): escalation tier on disk usage. The existing 80% rule above
-// is the "time to triage" alert; this 70% rule is the "start cleanup" lead
-// indicator — gives us ~2-3 GB of runway (of the 32 GB disk) before the
-// louder alert fires, which is usually enough to `docker system prune` +
-// `journalctl --vacuum-size=100M` without touching active sessions.
-// Severity 4 (warning) instead of 3 so it doesn't crowd the paging queue.
-resource diskWarnAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
-  name: 'codetutor-vm-disk-warning'
-  location: location
-  tags: tags
-  properties: {
-    enabled: true
-    severity: 4
-    scopes: [ workspaceId ]
-    evaluationFrequency: 'PT15M'
-    windowSize: 'PT30M'
-    criteria: {
-      allOf: [
-        {
-          query: 'Perf | where ObjectName == "Logical Disk" and CounterName == "% Used Space" and InstanceName == "_Total" | summarize AggregatedValue = avg(CounterValue) by bin(TimeGenerated, 15m)'
-          timeAggregation: 'Average'
-          metricMeasureColumn: 'AggregatedValue'
-          operator: 'GreaterThan'
-          threshold: 70
-          failingPeriods: {
-            minFailingPeriodsToAlert: 2
-            numberOfEvaluationPeriods: 2
-          }
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: actions
-  }
-}
+// Phase 22A: codetutor-vm-disk-warning removed. Redundant with the
+// 80%-threshold codetutor-vm-disk-high above — two alerts on the same
+// metric just split paging volume. The single 80% rule is the right
+// trade-off for an indie single-VM product; cleanup capacity is fine
+// without the 70% lead indicator. Saved ~$0.50/mo on alert-rule cost.
 
 // S-18 (bucket 6): BYOK decrypt failures. byok.ts emits a structured JSON
 // error line `{"err":"byok_decrypt_failed",...}` on every GCM tag-verify
 // failure. When container logs land in LA (via DCR logFiles data source
 // in vm.bicep), this query catches the first tick and pages. Any value
 // above zero warrants investigation — see metrics.ts comment.
+// Phase 22A retime: 5min → 15min eval. Severity-1 security alert, but
+// 15min is acceptable for indie since BYOK decrypt failure investigation
+// takes longer than 15min anyway (key-rotation triage). Tighten back to
+// 5min if traffic warrants. Saves ~$3/mo at the watch cadence.
 resource byokDecryptFailedAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
   name: 'codetutor-byok-decrypt-failed'
   location: location
@@ -255,7 +207,7 @@ resource byokDecryptFailedAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-
     enabled: true
     severity: 1
     scopes: [ workspaceId ]
-    evaluationFrequency: 'PT5M'
+    evaluationFrequency: 'PT15M'
     windowSize: 'PT15M'
     criteria: {
       allOf: [

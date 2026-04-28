@@ -31,9 +31,10 @@ import type { ExecutionBackend } from "./services/execution/backends/types.js";
 import { db } from "./db/client.js";
 import {
   initSessionManager,
-  startSweeper,
   shutdownAllSessions,
+  startSweeper,
 } from "./services/session/sessionManager.js";
+import { startBudgetWatcher } from "./services/budgetWatcher.js";
 import { reapAbandonedLessonProgress } from "./db/lessonProgress.js";
 import { backendUnhandledRejections } from "./services/metrics.js";
 import { startPlatformCostSampler } from "./services/observability/platformCostSampler.js";
@@ -372,6 +373,11 @@ async function main() {
   // detect abnormal bursts (hourly > 2× daily cap) without Log Analytics
   // needing to read Supabase directly. No-ops when free tier is disabled.
   startPlatformCostSampler();
+  // Phase 22A: budget watcher fires email alerts at 50/80/100% of the
+  // daily $ cap. Polls every 60s, in-memory dedup so each threshold
+  // fires once per UTC day. EmailNotConfiguredError is treated as a
+  // logged-once-per-day event (dev / first boot without ACS configured).
+  startBudgetWatcher();
 
   // QA-M4: hourly reap of abandoned lesson_progress rows. A drive-by URL
   // visit calls startLesson, which writes an in_progress row even when the

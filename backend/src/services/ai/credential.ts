@@ -24,6 +24,7 @@
 import { config } from "../../config.js";
 import { getOpenAIKey } from "../../db/preferences.js";
 import { isDenylisted } from "../../db/denylist.js";
+import { isEmailConfirmed } from "../../db/userEmailConfirm.js";
 import {
   countPlatformQuestionsTodayLocked,
   startOfUtcDay,
@@ -48,7 +49,8 @@ export type CredentialNoneReason =
   | "lifetime_usd_per_user_hit"
   | "usd_cap_hit"
   | "denylisted"
-  | "provider_auth_failed";
+  | "provider_auth_failed"
+  | "email_not_confirmed";
 
 export type AICredential =
   | {
@@ -234,6 +236,15 @@ export async function resolveAICredential(
   // user hits a 403 on their next request. BYOK users unaffected (we
   // already returned above).
   if (await isDenylisted(userId)) return none("denylisted");
+
+  // Phase 22A — L5b: defense-in-depth email-confirm gate. Supabase's
+  // default flow refuses to issue a JWT until email_confirmed_at is
+  // stamped, but that's a project-config setting; if it ever flips,
+  // the JWT-only check leaves the per-user / lifetime / global $ caps
+  // open to email-farming. We always check `auth.users.email_confirmed_at`
+  // before letting platform-funded AI flow. Confirmed-once is cached
+  // per-process forever (a confirmed email never un-confirms).
+  if (!(await isEmailConfirmed(userId))) return none("email_not_confirmed");
 
   // Provider-auth kill: if we've already observed a 401 from OpenAI on the
   // platform key, no point re-burning requests until the operator rotates.
