@@ -406,7 +406,7 @@ test.describe("free AI tier", () => {
     });
 
     await loadProfile(page, "empty");
-    await page.goto("/");
+    await page.goto("/start");
     await S.openSettings(page, "ai");
 
     // BYOK user, no prior interest → the CTA is visible.
@@ -803,7 +803,7 @@ test.describe("free AI tier", () => {
       await route.fulfill({ status: 204 });
     });
     await loadProfile(page, "empty");
-    await page.goto("/");
+    await page.goto("/start");
     await S.openSettings(page, "ai");
 
     const remove = page.getByRole("button", { name: /^Remove my interest$/i });
@@ -875,7 +875,7 @@ test.describe("free AI tier", () => {
     ]);
     void countingRoute(page, "/api/user/paid-access-interest", 204);
     await loadProfile(page, "empty");
-    await page.goto("/");
+    await page.goto("/start");
     await S.openSettings(page, "ai");
 
     await page.getByRole("button", { name: /register interest in a paid plan/i }).click();

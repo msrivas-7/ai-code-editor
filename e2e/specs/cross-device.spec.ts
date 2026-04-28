@@ -32,7 +32,7 @@ rawTest.describe("cross-device persistence (Phase 18b)", () => {
     "theme change persists across a fresh browser context for the same user",
     async ({ page, browser }, testInfo) => {
       // 1. On device A (pre-authed page), flip to light theme via Settings.
-      await page.goto("/");
+      await page.goto("/start");
       await S.openSettings(page, "appearance");
       await expect(page.locator('[role="dialog"]')).toBeVisible();
       await page.getByRole("button", { name: /^light$/i }).click();
@@ -151,7 +151,7 @@ rawTest.describe("cross-device persistence (Phase 18b)", () => {
     "same-device sign-out → sign-in re-hydrates preferences",
     async ({ page }, testInfo) => {
       // Flip theme + sign out.
-      await page.goto("/");
+      await page.goto("/start");
       await S.openSettings(page, "appearance");
       await page.getByRole("button", { name: /^light$/i }).click();
       await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -164,7 +164,7 @@ rawTest.describe("cross-device persistence (Phase 18b)", () => {
 
       // Sign in again (re-inject session and navigate).
       await loginAsTestUser(page, testInfo.workerIndex);
-      await page.goto("/");
+      await page.goto("/start");
       await expect(page.locator("html")).toHaveAttribute("data-theme", "light", {
         timeout: 10_000,
       });
