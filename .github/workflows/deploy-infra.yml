@@ -31,7 +31,11 @@ jobs:
   deploy-infra:
     name: Deploy bicep to prod RG
     runs-on: ubuntu-latest
-    environment: prod
+    # No `environment:` — the codetutor-ai-gh-deploy SP's federated identity
+    # credential is bound to `repo:msrivas-7/CodeTutor-AI:ref:refs/heads/main`
+    # (branch-based). Setting `environment: prod` would change the OIDC
+    # subject claim to `:environment:prod`, which doesn't have a matching FIC
+    # and fails Entra auth with AADSTS700213.
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
 
