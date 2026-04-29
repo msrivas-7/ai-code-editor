@@ -291,12 +291,18 @@ export async function sendStreakNudge(
   input: StreakNudgeInput,
 ): Promise<{ id: string; deepLink: string; unsubscribeUrl: string }> {
   const built = buildStreakNudge(input);
+  // Don't pass displayName to ACS — our verified domain rejects the
+  // RFC-5322 `Name <addr>` form on senderAddress with a "Request body
+  // validation error. See property 'senderAddress'". The friendly From
+  // name shows up in inboxes via the domain's ACS-side display-name
+  // config anyway. `built.displayName` is still exposed on the builder
+  // result for tests + future use if friendly-from-on-senderAddress is
+  // ever enabled at the resource level.
   const opts: SendEmailOptions = {
     to: input.email,
     subject: built.subject,
     text: built.text,
     html: built.html,
-    displayName: built.displayName,
     replyTo: built.replyTo,
     headers: built.headers,
   };

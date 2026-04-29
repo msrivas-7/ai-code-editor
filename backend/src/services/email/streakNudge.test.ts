@@ -207,7 +207,6 @@ describe("sendStreakNudge — wiring", () => {
       expect.objectContaining({
         to: "learner@test.dev",
         subject: "Picking up where you left off",
-        displayName: "CodeTutor",
         replyTo: "support@codetutor.test",
         text: expect.stringContaining("Hi Mehul"),
         html: expect.stringContaining("Hi Mehul"),
@@ -217,6 +216,9 @@ describe("sendStreakNudge — wiring", () => {
         }),
       }),
     );
+    // displayName is intentionally NOT forwarded — ACS rejects the
+    // friendly-from form on our verified domain.
+    expect(arg).not.toHaveProperty("displayName");
   });
 
   it("propagates a downstream sendEmail failure (caller decides retry)", async () => {
