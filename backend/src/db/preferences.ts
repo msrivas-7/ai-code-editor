@@ -19,6 +19,11 @@ export interface UserPreferences {
   // shown to this user. Server-backed so one device suppresses the
   // next device the same day. Null = never shown.
   lastWelcomeBackAt: string | null;
+  // Phase 22D: opt-in for the streak re-engagement email. Defaults TRUE
+  // for new accounts (industry norm for transactional + retention mail
+  // sent to people who created the account). Settings panel exposes a
+  // toggle, the unsubscribe link in the email flips this to false.
+  emailOptIn: boolean;
   updatedAt: string;
 }
 
@@ -32,6 +37,7 @@ const DEFAULT_PREFS: UserPreferences = {
   uiLayout: {},
   hasOpenaiKey: false,
   lastWelcomeBackAt: null,
+  emailOptIn: true,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -49,6 +55,7 @@ export const PrefsRowSchema = z.object({
   ui_layout: z.record(z.string(), z.unknown()).nullable(),
   has_openai_key: z.boolean(),
   last_welcome_back_at: z.date().nullable(),
+  email_opt_in: z.boolean(),
   updated_at: z.date(),
 });
 
@@ -73,6 +80,7 @@ function rowToPrefs(raw: unknown): UserPreferences {
     lastWelcomeBackAt: r.last_welcome_back_at
       ? r.last_welcome_back_at.toISOString()
       : null,
+    emailOptIn: r.email_opt_in,
     updatedAt: r.updated_at.toISOString(),
   };
 }
@@ -84,6 +92,7 @@ export async function getPreferences(userId: string): Promise<UserPreferences> {
            editor_coach_done, ui_layout,
            (openai_api_key_cipher IS NOT NULL) AS has_openai_key,
            last_welcome_back_at,
+           email_opt_in,
            updated_at
       FROM public.user_preferences
      WHERE user_id = ${userId}
@@ -102,6 +111,10 @@ export interface PreferencesPatch {
   uiLayout?: Record<string, unknown>;
   // ISO-8601 timestamp. null clears; undefined = no-op.
   lastWelcomeBackAt?: string | null;
+  // Phase 22D: streak-nudge opt-in. undefined = no-op; true/false set the
+  // flag explicitly. Settings UI sends the toggle; the unsubscribe route
+  // sets it directly to false (bypasses this patch path).
+  emailOptIn?: boolean;
 }
 
 export async function upsertPreferences(
@@ -121,7 +134,8 @@ export async function upsertPreferences(
   const rows = await sql`
     INSERT INTO public.user_preferences (
       user_id, persona, openai_model, theme, welcome_done,
-      workspace_coach_done, editor_coach_done, ui_layout, last_welcome_back_at
+      workspace_coach_done, editor_coach_done, ui_layout, last_welcome_back_at,
+      email_opt_in
     )
     VALUES (
       ${userId},
@@ -132,7 +146,8 @@ export async function upsertPreferences(
       ${patch.workspaceCoachDone ?? false},
       ${patch.editorCoachDone ?? false},
       ${sql.json((patch.uiLayout ?? {}) as JSONValue)},
-      ${lastWelcomeBackAt ?? null}
+      ${lastWelcomeBackAt ?? null},
+      ${patch.emailOptIn ?? DEFAULT_PREFS.emailOptIn}
     )
     ON CONFLICT (user_id) DO UPDATE SET
       persona              = COALESCE(${patch.persona ?? null}, public.user_preferences.persona),
@@ -143,14 +158,53 @@ export async function upsertPreferences(
       editor_coach_done    = COALESCE(${patch.editorCoachDone ?? null}, public.user_preferences.editor_coach_done),
       ui_layout            = CASE WHEN ${patch.uiLayout !== undefined} THEN ${sql.json((patch.uiLayout ?? {}) as JSONValue)} ELSE public.user_preferences.ui_layout END,
       last_welcome_back_at = CASE WHEN ${lastWelcomeBackAt !== undefined} THEN ${lastWelcomeBackAt ?? null} ELSE public.user_preferences.last_welcome_back_at END,
+      email_opt_in         = COALESCE(${patch.emailOptIn ?? null}, public.user_preferences.email_opt_in),
       updated_at           = now()
     RETURNING persona, openai_model, theme, welcome_done, workspace_coach_done,
               editor_coach_done, ui_layout,
               (openai_api_key_cipher IS NOT NULL) AS has_openai_key,
               last_welcome_back_at,
+              email_opt_in,
               updated_at
   `;
   return rowToPrefs(rows[0]);
+}
+
+// Phase 22D: backend-only setter used by the unsubscribe route. Bypasses
+// the upsert path because (a) we never want to create a preferences row
+// just because someone clicked an unsub link with a valid token, and (b)
+// we want a lean UPDATE that only touches the two columns the sweeper
+// cares about. Returns true if a row was updated, false if the user has
+// no preferences row yet (in which case the next streak nudge cycle will
+// re-evaluate via the LATERAL JOIN against email_opt_in).
+export async function setEmailOptInDirect(
+  userId: string,
+  optIn: boolean,
+): Promise<boolean> {
+  const sql = db();
+  const rows = await sql`
+    UPDATE public.user_preferences
+       SET email_opt_in = ${optIn},
+           updated_at   = now()
+     WHERE user_id = ${userId}
+    RETURNING user_id
+  `;
+  return rows.length > 0;
+}
+
+// Phase 22D: digest sweeper marks each successful send. Single-row
+// UPDATE so concurrent failed/queued sends to other users don't see
+// partial commits. Always called AFTER acsClient.sendEmail resolves
+// successfully — failed sends leave the column null so tomorrow's
+// cron retries the same user.
+export async function markStreakNudgeSent(userId: string): Promise<void> {
+  const sql = db();
+  await sql`
+    UPDATE public.user_preferences
+       SET last_streak_email_sent_at = now(),
+           updated_at                = now()
+     WHERE user_id = ${userId}
+  `;
 }
 
 // BYOK helpers. The plaintext key never leaves the backend: `getOpenAIKey`

@@ -218,6 +218,11 @@ export interface UserPreferences {
   // suppresses the next device's — a learner who got welcomed on
   // laptop at 9am shouldn't be re-welcomed on phone at noon.
   lastWelcomeBackAt: string | null;
+  // Phase 22D: opt-in for the streak re-engagement email. Defaults TRUE
+  // for new accounts. Settings panel exposes a toggle; the email's
+  // unsubscribe link flips this to false directly via the unsubscribe
+  // route (bypasses the patch path).
+  emailOptIn: boolean;
   updatedAt: string;
 }
 
@@ -230,6 +235,7 @@ export interface UserPreferencesPatch {
   editorCoachDone?: boolean;
   uiLayout?: Record<string, unknown>;
   lastWelcomeBackAt?: string | null;
+  emailOptIn?: boolean;
 }
 
 export interface ServerCourseProgress {

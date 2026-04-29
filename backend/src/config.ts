@@ -147,6 +147,32 @@ export const config = {
     acsConnectionString: process.env.ACS_CONNECTION_STRING ?? "",
     acsSenderEmail: process.env.ACS_SENDER_EMAIL ?? "",
     operatorAlertEmail: process.env.OPERATOR_ALERT_EMAIL ?? "",
+
+    // Phase 22D: streak-nudge re-engagement email.
+    //
+    // unsubscribeSecret — HMAC-SHA256 secret for signing one-click
+    // unsubscribe URLs. Tokens are non-expiring; rotating this secret
+    // invalidates ALL outstanding unsubscribe links at once. Empty in
+    // dev = unsubscribe route returns 503 with a clear "not configured"
+    // message rather than minting unverifiable tokens.
+    unsubscribeSecret: process.env.EMAIL_UNSUBSCRIBE_SECRET ?? "",
+
+    // Display name + reply-to for the streak nudge.
+    //   From:      CodeTutor <noreply@mail.codetutor.msrivas.com>  (acsSenderEmail)
+    //   Reply-To:  support@msrivas.com                             (routed to
+    //              operator inbox via iCloud Custom Email Domain)
+    // Display name is what mail clients show in the inbox list; the
+    // address itself is the DKIM-signed sender. Reply-To diverges so
+    // user replies land in a monitored inbox, not /dev/null.
+    streakNudgeFromName: process.env.STREAK_NUDGE_FROM_NAME ?? "CodeTutor",
+    streakNudgeReplyTo:
+      process.env.STREAK_NUDGE_REPLY_TO ?? "support@msrivas.com",
+
+    // Kill switch. On-call sets this to "1" via .env to instantly stop
+    // the daily cron from sending without a redeploy. Sweeper checks
+    // this on every fire (not just at boot) so a flip takes effect on
+    // the next daily window.
+    streakNudgeDisabled: process.env.STREAK_NUDGE_DISABLED === "1",
   },
 
   // Phase 21C: cinematic share controls. Two kill switches let on-call
@@ -202,6 +228,10 @@ delete process.env.PLATFORM_OPENAI_API_KEY;
 // (the "accesskey=" segment). Treat it like every other secret and drop
 // it from process.env once acsClient.ts has captured it via config.
 delete process.env.ACS_CONNECTION_STRING;
+// Same hygiene for the unsubscribe HMAC secret — anything in process.env
+// is reachable from any module via process.env scans, so collapse the
+// surface area to the single `config.email.unsubscribeSecret` reference.
+delete process.env.EMAIL_UNSUBSCRIBE_SECRET;
 
 export function assertConfigValid(): void {
   if (!config.supabase.url || config.supabase.url.trim() === "") {

@@ -48,6 +48,17 @@ export interface SendEmailOptions {
   html?: string;
   /** Override the From address. Defaults to config.email.acsSenderEmail. */
   from?: string;
+  /** Display name for the From header (e.g. "CodeTutor"). When set, the
+   *  rendered From becomes `${displayName} <${from}>`; mail clients show
+   *  the friendly name in the inbox list. */
+  displayName?: string;
+  /** Reply-To address. When set, user replies route here instead of the
+   *  From address (which is typically a no-reply alias). */
+  replyTo?: string;
+  /** Extra RFC-5322 headers to set on the outbound message. Used by Phase
+   *  22D streak nudge for List-Unsubscribe / List-Unsubscribe-Post so
+   *  Gmail / Apple Mail render a one-click unsubscribe button. */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -65,8 +76,15 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{ id: string }>
       "ACS_SENDER_EMAIL not set; cannot determine From address",
     );
   }
+  // ACS expects the From display name to be embedded in senderAddress as
+  // RFC-5322 `Name <addr@host>`. There's no structured "displayName" on
+  // the senderAddress field. Wrap when provided; otherwise pass the bare
+  // address (existing alert behavior).
+  const senderAddress = opts.displayName
+    ? `${opts.displayName} <${sender}>`
+    : sender;
   const message = {
-    senderAddress: sender,
+    senderAddress,
     content: {
       subject: opts.subject,
       plainText: opts.text,
@@ -75,6 +93,10 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{ id: string }>
     recipients: {
       to: [{ address: opts.to }],
     },
+    ...(opts.replyTo ? { replyTo: [{ address: opts.replyTo }] } : {}),
+    ...(opts.headers && Object.keys(opts.headers).length > 0
+      ? { headers: opts.headers }
+      : {}),
   };
   const poller = await client.beginSend(message);
   const result = await poller.pollUntilDone();
