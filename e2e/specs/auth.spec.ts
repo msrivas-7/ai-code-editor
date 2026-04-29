@@ -99,8 +99,10 @@ test.describe("auth flow", () => {
     await page.getByRole("button", { name: /send magic link/i }).click();
 
     // The "Check your email" panel renders the resend button.
+    // 10s timeout (was 5s): CI runners occasionally take 6-8s for the
+    // post-mock React state transition under parallel load. Locally <1s.
     const resend = page.getByRole("button", { name: /resend sign-in link/i });
-    await expect(resend).toBeVisible({ timeout: 5_000 });
+    await expect(resend).toBeVisible({ timeout: 10_000 });
     expect(otpCalls).toBe(1);
 
     // Clicking it fires another OTP call and flips the label into the
@@ -108,7 +110,7 @@ test.describe("auth flow", () => {
     await resend.click();
     await expect.poll(() => otpCalls).toBe(2);
     await expect(page.getByRole("button", { name: /resend in \d+s/i })).toBeVisible({
-      timeout: 5_000,
+      timeout: 10_000,
     });
   });
 

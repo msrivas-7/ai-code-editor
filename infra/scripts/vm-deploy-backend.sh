@@ -39,6 +39,21 @@ cd /opt/codetutor || { echo "DEPLOY_FAILED: /opt/codetutor missing"; exit 1; }
 echo "prior HEAD: $PREV_SHA"
 echo "deploying : $NEW_SHA"
 
+# Sync /usr/local/bin/refresh-env from the repo. The script's own logic
+# (hash-compare + force-recreate when changed) decides whether to bounce
+# the backend; if a new fetch_optional line lands here that wasn't on the
+# live VM, .env grows by one var → hash differs → backend recreates with
+# fresh env BEFORE the image swap below. Idempotent: if the script body
+# is unchanged, install-with-same-perms is essentially free.
+#
+# Drift fix (2026-04-29): closes the gap where adding a KV secret in
+# cloud-init.yaml never reached the live VM unless someone SSH'd in to
+# patch /usr/local/bin/refresh-env by hand.
+if [ -f /opt/codetutor/infra/scripts/refresh-env.sh ]; then
+  install -m 0755 -o root -g root /opt/codetutor/infra/scripts/refresh-env.sh /usr/local/bin/refresh-env
+  /usr/local/bin/refresh-env
+fi
+
 # Snapshot the currently-running image as :rollback before pulling new :latest.
 # If the image doesn't exist locally (first-ever deploy), skip — nothing to
 # roll back to, and the inline `|| true` keeps set -u from tripping.

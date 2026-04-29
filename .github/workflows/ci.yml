@@ -202,31 +202,26 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           if git diff --name-only "$base"...HEAD | grep -qE '^infra/azure/cloud-init\.yaml$'; then
-            echo "::warning file=infra/azure/cloud-init.yaml::cloud-init.yaml changed in this PR. The live VM still runs scripts baked in at first-boot — diff against /usr/local/bin/refresh-env on the VM and apply any needed changes by SSH, or plan a re-provision."
+            echo "::warning file=infra/azure/cloud-init.yaml::cloud-init.yaml changed in this PR. Most cloud-init contents (systemd units, runcmd, cert-expiry-check, /etc/codetutor/env.conf) are still consumed only at first-boot, so the live VM does not pick them up automatically. refresh-env IS deploy-synced from infra/scripts/refresh-env.sh, so changes there land on every deploy. For other edits, plan a VM reprovision or apply manually via SSH/az run-command."
           else
             echo "cloud-init.yaml unchanged in this PR."
           fi
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Shellcheck embedded refresh-env script
+      - name: Shellcheck refresh-env script
+        # refresh-env was extracted from cloud-init.yaml's inline write_files
+        # into infra/scripts/refresh-env.sh on 2026-04-29 to close the drift
+        # gap (live VM no longer froze the script at first-boot). The main
+        # shellcheck job picks this up via its `*.sh` glob, but linting it
+        # explicitly here guards against accidentally renaming/relocating it
+        # in a way that would silently bypass the canonical-source contract.
         run: |
           set -euo pipefail
-          mkdir -p /tmp/cloud-init-extract
-          awk '
-            /^  - path: \/usr\/local\/bin\/refresh-env$/ { capture = 1; next }
-            capture && emitting && /^  - path:/ { exit }
-            capture && /^    content: \|/ { emitting = 1; next }
-            emitting {
-              # Strip the 6-space YAML indent from the heredoc body.
-              sub(/^      /, "")
-              print
-            }
-          ' infra/azure/cloud-init.yaml > /tmp/cloud-init-extract/refresh-env
-          if [ ! -s /tmp/cloud-init-extract/refresh-env ]; then
-            echo "::error::Failed to extract refresh-env from cloud-init.yaml — check the awk delimiter in ci.yml"
+          if [ ! -f infra/scripts/refresh-env.sh ]; then
+            echo "::error::infra/scripts/refresh-env.sh missing — this is the canonical source consumed by both first-boot (cloud-init.yaml) and every deploy (vm-deploy-backend.sh). Restore it or update both touchpoints."
             exit 1
           fi
-          shellcheck --severity=warning /tmp/cloud-init-extract/refresh-env
+          shellcheck --severity=warning infra/scripts/refresh-env.sh
 
   line-endings:
     name: Line-endings (Windows checkout)

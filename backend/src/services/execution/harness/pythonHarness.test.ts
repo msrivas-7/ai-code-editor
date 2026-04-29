@@ -89,7 +89,13 @@ describe("pythonHarness (HarnessBackend adapter)", () => {
 // Spawns python3 against the generated harness in a tmp dir. Proves the
 // harness survives the full round-trip: nonce-in-env → subprocess-per-test →
 // signed base64 envelope → parseSignedEnvelope.
-describe("pythonHarness integration (runs python3)", () => {
+//
+// testTimeout=30s: each test spawns python3 (cold-start ~1.5s on Linux,
+// 3-5s on Windows runners) plus the harness's own 20s spawnSync ceiling.
+// Default vitest testTimeout (5s) flaked under Windows CI when cold-start
+// + harness setup ate the budget. 30s gives the Windows runner real
+// headroom while still failing fast on a true hang.
+describe("pythonHarness integration (runs python3)", { timeout: 30_000 }, () => {
   const hasPython =
     spawnSync("python3", ["--version"], { encoding: "utf8" }).status === 0;
 
