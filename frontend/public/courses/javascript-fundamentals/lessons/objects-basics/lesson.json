@@ -3,7 +3,7 @@
   "courseId": "javascript-fundamentals",
   "title": "Objects",
   "description": "Group related values under named keys with plain JavaScript objects.",
-  "order": 7,
+  "order": 8,
   "language": "javascript",
   "estimatedMinutes": 20,
   "objectives": [

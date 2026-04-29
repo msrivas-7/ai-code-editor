@@ -1,0 +1,181 @@
+{
+  "id": "js-debugging-basics",
+  "courseId": "javascript-fundamentals",
+  "title": "Debugging",
+  "description": "Find and fix the bug — console.log, stack traces, and the common JS pitfalls.",
+  "order": 9,
+  "language": "javascript",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Use console.log to inspect values mid-function",
+    "Read code top-down looking for the gap between intent and behavior",
+    "Recognize common JS bug patterns when you meet one"
+  ],
+  "teachesConceptTags": [
+    "debugging-mindset",
+    "console-log-debugging",
+    "common-bugs"
+  ],
+  "usesConceptTags": [
+    "function-declaration",
+    "parameters",
+    "return",
+    "function-call",
+    "let",
+    "const",
+    "if",
+    "else",
+    "comparison",
+    "for-loop",
+    "arrays",
+    "array-index",
+    "array-length",
+    "objects",
+    "property-access",
+    "console-log",
+    "strings"
+  ],
+  "completionRules": [
+    {
+      "type": "required_file_contains",
+      "file": "main.js",
+      "pattern": "function findMax"
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "all positive",
+          "call": "findMax([3, 1, 4, 1, 5])",
+          "expected": "5"
+        },
+        {
+          "name": "single element",
+          "call": "findMax([7])",
+          "expected": "7"
+        },
+        {
+          "name": "all negative — the bug-revealing test",
+          "call": "findMax([-5, -2, -10])",
+          "expected": "-2"
+        },
+        {
+          "name": "mixed values",
+          "call": "findMax([100, -200, 50, -50])",
+          "expected": "100"
+        },
+        {
+          "name": "all zero",
+          "call": "findMax([0, 0, 0])",
+          "expected": "0",
+          "hidden": true,
+          "category": "edge-case"
+        }
+      ]
+    }
+  ],
+  "prerequisiteLessonIds": [
+    "objects-basics"
+  ],
+  "recap": "Bugs are the gap between what you wrote and what you meant. The move you used in this lesson — print the variable you suspect, watch how it actually changes — works every time. You also met four bug shapes that show up over and over: a wrong initial value (the main task), an off-by-one (`lastItem`), a missing `return` (`countEvens`), and the silent reassignment-vs-discard trap (`greetEveryone`). The fastest coders aren't the ones who don't write bugs — they're the ones who recognize the shape and fix it in 30 seconds.",
+  "practicePrompts": [
+    "Take any function you wrote in an earlier lesson and add a console.log inside its loop. What changes when the input changes?",
+    "Throw an error on purpose: try calling a method that doesn't exist (e.g. `\"hi\".reverse()` — which doesn't exist on strings). Read what the message says."
+  ],
+  "practiceExercises": [
+    {
+      "id": "fix-last-item",
+      "title": "Fix: lastItem returns undefined",
+      "prompt": "The function `lastItem(arr)` is supposed to return the last element of the array. Right now it returns `undefined` for any non-empty array. The body is one line — but that one line is wrong. Fix it.",
+      "goal": "Notice that the LAST index is `length - 1`, not `length`.",
+      "starterCode": "function lastItem(arr) {\n  // BUG: returns undefined. Why?\n  return arr[arr.length];\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "function lastItem" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "three numbers", "call": "lastItem([1, 2, 3])", "expected": "3" },
+            { "name": "single element", "call": "lastItem([42])", "expected": "42" },
+            { "name": "strings", "call": "lastItem([\"a\", \"b\", \"c\"])", "expected": "\"c\"" },
+            {
+              "name": "long array",
+              "call": "lastItem([10, 20, 30, 40, 50])",
+              "expected": "50",
+              "hidden": true
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "Try `console.log(arr.length)` for an array like `[1, 2, 3]`. What does it print?",
+        "Array indexes start at 0. So the LAST index is one less than something you already know.",
+        "`return arr[arr.length - 1];`"
+      ]
+    },
+    {
+      "id": "fix-count-evens",
+      "title": "Fix: countEvens always returns undefined",
+      "prompt": "The function `countEvens(numbers)` should return how many even numbers are in the array. Right now every test gets `undefined`. The loop runs and counts correctly, yet tests still fail.",
+      "goal": "Notice the bug between 'computed correctly' and 'handed back'.",
+      "starterCode": "function countEvens(numbers) {\n  let count = 0;\n  for (const n of numbers) {\n    if (n % 2 === 0) count++;\n  }\n  // (the function ends here)\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "function countEvens" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "mixed", "call": "countEvens([1, 2, 3, 4])", "expected": "2" },
+            { "name": "all odd", "call": "countEvens([1, 3, 5])", "expected": "0" },
+            { "name": "all even", "call": "countEvens([2, 4, 6, 8])", "expected": "4" },
+            { "name": "empty", "call": "countEvens([])", "expected": "0", "hidden": true }
+          ]
+        }
+      ],
+      "hints": [
+        "After the loop ends, what does the function actually hand back to its caller?",
+        "A function with no explicit `return` returns `undefined`. The tests are inspecting whatever the function hands back.",
+        "Add `return count;` as the last line of the function body."
+      ]
+    },
+    {
+      "id": "fix-greet-everyone",
+      "title": "Fix: greetEveryone returns an empty string",
+      "prompt": "The function `greetEveryone(names)` should return one long string with greetings for every name. Right now it always returns `\"\"`. The loop runs and the line concatenates — but the result keeps disappearing. Fix it.",
+      "goal": "Spot the silent reassignment-vs-discard bug — `a + b` doesn't change `a`; `a += b` does.",
+      "starterCode": "function greetEveryone(names) {\n  let greeting = \"\";\n  for (const name of names) {\n    // BUG: this line builds a string but throws it away.\n    greeting + \"Hello, \" + name + \"! \";\n  }\n  return greeting.trim();\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "function greetEveryone" },
+        {
+          "type": "function_tests",
+          "tests": [
+            {
+              "name": "two names",
+              "call": "greetEveryone([\"Ada\", \"Babbage\"])",
+              "expected": "\"Hello, Ada! Hello, Babbage!\""
+            },
+            {
+              "name": "single name",
+              "call": "greetEveryone([\"Ada\"])",
+              "expected": "\"Hello, Ada!\""
+            },
+            {
+              "name": "empty list",
+              "call": "greetEveryone([])",
+              "expected": "\"\""
+            },
+            {
+              "name": "three names",
+              "call": "greetEveryone([\"a\", \"b\", \"c\"])",
+              "expected": "\"Hello, a! Hello, b! Hello, c!\"",
+              "hidden": true
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "The loop SHOULD be growing `greeting` each iteration. Is it actually growing? How would you check?",
+        "`greeting + \"...\"` builds a new string but doesn't save it anywhere. You need to put the new string back into `greeting`.",
+        "`greeting += \"Hello, \" + name + \"! \";`  — the `+=` is the assignment that was missing."
+      ]
+    }
+  ]
+}

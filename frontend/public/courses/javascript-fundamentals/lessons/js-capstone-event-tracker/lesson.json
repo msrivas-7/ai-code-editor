@@ -1,0 +1,252 @@
+{
+  "id": "js-capstone-event-tracker",
+  "courseId": "javascript-fundamentals",
+  "title": "Capstone: Event Tracker",
+  "description": "Combine arrays, objects, and callbacks to model and query a small calendar.",
+  "order": 11,
+  "language": "javascript",
+  "estimatedMinutes": 30,
+  "objectives": [
+    "Model real data — events with title, date, and attendees — as an array of objects",
+    "Filter and transform that data with array methods",
+    "Compose small functions into a useful summary"
+  ],
+  "teachesConceptTags": [
+    "data-modeling",
+    "array-of-objects",
+    "function-composition"
+  ],
+  "usesConceptTags": [
+    "function-declaration",
+    "parameters",
+    "return",
+    "function-call",
+    "let",
+    "const",
+    "if",
+    "else",
+    "comparison",
+    "for-loop",
+    "arrays",
+    "array-index",
+    "array-length",
+    "array-methods",
+    "filter",
+    "map",
+    "objects",
+    "property-access",
+    "object-keys",
+    "strings",
+    "console-log",
+    "arrow-functions",
+    "callbacks"
+  ],
+  "completionRules": [
+    {
+      "type": "required_file_contains",
+      "file": "main.js",
+      "pattern": "function eventsOn"
+    },
+    {
+      "type": "required_file_contains",
+      "file": "main.js",
+      "pattern": "function attendeesOn"
+    },
+    {
+      "type": "required_file_contains",
+      "file": "main.js",
+      "pattern": "function summarize"
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "eventsOn returns matching events",
+          "call": "eventsOn([{title:'A',date:'2025-01-15',attendees:['Ada']},{title:'B',date:'2025-01-16',attendees:['Babbage']}], '2025-01-15').map(e => e.title)",
+          "expected": "[\"A\"]"
+        },
+        {
+          "name": "eventsOn returns empty array when nothing matches",
+          "call": "eventsOn([{title:'A',date:'2025-01-15',attendees:[]}], '2099-01-01')",
+          "expected": "[]"
+        },
+        {
+          "name": "eventsOn keeps multiple matches",
+          "call": "eventsOn([{title:'A',date:'2025-01-15',attendees:[]},{title:'B',date:'2025-01-15',attendees:[]},{title:'C',date:'2025-01-16',attendees:[]}], '2025-01-15').length",
+          "expected": "2"
+        },
+        {
+          "name": "attendeesOn collects unique sorted names",
+          "call": "attendeesOn([{title:'A',date:'2025-01-15',attendees:['Ada','Babbage']},{title:'B',date:'2025-01-15',attendees:['Babbage','Curie']}], '2025-01-15')",
+          "expected": "[\"Ada\",\"Babbage\",\"Curie\"]"
+        },
+        {
+          "name": "attendeesOn dedupes the same name twice",
+          "call": "attendeesOn([{title:'A',date:'2025-01-15',attendees:['Ada','Ada']}], '2025-01-15')",
+          "expected": "[\"Ada\"]"
+        },
+        {
+          "name": "attendeesOn returns empty for a date with no events",
+          "call": "attendeesOn([{title:'A',date:'2025-01-15',attendees:['Ada']}], '2099-01-01')",
+          "expected": "[]"
+        },
+        {
+          "name": "summarize formats single event single person",
+          "call": "summarize([{title:'A',date:'2025-01-15',attendees:['Ada']}], '2025-01-15')",
+          "expected": "\"2025-01-15: 1 event, 1 person\""
+        },
+        {
+          "name": "summarize pluralizes events and people",
+          "call": "summarize([{title:'A',date:'2025-01-15',attendees:['Ada','Babbage']},{title:'B',date:'2025-01-15',attendees:['Curie']}], '2025-01-15')",
+          "expected": "\"2025-01-15: 2 events, 3 people\""
+        },
+        {
+          "name": "summarize handles a quiet day",
+          "call": "summarize([{title:'A',date:'2025-01-15',attendees:['Ada']}], '2099-01-01')",
+          "expected": "\"2099-01-01: 0 events, 0 people\""
+        },
+        {
+          "name": "summarize: same person at two events counts once",
+          "call": "summarize([{title:'A',date:'2025-01-15',attendees:['Ada']},{title:'B',date:'2025-01-15',attendees:['Ada']}], '2025-01-15')",
+          "expected": "\"2025-01-15: 2 events, 1 person\"",
+          "hidden": true,
+          "category": "dedup"
+        },
+        {
+          "name": "summarize: one event with no attendees still pluralizes correctly",
+          "call": "summarize([{title:'A',date:'2025-01-15',attendees:[]}], '2025-01-15')",
+          "expected": "\"2025-01-15: 1 event, 0 people\"",
+          "hidden": true,
+          "category": "plural-zero"
+        }
+      ]
+    },
+    {
+      "type": "expected_stdout",
+      "expected": "2025-01-15: 2 events, 3 people"
+    }
+  ],
+  "prerequisiteLessonIds": [
+    "mini-project"
+  ],
+  "recap": "You modeled real data — events with title, date, and a list of attendees — as an array of objects. You wrote three small functions, each doing one thing, and `summarize` composed the other two into a useful one-line answer. That's the shape of most real code: small, focused functions, composed into something the user actually wants to read.",
+  "practicePrompts": [
+    "Add a `cancel(events, title)` function that returns a new array with that event removed.",
+    "What if events had a `category` field (`work`, `personal`, etc)? Add a `categoryCounts(events)` function that returns an object mapping categories to counts."
+  ],
+  "practiceExercises": [
+    {
+      "id": "count-on",
+      "title": "Count events on a date",
+      "prompt": "Write `countOn(events, date)` that returns just the number of events scheduled on the given date. Build it by composing `eventsOn` if you like.",
+      "goal": "Practice using filter + length together — a common pattern.",
+      "starterCode": "function countOn(events, date) {\n  // TODO: return how many events fall on `date`\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "function countOn" },
+        {
+          "type": "function_tests",
+          "tests": [
+            {
+              "name": "two on date",
+              "call": "countOn([{title:'A',date:'2025-01-15',attendees:[]},{title:'B',date:'2025-01-15',attendees:[]},{title:'C',date:'2025-01-16',attendees:[]}], '2025-01-15')",
+              "expected": "2"
+            },
+            {
+              "name": "none on date",
+              "call": "countOn([{title:'A',date:'2025-01-15',attendees:[]}], '2099-01-01')",
+              "expected": "0"
+            },
+            {
+              "name": "empty list",
+              "call": "countOn([], '2025-01-15')",
+              "expected": "0",
+              "hidden": true
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "You're filtering by date, then counting. Two array operations.",
+        "`events.filter(e => e.date === date)` gives the matching events. What attribute tells you how many?",
+        "`return events.filter(e => e.date === date).length;`"
+      ]
+    },
+    {
+      "id": "titles-on",
+      "title": "Sorted titles on a date",
+      "prompt": "Write `titlesOn(events, date)` that returns just the titles (strings) of events on that date, sorted alphabetically.",
+      "goal": "Practice chaining filter → map → sort.",
+      "starterCode": "function titlesOn(events, date) {\n  // TODO: return an array of titles for events on `date`, sorted A-Z\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "function titlesOn" },
+        {
+          "type": "function_tests",
+          "tests": [
+            {
+              "name": "sorts results",
+              "call": "titlesOn([{title:'Demo',date:'2025-01-15',attendees:[]},{title:'Coffee',date:'2025-01-15',attendees:[]},{title:'Standup',date:'2025-01-15',attendees:[]}], '2025-01-15')",
+              "expected": "[\"Coffee\",\"Demo\",\"Standup\"]"
+            },
+            {
+              "name": "filters by date",
+              "call": "titlesOn([{title:'A',date:'2025-01-15',attendees:[]},{title:'B',date:'2025-01-16',attendees:[]}], '2025-01-15')",
+              "expected": "[\"A\"]"
+            },
+            {
+              "name": "empty when no matches",
+              "call": "titlesOn([], '2025-01-15')",
+              "expected": "[]",
+              "hidden": true
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "Three steps: filter the events on this date, map to just titles, then sort.",
+        "Chain them: `events.filter(...).map(...).sort()`",
+        "`return events.filter(e => e.date === date).map(e => e.title).sort();`"
+      ]
+    },
+    {
+      "id": "events-between",
+      "title": "Events in a date range",
+      "prompt": "Write `eventsBetween(events, startDate, endDate)` that returns the events whose `date` falls within the inclusive range `[startDate, endDate]`. Dates are strings in `YYYY-MM-DD` format — comparing them lexically (with `<=` and `>=`) gives the right answer because the format sorts alphabetically the same way it sorts chronologically.",
+      "goal": "Practice filtering with a two-sided condition; reinforce that `YYYY-MM-DD` strings are date-comparable.",
+      "starterCode": "// eventsBetween — return events whose date is in [startDate, endDate], inclusive.\n// Dates are YYYY-MM-DD strings; you can compare them with <= and >= directly.\n\nfunction eventsBetween(events, startDate, endDate) {\n  // TODO\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "function eventsBetween" },
+        {
+          "type": "function_tests",
+          "tests": [
+            {
+              "name": "inclusive on both ends",
+              "call": "eventsBetween([{title:'A',date:'2025-01-15',attendees:[]},{title:'B',date:'2025-01-20',attendees:[]},{title:'C',date:'2025-01-25',attendees:[]}], '2025-01-15', '2025-01-20').map(e => e.title)",
+              "expected": "[\"A\",\"B\"]"
+            },
+            {
+              "name": "filters out events outside the range",
+              "call": "eventsBetween([{title:'A',date:'2025-01-10',attendees:[]},{title:'B',date:'2025-01-20',attendees:[]}], '2025-01-15', '2025-01-25').map(e => e.title)",
+              "expected": "[\"B\"]"
+            },
+            {
+              "name": "single-day range matches that exact day",
+              "call": "eventsBetween([{title:'A',date:'2025-01-15',attendees:[]},{title:'B',date:'2025-01-16',attendees:[]}], '2025-01-15', '2025-01-15').map(e => e.title)",
+              "expected": "[\"A\"]"
+            },
+            {
+              "name": "empty when nothing in range",
+              "call": "eventsBetween([{title:'A',date:'2025-01-15',attendees:[]}], '2099-01-01', '2099-01-31')",
+              "expected": "[]",
+              "hidden": true
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "You're filtering by TWO conditions joined with `&&` (logical AND).",
+        "Each event's date must be `>= startDate` AND `<= endDate`. String comparison works because `YYYY-MM-DD` sorts correctly.",
+        "`return events.filter(e => e.date >= startDate && e.date <= endDate);`"
+      ]
+    }
+  ]
+}
