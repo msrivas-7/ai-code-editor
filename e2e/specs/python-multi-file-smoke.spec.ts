@@ -89,6 +89,13 @@ test.describe("python multi-file smoke course (Phase 22F2A — B4)", () => {
     // exercise the round-trip Monaco → backend → runner → validator path.
     await setMonacoValue(page, 'from helper import greet\n\nprint(greet("world"))\n');
     await S.lessonRunButton(page).click();
+    // Wait for run output before Check My Work — same pattern as
+    // js-smoke.spec.ts:80 (Run produces stdout; Check My Work triggers
+    // the validator + LessonCompletePanel).
+    await expect(S.outputPanel(page)).toContainText(/Hello, world!/, {
+      timeout: 30_000,
+    });
+    await S.checkMyWorkButton(page).click();
     await expectLessonComplete(page);
   });
 });
