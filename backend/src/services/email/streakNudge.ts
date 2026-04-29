@@ -51,8 +51,8 @@ export interface BuiltStreakNudge {
   subject: string;
   text: string;
   html: string;
-  /** Reply-To address — replies route to the operator inbox via the
-   *  forward-from support@codetutor.msrivas.com (ImprovMX → gmail). */
+  /** Reply-To address — replies route to the operator inbox via
+   *  iCloud Custom Email Domain on msrivas.com. */
   replyTo: string;
   /** Friendly From display name. */
   displayName: string;

@@ -150,7 +150,10 @@ test.describe("Phase 22D: streak-nudge unsubscribe route", () => {
       );
       expect(res.status()).toBe(200);
       const body = await res.text();
-      expect(body).toContain("You're unsubscribed");
+      // `escapeHtml` turns apostrophes into `&#39;`, so the literal title
+      // "You're unsubscribed" never appears verbatim in the body. Assert
+      // on a copy substring that survives escaping unchanged.
+      expect(body).toContain("streak nudges anymore");
       expect(res.headers()["content-type"]).toMatch(/text\/html/);
       // The DB flag must now be false.
       expect(await readEmailOptIn(userId)).toBe(false);

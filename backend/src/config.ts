@@ -159,14 +159,14 @@ export const config = {
 
     // Display name + reply-to for the streak nudge.
     //   From:      CodeTutor <noreply@mail.codetutor.msrivas.com>  (acsSenderEmail)
-    //   Reply-To:  support@codetutor.msrivas.com                  (forwards to
-    //              operator gmail via ImprovMX — see docs/EMAIL_SETUP.md)
+    //   Reply-To:  support@msrivas.com                             (routed to
+    //              operator inbox via iCloud Custom Email Domain)
     // Display name is what mail clients show in the inbox list; the
     // address itself is the DKIM-signed sender. Reply-To diverges so
     // user replies land in a monitored inbox, not /dev/null.
     streakNudgeFromName: process.env.STREAK_NUDGE_FROM_NAME ?? "CodeTutor",
     streakNudgeReplyTo:
-      process.env.STREAK_NUDGE_REPLY_TO ?? "support@codetutor.msrivas.com",
+      process.env.STREAK_NUDGE_REPLY_TO ?? "support@msrivas.com",
 
     // Kill switch. On-call sets this to "1" via .env to instantly stop
     // the daily cron from sending without a redeploy. Sweeper checks

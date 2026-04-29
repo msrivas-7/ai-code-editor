@@ -114,6 +114,11 @@ services:
       ACS_CONNECTION_STRING: "${ACS_CONNECTION_STRING:-}"
       ACS_SENDER_EMAIL: "${ACS_SENDER_EMAIL:-}"
       OPERATOR_ALERT_EMAIL: "${OPERATOR_ALERT_EMAIL:-}"
+      # Phase 22D: HMAC secret for streak-nudge unsubscribe links.
+      # Empty in dev (and on first-boot prod) → unsubscribe route returns
+      # 503 + digestSweeper refuses to send (CAN-SPAM floor). Prod fetches
+      # from KV via cloud-init refresh-env.
+      EMAIL_UNSUBSCRIBE_SECRET: "${EMAIL_UNSUBSCRIBE_SECRET:-}"
     volumes:
       # Relative path — Compose resolves it against the compose file location
       # on every host. Works in PowerShell, zsh, bash identically.

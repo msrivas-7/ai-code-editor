@@ -188,7 +188,7 @@ function rateLimitedHtml(): string {
     message:
       "We've seen a lot of requests from your network in a short window. " +
       "Wait a minute and try this link again.",
-    replyTo: "support@codetutor.msrivas.com",
+    replyTo: "support@msrivas.com",
   });
 }
 
