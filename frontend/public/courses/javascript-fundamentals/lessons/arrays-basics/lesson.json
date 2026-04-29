@@ -3,7 +3,7 @@
   "courseId": "javascript-fundamentals",
   "title": "Arrays",
   "description": "Store lists of values and use core array methods like push, map, and filter.",
-  "order": 6,
+  "order": 7,
   "language": "javascript",
   "estimatedMinutes": 20,
   "objectives": [

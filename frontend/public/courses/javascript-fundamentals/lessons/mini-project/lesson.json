@@ -3,7 +3,7 @@
   "courseId": "javascript-fundamentals",
   "title": "Mini project: Habit tracker",
   "description": "Use everything you've learned to build a small habit tracker from scratch.",
-  "order": 8,
+  "order": 10,
   "language": "javascript",
   "estimatedMinutes": 30,
   "objectives": [

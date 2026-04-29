@@ -15,8 +15,12 @@
     "conditionals",
     "loops",
     "functions-basics",
+    "js-functions-deep-dive",
     "arrays-basics",
     "objects-basics",
-    "mini-project"
+    "js-debugging-basics",
+    "mini-project",
+    "js-capstone-event-tracker",
+    "js-capstone-todo-list"
   ]
 }

@@ -1,0 +1,200 @@
+{
+  "id": "js-functions-deep-dive",
+  "courseId": "javascript-fundamentals",
+  "title": "Functions, deeper",
+  "description": "Functions as values, callbacks, arrow functions, and closures.",
+  "order": 6,
+  "language": "javascript",
+  "estimatedMinutes": 20,
+  "objectives": [
+    "Treat functions as values you can store, pass, and return",
+    "Read and write arrow function syntax fluently",
+    "Pass a function to another function (callback)",
+    "Use a closure to remember a value across calls"
+  ],
+  "teachesConceptTags": [
+    "arrow-functions",
+    "function-as-value",
+    "callbacks",
+    "higher-order-functions",
+    "closures"
+  ],
+  "usesConceptTags": [
+    "function-declaration",
+    "parameters",
+    "return",
+    "function-call",
+    "let",
+    "const",
+    "comparison",
+    "if",
+    "else",
+    "strings",
+    "console-log"
+  ],
+  "completionRules": [
+    {
+      "type": "required_file_contains",
+      "file": "main.js",
+      "pattern": "applyTwice"
+    },
+    {
+      "type": "function_tests",
+      "tests": [
+        {
+          "name": "adds three twice",
+          "call": "applyTwice(n => n + 3, 10)",
+          "expected": "16"
+        },
+        {
+          "name": "appends twice",
+          "call": "applyTwice(s => s + \"!\", \"hi\")",
+          "expected": "\"hi!!\""
+        },
+        {
+          "name": "doubles via multiplication",
+          "call": "applyTwice(n => n * 2, 3)",
+          "expected": "12"
+        },
+        {
+          "name": "negative input",
+          "call": "applyTwice(n => n - 1, -5)",
+          "expected": "-7",
+          "hidden": true,
+          "category": "edge-case"
+        },
+        {
+          "name": "identity function",
+          "call": "applyTwice(x => x, 42)",
+          "expected": "42",
+          "hidden": true,
+          "category": "edge-case"
+        }
+      ]
+    }
+  ],
+  "prerequisiteLessonIds": [
+    "functions-basics"
+  ],
+  "recap": "You can now read code that passes functions around — and it stops looking like magic. The main task taught the callback shape: a function takes another function, runs it, gets a value back. The practice exercises went one floor deeper into closures — a returned function that *remembers* a value from where it was made. With these in hand, the array methods in the next lesson (`map`, `filter`) will read like English instead of mystery.",
+  "practicePrompts": [
+    "Write a function that takes another function and a number, and returns whichever is bigger: the result of applying the function to the number, or the number itself.",
+    "Make a function `delay(fn)` that doesn't run `fn` immediately, but returns a function that will run it when called."
+  ],
+  "practiceExercises": [
+    {
+      "id": "make-adder",
+      "title": "Make an adder",
+      "prompt": "Write a function `makeAdder(n)` that returns a NEW function. The new function takes one argument and returns it plus `n`. For example, `const add5 = makeAdder(5)` gives you a function such that `add5(3)` returns `8` and `add5(100)` returns `105`. The same `n` is reused across every call to the returned function — that's a closure.",
+      "goal": "See a closure in action: a returned function that remembers a value from where it was made.",
+      "starterCode": "// makeAdder(n) returns a function that adds n to its input.\n// const add10 = makeAdder(10);\n// add10(5) === 15;  add10(0) === 10;\n\nfunction makeAdder(n) {\n  // TODO: return a function that takes x and returns x + n\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "makeAdder" },
+        {
+          "type": "function_tests",
+          "tests": [
+            { "name": "adds 5", "call": "makeAdder(5)(3)", "expected": "8" },
+            { "name": "adds 10", "call": "makeAdder(10)(0)", "expected": "10" },
+            { "name": "adds 0", "call": "makeAdder(0)(42)", "expected": "42" },
+            {
+              "name": "adds negative",
+              "call": "makeAdder(-3)(10)",
+              "expected": "7",
+              "hidden": true,
+              "category": "edge-case"
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "Inside `makeAdder`, can you return a function that uses `n`?",
+        "`return (x) => x + n;` — the returned function takes `x` and adds the captured `n`.",
+        "When the returned function runs later, JavaScript still remembers what `n` was when `makeAdder` was called. That memory is the closure."
+      ]
+    },
+    {
+      "id": "compose-two",
+      "title": "Compose two functions",
+      "prompt": "Write a function `compose(f, g)` that returns a NEW function. The new function takes one argument `x` and returns the result of running `g` first, then passing that result through `f`. For example, with `addOne = n => n + 1` and `double = n => n * 2`, then `compose(double, addOne)(5)` should return `12` (5 + 1 = 6, 6 * 2 = 12).",
+      "goal": "Return a function that uses both `f` and `g` from the outer call.",
+      "starterCode": "// compose(f, g) returns a function that runs g first, then f.\n// compose(double, addOne)(5) === 12   // (5+1)*2\n\nfunction compose(f, g) {\n  // TODO: return a function that takes x and returns the right thing\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "compose" },
+        {
+          "type": "function_tests",
+          "tests": [
+            {
+              "name": "addOne then double",
+              "call": "compose(n => n * 2, n => n + 1)(5)",
+              "expected": "12"
+            },
+            {
+              "name": "uppercase then exclaim",
+              "call": "compose(s => s + \"!\", s => s.toUpperCase())(\"hi\")",
+              "expected": "\"HI!\""
+            },
+            {
+              "name": "f and g do nothing",
+              "call": "compose(x => x, x => x)(7)",
+              "expected": "7"
+            },
+            {
+              "name": "order matters: g runs first",
+              "call": "compose(arr => arr.length, s => s.split(\"\"))(\"abc\")",
+              "expected": "3",
+              "hidden": true,
+              "category": "ordering"
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "You need to return a function. Think about what that returned function does when it's called later — it has access to both `f` and `g`.",
+        "Inside the returned function, you'll call `g` on the input first, and then pass that result to `f`.",
+        "`return (x) => f(g(x));`"
+      ]
+    },
+    {
+      "id": "once",
+      "title": "Run-it-only-once wrapper",
+      "prompt": "Write a function `once(fn)` that returns a NEW function. The new function calls `fn(...)` the first time it's invoked and returns the result. On every subsequent call it should NOT run `fn` again — it should return the same first result. Useful for things you only ever want to do one time (like an initial setup).",
+      "goal": "Use a closure to remember whether something has happened, plus its result.",
+      "starterCode": "// once(fn) returns a function that calls fn the FIRST time it's called,\n// and on every later call returns the same first result without re-running fn.\n//\n// Example:\n//   let n = 0;\n//   const incOnce = once(() => { n = n + 1; return n; });\n//   incOnce();  // 1\n//   incOnce();  // 1  (still 1 — fn didn't run again)\n//   n;          // 1  (proves fn ran exactly once)\n\nfunction once(fn) {\n  // TODO: return a wrapped function that only runs fn the first time.\n  //       Hint: keep a flag (called or not?) and a stored result\n  //       in variables outside the inner function.\n}\n",
+      "completionRules": [
+        { "type": "required_file_contains", "file": "main.js", "pattern": "once" },
+        {
+          "type": "function_tests",
+          "tests": [
+            {
+              "name": "first call returns the value",
+              "call": "(() => { const f = once(() => 42); return f(); })()",
+              "expected": "42"
+            },
+            {
+              "name": "second call returns same value, fn did not re-run",
+              "call": "(() => { let n = 0; const f = once(() => { n = n + 1; return n; }); f(); f(); return n; })()",
+              "expected": "1"
+            },
+            {
+              "name": "third call still cached",
+              "call": "(() => { let n = 0; const f = once(() => { n = n + 1; return n; }); f(); f(); f(); return f(); })()",
+              "expected": "1"
+            },
+            {
+              "name": "two wrappers are independent",
+              "call": "(() => { const a = once(() => \"A\"); const b = once(() => \"B\"); return a() + b() + a() + b(); })()",
+              "expected": "\"ABAB\"",
+              "hidden": true,
+              "category": "isolation"
+            }
+          ]
+        }
+      ],
+      "hints": [
+        "You need TWO things to remember between calls: a boolean (`hasRun`) and the cached return value (`result`). Declare both inside `once`, before you return the wrapped function.",
+        "Inside the wrapped function: if `hasRun` is true, return `result`. Otherwise call `fn()`, store the answer in `result`, set `hasRun = true`, and return.",
+        "`let hasRun = false; let result; return () => { if (!hasRun) { result = fn(); hasRun = true; } return result; };`"
+      ]
+    }
+  ]
+}
