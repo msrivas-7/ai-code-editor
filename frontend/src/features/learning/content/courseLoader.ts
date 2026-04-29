@@ -89,6 +89,24 @@ export async function listPublicCourses(): Promise<Course[]> {
   return all.filter((c) => c.internal !== true);
 }
 
+/**
+ * Phase 22F2A — B6: a course is "completed" when the learner has every
+ * lesson in `course.lessonOrder` in their per-course `completedLessonIds`
+ * set. Used by the dashboard to decide whether to surface the soft-warning
+ * modal before letting the learner enter a course with unmet prerequisites.
+ *
+ * Side-stepped intentionally: percentage-based completion (e.g. 95%). For
+ * the prereq gate we want a hard pedagogical signal, not a fuzzy estimate.
+ */
+export function isCourseCompleted(
+  course: Pick<Course, "lessonOrder">,
+  completedLessonIds: readonly string[],
+): boolean {
+  if (course.lessonOrder.length === 0) return false;
+  const completed = new Set(completedLessonIds);
+  return course.lessonOrder.every((id) => completed.has(id));
+}
+
 export async function loadCourse(courseId: string): Promise<Course> {
   const res = await fetch(`${COURSE_BASE}/${courseId}/course.json`);
   if (!res.ok) {

@@ -16,6 +16,13 @@ FROM ${DEBIAN_BASE}
 # to 4.19.x; bump deliberately alongside a lesson-harness smoke test.
 ARG TSX_VERSION=4.19.2
 
+# Phase 22F2A: pytest is needed for the upcoming `testing-basics` lesson.
+# Same pin-deliberately stance as tsx — a major bump might quietly change
+# fixture lookup or test-collection behavior. Bookworm's PEP 668 marker
+# requires --break-system-packages, which is fine here: the runner is a
+# single-purpose container with no system Python users to contaminate.
+ARG PYTEST_VERSION=8.3.5
+
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -26,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         adduser \
         python3 \
         python3-minimal \
+        python3-pip \
         nodejs \
         npm \
         gcc \
@@ -37,9 +45,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         make \
         coreutils \
         bash \
+    && pip3 install --break-system-packages --no-cache-dir "pytest==${PYTEST_VERSION}" \
     && npm install -g --no-audit --no-fund tsx@${TSX_VERSION} \
     && npm cache clean --force \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /root/.cache
 
 # Non-root runtime user. UID/GID 1100 is unlikely to collide with host users.
 RUN groupadd --system --gid 1100 runner \

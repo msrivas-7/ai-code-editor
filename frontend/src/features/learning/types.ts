@@ -9,6 +9,14 @@ export interface Course {
   language: Language;
   lessonOrder: string[];
   baseVocabulary?: string[];
+  // Phase 22F2A — B5: inherit vocab from parent courses (transitive). Lets
+  // python-intermediate omit the ~50 fundamentals concept tags.
+  inheritsBaseVocabularyFrom?: string[];
+  // Phase 22F2A — B6: course-level prerequisites. Soft-warns the learner
+  // (no hard lock) when they click a course whose prereqs aren't fully
+  // completed. content-lint validates references; LearningDashboardPage
+  // surfaces the warning modal.
+  prerequisiteCourseIds?: string[];
   // When true, this course is kept out of the learner-facing dashboard. Used
   // for architecture-validation courses that aren't ready (or intended) to
   // ship. ContentHealthPage still lists them.

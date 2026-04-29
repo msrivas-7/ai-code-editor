@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LessonLoaderError, listAllCourses } from "./courseLoader";
+import {
+  LessonLoaderError,
+  isCourseCompleted,
+  listAllCourses,
+} from "./courseLoader";
 
 // QA-M1 + QA-M2 coverage. Two behaviors are pinned here:
 //
@@ -162,5 +166,36 @@ describe("listAllCourses — displayOrder sort", () => {
     };
     const got = await listAllCourses();
     expect(got.map((c) => c.id)).toEqual(["good"]);
+  });
+});
+
+// Phase 22F2A — B6: course-completion helper used by the dashboard prereq
+// gate. The dashboard checks "did the learner complete every lesson in this
+// course?" before deciding whether to surface the soft-warning modal.
+describe("isCourseCompleted", () => {
+  it("returns true when every lesson in lessonOrder is completed", () => {
+    expect(
+      isCourseCompleted({ lessonOrder: ["a", "b", "c"] }, ["a", "b", "c"]),
+    ).toBe(true);
+  });
+
+  it("returns true regardless of completed-set order or extras", () => {
+    expect(
+      isCourseCompleted({ lessonOrder: ["a", "b"] }, ["b", "ghost", "a"]),
+    ).toBe(true);
+  });
+
+  it("returns false when any lesson is missing", () => {
+    expect(
+      isCourseCompleted({ lessonOrder: ["a", "b", "c"] }, ["a", "b"]),
+    ).toBe(false);
+  });
+
+  it("returns false on an empty completed set when the course has lessons", () => {
+    expect(isCourseCompleted({ lessonOrder: ["a"] }, [])).toBe(false);
+  });
+
+  it("returns false for an empty course (defensive — no completion claim)", () => {
+    expect(isCourseCompleted({ lessonOrder: [] }, ["a", "b"])).toBe(false);
   });
 });

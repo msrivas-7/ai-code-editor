@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Course, LessonMeta, LessonProgress, CourseProgress } from "../types";
-import { listPublicCourses, loadAllLessonMetas } from "../content/courseLoader";
+import {
+  listPublicCourses,
+  loadAllLessonMetas,
+  isCourseCompleted,
+} from "../content/courseLoader";
 import { useProgressStore, loadAllLessonProgress } from "../stores/progressStore";
 import { useAuthStore } from "../../../auth/authStore";
 import { CourseCard } from "../components/CourseCard";
+import { CoursePrereqWarningModal } from "../components/CoursePrereqWarningModal";
 import { ProgressRing } from "../components/ProgressRing";
 import { AmbientGlyphField } from "../../../components/AmbientGlyphField";
 import { StaggerReveal, StaggerItem } from "../../../components/StaggerReveal";
@@ -29,6 +34,13 @@ export default function LearningDashboardPage() {
   const [courses, setCourses] = useState<CourseData[]>([]);
   const [allLessonProgress, setAllLessonProgress] = useState<LessonProgress[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 22F2A — B6: prereq-warning modal state. Holds the (target, prereq)
+  // pair when the learner clicks a course with unmet prerequisites. The
+  // modal is purely advisory — `Continue` still routes into the target.
+  const [prereqWarning, setPrereqWarning] = useState<{
+    target: Course;
+    prereq: Course;
+  } | null>(null);
 
   useEffect(() => {
     listPublicCourses()
@@ -101,6 +113,34 @@ export default function LearningDashboardPage() {
   const completedCount = activeProgress?.completedLessonIds.length ?? 0;
   const totalCount = activeCourse?.lessons.length ?? 0;
   const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // Phase 22F2A — B6: course-card click resolver. Walks the target course's
+  // `prerequisiteCourseIds` (in declaration order), returns the FIRST one
+  // whose lessons aren't all completed by this learner. Returns null when
+  // every prereq is satisfied (or there are none) — that's the green-light
+  // "navigate immediately" path.
+  function firstUnmetPrereq(target: Course): Course | null {
+    const ids = target.prerequisiteCourseIds ?? [];
+    if (ids.length === 0) return null;
+    for (const id of ids) {
+      const data = courses.find((c) => c.course.id === id);
+      if (!data) continue; // unknown id — content-lint catches; UI tolerant
+      const completed = courseProgressMap[id]?.completedLessonIds ?? [];
+      if (!isCourseCompleted(data.course, completed)) {
+        return data.course;
+      }
+    }
+    return null;
+  }
+
+  function handleCourseOpen(target: Course) {
+    const unmet = firstUnmetPrereq(target);
+    if (unmet) {
+      setPrereqWarning({ target, prereq: unmet });
+      return;
+    }
+    nav(`/learn/course/${target.id}`);
+  }
 
   function lessonTitle(lessonId: string): string {
     const meta = activeCourse?.lessons.find((l) => l.id === lessonId);
@@ -397,7 +437,7 @@ export default function LearningDashboardPage() {
                           course={course}
                           progress={courseProgressMap[course.id] ?? null}
                           lessonCount={lessons.length}
-                          onOpen={() => nav(`/learn/course/${course.id}`)}
+                          onOpen={() => handleCourseOpen(course)}
                         />
                       </StaggerItem>
                     ))}
@@ -408,6 +448,23 @@ export default function LearningDashboardPage() {
           )}
         </div>
       </div>
+      {prereqWarning && (
+        <CoursePrereqWarningModal
+          targetCourseTitle={prereqWarning.target.title}
+          prereqCourseTitle={prereqWarning.prereq.title}
+          onClose={() => setPrereqWarning(null)}
+          onContinue={() => {
+            const t = prereqWarning.target;
+            setPrereqWarning(null);
+            nav(`/learn/course/${t.id}`);
+          }}
+          onGoToPrereq={() => {
+            const p = prereqWarning.prereq;
+            setPrereqWarning(null);
+            nav(`/learn/course/${p.id}`);
+          }}
+        />
+      )}
     </div>
   );
 }

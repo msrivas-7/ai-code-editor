@@ -1,0 +1,26 @@
+{
+  "id": "multi-file-test",
+  "courseId": "_internal-python-smoke",
+  "title": "Multi-file smoke",
+  "description": "Internal: validates _index.json multi-file lesson loading via Python imports.",
+  "order": 1,
+  "language": "python",
+  "estimatedMinutes": 5,
+  "objectives": [
+    "Confirm starter/_index.json is loaded by the frontend course loader",
+    "Confirm both files reach /workspace via writeFiles",
+    "Confirm Python `from helper import greet` resolves at runtime"
+  ],
+  "teachesConceptTags": [],
+  "usesConceptTags": [],
+  "completionRules": [
+    {
+      "type": "expected_stdout",
+      "expected": "Hello, world!"
+    }
+  ],
+  "prerequisiteLessonIds": [],
+  "recap": "Internal-only smoke test that verifies the multi-file lesson chain (scaffolder → loader → backend writeFiles → runner Python imports). Not shown to learners.",
+  "practicePrompts": [],
+  "practiceExercises": []
+}

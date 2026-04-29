@@ -90,6 +90,18 @@ export const courseSchema = z.object({
   language: languageEnum,
   lessonOrder: z.array(kebabOrSnake).min(1),
   baseVocabulary: z.array(z.string()).default([]),
+  // Phase 22F2A — B5: inherit `baseVocabulary` from one or more parent
+  // courses so `python-intermediate` doesn't have to redeclare every
+  // ~50 concept tag from `python-fundamentals` (which would silently drift).
+  // Resolution is transitive (parent of parent) and cycle-checked at lint
+  // time. Order is preserved during merge but duplicates are coalesced.
+  inheritsBaseVocabularyFrom: z.array(courseId).optional(),
+  // Phase 22F2A — B6: course-level prerequisites. Soft-warns the learner
+  // (no hard lock) when they click a course whose prereq courses aren't
+  // fully completed. content-lint validates that referenced course ids
+  // exist + don't form a cycle. Frontend surfaces a confirm modal in
+  // LearningDashboardPage; runtime gating is intentionally absent.
+  prerequisiteCourseIds: z.array(courseId).optional(),
   // Internal courses exist to validate architecture (e.g. the Phase 10 JS
   // smoke-test course) without showing up on the learner dashboard. Dev-only
   // surfaces like ContentHealthPage still list them.

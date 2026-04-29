@@ -1,0 +1,11 @@
+{
+  "id": "_internal-python-smoke",
+  "title": "Internal — Python smoke test",
+  "description": "Validates the Python multi-file lesson chain (scaffolder _index.json → loader → backend writeFiles → runner Python imports). Not shown on the learner dashboard.",
+  "language": "python",
+  "lessonOrder": [
+    "multi-file-test"
+  ],
+  "baseVocabulary": [],
+  "internal": true
+}

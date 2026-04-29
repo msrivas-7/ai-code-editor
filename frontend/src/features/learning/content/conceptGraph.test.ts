@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildConceptGraph, conceptsAvailableBefore } from "./conceptGraph";
+import {
+  buildConceptGraph,
+  conceptsAvailableBefore,
+  resolveInheritedVocabulary,
+} from "./conceptGraph";
 import type { Course, LessonMeta } from "../types";
 
 function meta(
@@ -105,5 +109,105 @@ describe("buildConceptGraph", () => {
       "c",
     );
     expect(avail.sort()).toEqual(["print", "syntax", "vars"]);
+  });
+
+  // Phase 22F2A — B5: inheritsBaseVocabularyFrom
+  it("treats inherited vocabulary the same as the course's own baseVocabulary", () => {
+    const lessons = [meta("a", 1, ["loops"], ["print"])];
+    const g = buildConceptGraph(course(["a"]), asMap(lessons), ["print"]);
+    expect(g.issues.filter((i) => i.kind === "missing")).toHaveLength(0);
+  });
+
+  it("conceptsAvailableBefore includes inherited vocab", () => {
+    const lessons = [meta("a", 1, ["loops"], [])];
+    const avail = conceptsAvailableBefore(
+      course(["a"], ["syntax"]),
+      asMap(lessons),
+      "a",
+      ["print", "vars"],
+    );
+    expect(avail.sort()).toEqual(["print", "syntax", "vars"]);
+  });
+});
+
+describe("resolveInheritedVocabulary", () => {
+  type CourseLike = Pick<Course, "id" | "baseVocabulary"> & {
+    inheritsBaseVocabularyFrom?: string[];
+  };
+
+  function asCourseMap(courses: CourseLike[]): Map<string, CourseLike> {
+    const m = new Map<string, CourseLike>();
+    for (const c of courses) m.set(c.id, c);
+    return m;
+  }
+
+  it("returns empty when the start course has no inheritance", () => {
+    const r = resolveInheritedVocabulary(
+      "child",
+      asCourseMap([{ id: "child", baseVocabulary: ["a", "b"] }]),
+    );
+    expect(r.vocabulary).toEqual([]);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("walks one level of inheritance", () => {
+    const r = resolveInheritedVocabulary(
+      "child",
+      asCourseMap([
+        { id: "parent", baseVocabulary: ["a", "b"] },
+        { id: "child", baseVocabulary: [], inheritsBaseVocabularyFrom: ["parent"] },
+      ]),
+    );
+    expect(r.vocabulary).toEqual(["a", "b"]);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("walks transitively (grandparent → parent → child)", () => {
+    const r = resolveInheritedVocabulary(
+      "child",
+      asCourseMap([
+        { id: "grand", baseVocabulary: ["a"] },
+        { id: "parent", baseVocabulary: ["b"], inheritsBaseVocabularyFrom: ["grand"] },
+        { id: "child", baseVocabulary: [], inheritsBaseVocabularyFrom: ["parent"] },
+      ]),
+    );
+    expect(r.vocabulary.sort()).toEqual(["a", "b"]);
+  });
+
+  it("dedupes overlapping vocab from multiple parents", () => {
+    const r = resolveInheritedVocabulary(
+      "child",
+      asCourseMap([
+        { id: "p1", baseVocabulary: ["a", "shared"] },
+        { id: "p2", baseVocabulary: ["b", "shared"] },
+        { id: "child", baseVocabulary: [], inheritsBaseVocabularyFrom: ["p1", "p2"] },
+      ]),
+    );
+    expect(r.vocabulary.sort()).toEqual(["a", "b", "shared"]);
+  });
+
+  it("surfaces unknown-parent error and skips that branch", () => {
+    const r = resolveInheritedVocabulary(
+      "child",
+      asCourseMap([
+        { id: "p1", baseVocabulary: ["a"] },
+        { id: "child", baseVocabulary: [], inheritsBaseVocabularyFrom: ["p1", "ghost"] },
+      ]),
+    );
+    expect(r.vocabulary).toEqual(["a"]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].kind).toBe("unknown-parent");
+    expect(r.errors[0].parentCourseId).toBe("ghost");
+  });
+
+  it("detects a 2-node cycle (a → b → a)", () => {
+    const r = resolveInheritedVocabulary(
+      "a",
+      asCourseMap([
+        { id: "a", baseVocabulary: ["x"], inheritsBaseVocabularyFrom: ["b"] },
+        { id: "b", baseVocabulary: ["y"], inheritsBaseVocabularyFrom: ["a"] },
+      ]),
+    );
+    expect(r.errors.some((e) => e.kind === "cycle")).toBe(true);
   });
 });

@@ -25,13 +25,20 @@ export interface ConceptGraph {
  *
  * - `overlap`: a lesson declares the same tag in both teaches and uses.
  * - `missing`: a lesson's `uses` tag is not taught by any earlier lesson (by
- *   lessonOrder index) and is not in the course's `baseVocabulary`.
+ *   lessonOrder index) and is not in the course's `baseVocabulary` (or in
+ *   `inheritedVocabulary` from any course in `inheritsBaseVocabularyFrom`).
  * - `duplicate-teach`: two lessons claim to teach the same tag (warning-tier
  *   semantically — surfaced so callers can decide whether to warn or fail).
+ *
+ * `inheritedVocabulary` is the resolved (transitive, cycle-checked) union of
+ * concepts brought in via `course.inheritsBaseVocabularyFrom`. The caller
+ * (content-lint) does the lookup; conceptGraph treats it as opaque pre-known
+ * tags equivalent to `baseVocabulary` for the purpose of "uses" satisfaction.
  */
 export function buildConceptGraph(
   course: Pick<Course, "lessonOrder" | "baseVocabulary">,
   lessons: ReadonlyMap<string, LessonMeta>,
+  inheritedVocabulary: readonly string[] = [],
 ): ConceptGraph {
   const baseVocabulary = course.baseVocabulary ?? [];
   const ordered: ConceptGraphLesson[] = course.lessonOrder
@@ -49,7 +56,7 @@ export function buildConceptGraph(
 
   const issues: ConceptGraphIssue[] = [];
   const everTaughtBy = new Map<string, string>();
-  const availableBefore = new Set<string>(baseVocabulary);
+  const availableBefore = new Set<string>([...baseVocabulary, ...inheritedVocabulary]);
 
   for (const entry of ordered) {
     const teachesSet = new Set(entry.teaches);
@@ -92,14 +99,19 @@ export function buildConceptGraph(
 
 /**
  * Concepts that have been taught strictly before `lessonId` in `course.lessonOrder`,
- * plus `baseVocabulary`. Useful for scoping the tutor's explanations.
+ * plus `baseVocabulary` + any inherited vocabulary. Useful for scoping the tutor's
+ * explanations.
  */
 export function conceptsAvailableBefore(
   course: Pick<Course, "lessonOrder" | "baseVocabulary">,
   lessons: ReadonlyMap<string, LessonMeta>,
   lessonId: string,
+  inheritedVocabulary: readonly string[] = [],
 ): string[] {
-  const available = new Set<string>(course.baseVocabulary ?? []);
+  const available = new Set<string>([
+    ...(course.baseVocabulary ?? []),
+    ...inheritedVocabulary,
+  ]);
   for (const id of course.lessonOrder) {
     if (id === lessonId) break;
     const meta = lessons.get(id);
@@ -107,4 +119,80 @@ export function conceptsAvailableBefore(
     for (const tag of meta.teachesConceptTags ?? []) available.add(tag);
   }
   return Array.from(available).sort();
+}
+
+/**
+ * Resolve the transitive closure of `course.inheritsBaseVocabularyFrom`,
+ * walking parents-of-parents. Returns the union of every reachable course's
+ * `baseVocabulary` (de-duplicated, insertion order preserved).
+ *
+ * `unknownParent` and `cycle` errors short-circuit traversal — caller (content-
+ * lint) is expected to surface them. Other parents continue to resolve so a
+ * single bad reference doesn't black-hole the rest of the inheritance chain.
+ */
+export interface InheritanceError {
+  kind: "unknown-parent" | "cycle";
+  /** The course whose `inheritsBaseVocabularyFrom` triggered the error. */
+  fromCourseId: string;
+  /** The parent id that couldn't be resolved or that closed a cycle. */
+  parentCourseId: string;
+  message: string;
+}
+
+export interface ResolvedInheritance {
+  vocabulary: string[];
+  errors: InheritanceError[];
+}
+
+export function resolveInheritedVocabulary(
+  startCourseId: string,
+  coursesById: ReadonlyMap<
+    string,
+    Pick<Course, "id" | "baseVocabulary"> & {
+      inheritsBaseVocabularyFrom?: string[];
+    }
+  >,
+): ResolvedInheritance {
+  const vocabulary = new Set<string>();
+  const errors: InheritanceError[] = [];
+  const inFlight = new Set<string>();
+
+  const visit = (courseId: string) => {
+    if (inFlight.has(courseId)) {
+      errors.push({
+        kind: "cycle",
+        fromCourseId: startCourseId,
+        parentCourseId: courseId,
+        message: `inheritsBaseVocabularyFrom cycle detected at "${courseId}"`,
+      });
+      return;
+    }
+    const c = coursesById.get(courseId);
+    if (!c) {
+      errors.push({
+        kind: "unknown-parent",
+        fromCourseId: startCourseId,
+        parentCourseId: courseId,
+        message: `inheritsBaseVocabularyFrom references unknown course "${courseId}"`,
+      });
+      return;
+    }
+    inFlight.add(courseId);
+    for (const parentId of c.inheritsBaseVocabularyFrom ?? []) {
+      visit(parentId);
+    }
+    for (const tag of c.baseVocabulary ?? []) {
+      vocabulary.add(tag);
+    }
+    inFlight.delete(courseId);
+  };
+
+  const start = coursesById.get(startCourseId);
+  if (start) {
+    for (const parentId of start.inheritsBaseVocabularyFrom ?? []) {
+      visit(parentId);
+    }
+  }
+
+  return { vocabulary: Array.from(vocabulary), errors };
 }

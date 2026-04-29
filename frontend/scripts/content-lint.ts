@@ -18,7 +18,10 @@ import {
   courseSchema,
   lessonMetaSchema,
 } from "../src/features/learning/content/schema";
-import { buildConceptGraph } from "../src/features/learning/content/conceptGraph";
+import {
+  buildConceptGraph,
+  resolveInheritedVocabulary,
+} from "../src/features/learning/content/conceptGraph";
 import { hasFunctionTestsHarness } from "../src/features/learning/content/harnessSupport";
 import type { z } from "zod";
 
@@ -74,8 +77,29 @@ function main() {
     process.exit(2);
   }
 
+  // Phase 22F2A — B5/B6: parse all courses up-front so cross-course features
+  // (`inheritsBaseVocabularyFrom`, `prerequisiteCourseIds`) can resolve refs.
+  // Per-course schema validation happens in lintCourse below; this pass
+  // builds a tolerant Map<id, Course> for the resolvers — courses with bad
+  // shapes simply don't appear in the map and surface as missing-id errors
+  // when other courses reference them.
+  const coursesById = new Map<string, Course>();
+  for (const courseFolder of courseIds) {
+    const coursePath = join(COURSES_DIR, courseFolder, "course.json");
+    if (!existsSync(coursePath)) continue;
+    try {
+      const raw = JSON.parse(readFileSync(coursePath, "utf8"));
+      const parsed = courseSchema.safeParse(raw);
+      if (parsed.success) {
+        coursesById.set(parsed.data.id, parsed.data);
+      }
+    } catch {
+      // ignore here; lintCourse below surfaces parse errors with proper context
+    }
+  }
+
   for (const courseId of courseIds) {
-    lintCourse(courseId, issues);
+    lintCourse(courseId, coursesById, issues);
   }
 
   report(issues);
@@ -84,7 +108,11 @@ function main() {
 }
 
 // ── Course-level linting ───────────────────────────────────────────
-function lintCourse(courseFolder: string, issues: LintIssue[]) {
+function lintCourse(
+  courseFolder: string,
+  coursesById: ReadonlyMap<string, Course>,
+  issues: LintIssue[],
+) {
   const courseDir = join(COURSES_DIR, courseFolder);
   const coursePath = join(courseDir, "course.json");
   const relCourse = rel(coursePath);
@@ -198,18 +226,81 @@ function lintCourse(courseFolder: string, issues: LintIssue[]) {
   // Cross-lesson checks (orders, prerequisites, concept graph)
   lintOrderContiguity(lessons, relCourse, issues);
   lintPrerequisites(lessons, course.lessonOrder, issues);
-  lintConceptGraph(course, lessons, issues);
+  lintCrossCourseRefs(course, coursesById, relCourse, issues);
+  lintConceptGraph(course, coursesById, lessons, issues);
+}
+
+// Phase 22F2A — B5/B6: validate cross-course id references and surface
+// inheritance/prerequisite errors with course-level pointers. Cycle and
+// missing-id detection happens here; concept-vocab merging happens later
+// in lintConceptGraph via resolveInheritedVocabulary.
+function lintCrossCourseRefs(
+  course: Course,
+  coursesById: ReadonlyMap<string, Course>,
+  relCourse: string,
+  issues: LintIssue[],
+) {
+  for (const parentId of course.inheritsBaseVocabularyFrom ?? []) {
+    if (parentId === course.id) {
+      issues.push({
+        severity: "error",
+        file: relCourse,
+        pointer: "inheritsBaseVocabularyFrom",
+        message: `course "${course.id}" cannot inherit from itself`,
+      });
+    } else if (!coursesById.has(parentId)) {
+      issues.push({
+        severity: "error",
+        file: relCourse,
+        pointer: "inheritsBaseVocabularyFrom",
+        message: `inheritsBaseVocabularyFrom references unknown course "${parentId}"`,
+      });
+    }
+  }
+  for (const prereqId of course.prerequisiteCourseIds ?? []) {
+    if (prereqId === course.id) {
+      issues.push({
+        severity: "error",
+        file: relCourse,
+        pointer: "prerequisiteCourseIds",
+        message: `course "${course.id}" cannot list itself as a prerequisite`,
+      });
+    } else if (!coursesById.has(prereqId)) {
+      issues.push({
+        severity: "error",
+        file: relCourse,
+        pointer: "prerequisiteCourseIds",
+        message: `prerequisiteCourseIds references unknown course "${prereqId}"`,
+      });
+    }
+  }
 }
 
 function lintConceptGraph(
   course: Course,
+  coursesById: ReadonlyMap<string, Course>,
   lessons: Array<{ lesson: Lesson; relPath: string }>,
   issues: LintIssue[],
 ) {
   const lessonMap = new Map<string, Lesson>();
   for (const { lesson } of lessons) lessonMap.set(lesson.id, lesson);
 
-  const graph = buildConceptGraph(course, lessonMap);
+  const inherited = resolveInheritedVocabulary(course.id, coursesById);
+  for (const err of inherited.errors) {
+    // unknown-parent is also caught by lintCrossCourseRefs; cycles are
+    // exclusive to this resolver. Surface both for parity but dedupe by
+    // checking content-lint already pushed the unknown-parent error.
+    if (err.kind === "cycle") {
+      issues.push({
+        severity: "error",
+        file: rel(join(COURSES_DIR, course.id, "course.json")),
+        pointer: "inheritsBaseVocabularyFrom",
+        message: err.message,
+      });
+    }
+  }
+
+  const graph = buildConceptGraph(course, lessonMap, inherited.vocabulary);
   const relPathById = new Map<string, string>();
   for (const { lesson, relPath } of lessons) relPathById.set(lesson.id, relPath);
 

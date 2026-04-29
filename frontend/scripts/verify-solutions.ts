@@ -141,6 +141,10 @@ function verifyLesson(courseFolder: string, lessonFolder: string) {
       solutionFile: mainSolution,
       stdinFile: existsSync(inputPath) ? inputPath : null,
       rules: lesson.completionRules,
+      // Multi-file lessons declare their helpers in starter/_index.json; the
+      // production runtime loads all of them into /workspace. Mirror that
+      // here so `from helper import …` resolves at verify-time too.
+      lessonDir,
     });
   }
 
@@ -170,6 +174,12 @@ interface RunArgs {
   solutionFile: string;
   stdinFile: string | null;
   rules: Rule[];
+  /** Lesson root (e.g. courses/x/lessons/y). When set, starter/_index.json
+   *  helper files are copied into the run tmpdir alongside the entry file
+   *  so multi-file lessons can `import helper` at verify time the same way
+   *  they do at runtime. Practice exercises (single-file by convention)
+   *  leave this unset. */
+  lessonDir?: string;
 }
 
 interface RunSpec {
@@ -189,13 +199,38 @@ function runSpecFor(language: Language, entry: string): RunSpec | null {
 }
 
 function runRulesAgainstSolution(args: RunArgs) {
-  const { where, language, solutionFile, stdinFile, rules } = args;
+  const { where, language, solutionFile, stdinFile, rules, lessonDir } = args;
   const entry = entryFileFor(language);
 
   const tmp = mkdtempSync(join(tmpdir(), "verify-sol-"));
   try {
     const mainPath = join(tmp, entry);
     cpSync(solutionFile, mainPath);
+
+    // Multi-file: starter/_index.json lists every file the production loader
+    // pushes into /workspace. Copy the non-entry ones into tmp so `import
+    // helper` resolves. Solution may override a starter helper by placing a
+    // sibling file in solution/ — prefer that, otherwise fall back to the
+    // starter version. content-lint already validates _index.json shape +
+    // file existence, so this side trusts it.
+    if (lessonDir) {
+      const starterDir = join(lessonDir, "starter");
+      const indexJsonPath = join(starterDir, "_index.json");
+      if (existsSync(indexJsonPath)) {
+        const filenames = JSON.parse(readFileSync(indexJsonPath, "utf8")) as string[];
+        const solutionFileDir = dirname(solutionFile);
+        for (const f of filenames) {
+          if (f === entry) continue;
+          const solutionOverride = join(solutionFileDir, f);
+          const starterFallback = join(starterDir, f);
+          const src = existsSync(solutionOverride) ? solutionOverride : starterFallback;
+          if (existsSync(src)) {
+            cpSync(src, join(tmp, f));
+          }
+        }
+      }
+    }
+
     const stdinText = stdinFile ? readFileSync(stdinFile, "utf8") : "";
     const solutionSource = readFileSync(solutionFile, "utf8");
 
