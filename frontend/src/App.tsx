@@ -10,7 +10,7 @@ import { RequireAdmin } from "./auth/RequireAdmin";
 import { HydrationGate } from "./auth/HydrationGate";
 import { WelcomeBackOverlay } from "./features/firstRun/WelcomeBackOverlay";
 import { ReplayReturnFocus } from "./auth/ReplayReturnFocus";
-const MarketingPage = lazy(() => import("./pages/MarketingPage"));
+const MarketingPage = lazy(() => import("./features/marketing/study/MarketingHomepage"));
 const WhyNotChatGPTPage = lazy(() => import("./pages/WhyNotChatGPTPage"));
 const StartPage = lazy(() => import("./pages/StartPage"));
 const EditorPage = lazy(() => import("./pages/EditorPage"));

@@ -1,7 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 import { courseRegistryPlugin } from "./scripts/vitePluginCourseRegistry";
-import { discoveryBuildPlugin, discoverySitePlugin } from "./scripts/vitePluginDiscovery";
+import {
+  discoveryBuildPlugin,
+  discoverySitePlugin,
+} from "./scripts/vitePluginDiscovery";
 
 const e2eForwardedFor = process.env.E2E_FORWARDED_FOR?.trim();
 
@@ -57,6 +61,17 @@ export default defineConfig({
         // SPA shell, so it retains a stable shared chunk.
         manualChunks: {
           router: ["react-router-dom"],
+          // Keep Three's reusable math/scene core separate from WebGL renderer
+          // code. Both remain behind ParticleField's lazy import; homepage HTML
+          // and reduced-motion/compact visits must not preload either chunk.
+          "three-core": [
+            fileURLToPath(
+              new URL(
+                "./node_modules/three/build/three.core.js",
+                import.meta.url,
+              ),
+            ),
+          ],
         },
       },
     },
