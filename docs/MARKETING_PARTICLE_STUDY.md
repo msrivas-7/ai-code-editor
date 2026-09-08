@@ -3,6 +3,12 @@
 Status: design approved by the user on 2026-09-07; production integration and
 local validation complete. PR review, CI, merge and production verification remain.
 
+PR: [#50](https://github.com/msrivas-7/CodeTutor-AI/pull/50). Initial E2E run had
+three flaky jobs (onboarding fixture 500, share-button stability, Escape timing);
+only the failed jobs were rerun once and the rerun passed. Review identified
+UX-196 below. A pre-existing Windows POSIX-mode assertion is also masked by later
+successful commands in its CI step; separate CI-hardening scope awaits approval.
+
 Experiment harness: `1692c52e-76b0-4fa4-ae20-a334eb578724`.
 Branch-bound release harness: `79523664-9004-44ba-97b6-6ad58d64c4e2`.
 Evidence: `.agent-harness/browser-evidence/1692c52e-76b0-4fa4-ae20-a334eb578724/`.
@@ -132,7 +138,7 @@ as a substitute. CI-oriented automation supplements those interactions.
 | Public controls | No testing controls or pause; footer destinations restored; actual Continue → dashboard → sign-out → Privacy → home → anonymous first lesson → skip intro/welcome reaches enabled editor controls |
 | Automated | Full frontend suite: 569 tests; typecheck/build; 16 homepage + zero-state first-journey E2E checks passed with retries disabled |
 | Performance | Lighthouse homepage performance 0.98, LCP 2104 ms, CLS 0, TBT 0; why-not page 0.99/LCP 1955 ms. Local optimized desktop sample: 60 frame intervals, median 16.7 ms, p95 16.8 ms, max 17.5 ms at 1280×720/DPR 2 (renderer cap 1.5) |
-| PR/release | Not opened; must obtain Codex review, resolve actionable threads, pass CI, then verify deployed production |
+| PR/release | PR #50 published; initial CI and failed-job E2E rerun green. UX-196 review correction below; production deployment and browser confirmation remain pending. A pre-existing Windows test/fail-fast discrepancy is awaiting scope approval. |
 
 Review images, captured from the optimized local build without changing page content:
 [hero](images/marketing-redesign/hero.png) and
@@ -146,8 +152,8 @@ identifies its commit. These are local-build images, not production proof.
 The first production integration hit the unchanged 120 KB per-chunk gzip budget:
 graphics chunk 131,439 bytes; all JS 632,053 bytes, below the 700 KB total budget.
 Splitting the actual Three package core from its WebGL renderer corrected the
-packaging without raising limits. Final all-JS gzip is 633,893 bytes; largest chunk
-90,511 bytes; CSS 19,657 bytes; HTML 1,194 bytes. Both graphics chunks remain lazy,
+packaging without raising limits. After UX-196, all-JS gzip is 633,954 bytes; largest chunk
+90,513 bytes; CSS 19,657 bytes; HTML 1,193 bytes. Both graphics chunks remain lazy,
 and their successful load/render was verified in the optimized build.
 Development-server timings are not production payload benchmarks; the brief
 desktop frame sample is not GPU time, sustained load or low-end-device proof.
@@ -159,6 +165,17 @@ desktop frame sample is not GPU time, sustained load or low-end-device proof.
   Clamp shape anchors to reachable scroll positions; regression covers 720,
   1000 and 1320px viewport heights. Actual 1440×1320 browser replay confirms a
   complete initial bracket form; production confirmation remains required.
+- **UX-196 — focused artwork disappears during motion interruption:** reviewer
+  finding, reproduced locally (active element became BODY). The media-query and
+  renderer-status transitions now hand focus to the stable headline before
+  removing the artwork control, but leave focus elsewhere untouched. Regression
+  coverage includes reduced motion, compact resize, context loss and the next
+  Tab to the first-lesson action. Actual in-app browser checks passed all three
+  interruption paths, Retry recovery, and preserving Check-stage focus when
+  changing motion preferences. Full frontend 569 tests, build/typecheck, budgets
+  and all 17 marketing E2E checks passed with retries disabled. Release harness
+  `e9ca7c5e-8ee8-4b33-8f45-57c63eb587c5` holds browser evidence; production
+  confirmation remains required.
 
 ## Completion checklist
 
@@ -168,6 +185,6 @@ desktop frame sample is not GPU time, sustained load or low-end-device proof.
 - [x] Substantial local browser evidence and deterministic checks.
 - [x] Final production-route browser pass, screenshots and performance checks.
 - [x] Full relevant automated checks and asset budgets green.
-- [ ] Independent reader review, clean diff, harness and commit.
+- [x] Independent reader review, clean initial diff, harness and commit.
 - [ ] Published PR, clear Codex review, actionable threads resolved, green CI.
 - [ ] Merge, successful deployment, deployed-site browser verification.

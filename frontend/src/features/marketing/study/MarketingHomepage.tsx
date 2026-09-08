@@ -2,6 +2,7 @@ import {
   Component,
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -110,6 +111,12 @@ function StillArt({ shape }: { shape: Shape }) {
 
 export default function MarketingHomepage() {
   const headline = useRef<HTMLHeadingElement>(null);
+  const artworkControl = useRef<HTMLButtonElement>(null);
+  const handOffArtworkFocus = useCallback(() => {
+    if (artworkControl.current === document.activeElement) {
+      headline.current?.focus();
+    }
+  }, []);
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [staticMode, setStaticMode] = useState(
     () =>
@@ -118,6 +125,14 @@ export default function MarketingHomepage() {
   );
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable">(
     "loading",
+  );
+  const handleStatus = useCallback(
+    (next: "loading" | "ready" | "unavailable") => {
+      // Move focus while the control still exists, never after DOM removal.
+      if (next !== "ready") handOffArtworkFocus();
+      setStatus(next);
+    },
+    [handOffArtworkFocus],
   );
   const [attempt, setAttempt] = useState(0);
   const [stage, setStage] = useState(0);
@@ -131,10 +146,13 @@ export default function MarketingHomepage() {
     const query = matchMedia(
       "(prefers-reduced-motion: reduce), (max-width: 640px)",
     );
-    const update = () => setStaticMode(query.matches);
+    const update = () => {
+      if (query.matches) handOffArtworkFocus();
+      setStaticMode(query.matches);
+    };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, []);
+  }, [handOffArtworkFocus]);
   return (
     <main
       ref={setRoot}
@@ -152,7 +170,7 @@ export default function MarketingHomepage() {
               root={root}
               light={false}
               count={420}
-              onStatus={setStatus}
+              onStatus={handleStatus}
             />
           </Suspense>
         </MotionBoundary>
@@ -189,6 +207,7 @@ export default function MarketingHomepage() {
           <StillArt shape="code" />
           {animate && status === "ready" && (
             <button
+              ref={artworkControl}
               type="button"
               className="study-art-input"
               data-field-interaction

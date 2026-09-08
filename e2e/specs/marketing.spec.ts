@@ -173,6 +173,48 @@ test.describe("marketing page (Phase 22C) — anonymous", () => {
 });
 
 test.describe("marketing page (Phase 22C) — reduced motion", () => {
+  for (const interruption of [
+    "reduced motion",
+    "compact viewport",
+    "context loss",
+  ] as const) {
+    test(`hands focused artwork to the headline on ${interruption}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.goto("/");
+      const artwork = page.getByRole("button", {
+        name: /gently rotate the code glyphs/i,
+      });
+      await expect(artwork).toBeVisible();
+      await artwork.focus();
+      await expect(artwork).toBeFocused();
+      if (interruption === "reduced motion") {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+      } else if (interruption === "compact viewport") {
+        await page.setViewportSize({ width: 390, height: 844 });
+      } else {
+        const lost = await page
+          .locator(".motion-study-canvas canvas")
+          .evaluate((canvas) => {
+            const extension = (canvas as HTMLCanvasElement)
+              .getContext("webgl2")
+              ?.getExtension("WEBGL_lose_context");
+            extension?.loseContext();
+            return !!extension;
+          });
+        expect(lost).toBe(true);
+      }
+      await expect(artwork).toHaveCount(0);
+      await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(
+        page.getByRole("link", { name: /try your first lesson/i }).first(),
+      ).toBeFocused();
+    });
+  }
+
   test("responds to a live reduced-motion change without losing demo state", async ({
     page,
   }) => {
@@ -181,10 +223,13 @@ test.describe("marketing page (Phase 22C) — reduced motion", () => {
       .getByRole("group", { name: "Walkthrough stages" })
       .getByRole("button", { name: /Check/ })
       .click();
+    const check = page.getByRole("button", { name: "03 Check" });
+    await check.focus();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(page.locator(".motion-study-canvas canvas")).toHaveCount(0);
     await expect(page.locator("[data-field-interaction]")).toHaveCount(0);
     await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await expect(check).toBeFocused();
     await expect(
       page.getByRole("button", { name: /pause animation/i }),
     ).toHaveCount(0);
