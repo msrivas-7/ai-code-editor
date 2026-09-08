@@ -119,9 +119,7 @@ export default function MarketingHomepage() {
   }, []);
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [staticMode, setStaticMode] = useState(
-    () =>
-      matchMedia("(prefers-reduced-motion: reduce), (max-width: 640px)")
-        .matches,
+    () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable">(
     "loading",
@@ -143,9 +141,7 @@ export default function MarketingHomepage() {
   const destination = isLoggedIn ? "/start" : FIRST_LESSON_CONTRACT.route;
   const cta = isLoggedIn ? "Continue learning" : "Try your first lesson";
   useEffect(() => {
-    const query = matchMedia(
-      "(prefers-reduced-motion: reduce), (max-width: 640px)",
-    );
+    const query = matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => {
       if (query.matches) handOffArtworkFocus();
       setStaticMode(query.matches);

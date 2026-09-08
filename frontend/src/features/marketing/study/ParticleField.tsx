@@ -7,6 +7,8 @@ import {
   particleSeed,
   smoothProgress,
   shapeScrollAnchor,
+  ambientParticleCount,
+  MAX_AMBIENT_MULTIPLIER,
   type Shape,
 } from "./geometry";
 import {
@@ -79,6 +81,9 @@ const vertexShader = `
     // A long-tailed size distribution, not a field of equal-size text icons:
     // tiny distant fragments, readable mid-size glyphs, rare luminous anchors.
     float foregroundSize = 4.0 + pow(seed,2.0)*13.0 + pow(seed,24.0)*28.0;
+    // Compact sculptures need smaller glyphs, not overlapping desktop sprites.
+    // Dispersed particles retain their established varied sizes.
+    foregroundSize *= mix(clamp(scale / 160.0, .35, 1.0), 1.0, spread);
     float backgroundSize = 2.0 + pow(seed,2.0)*5.0 + pow(seed,24.0)*7.0;
     gl_PointSize = mix(foregroundSize,backgroundSize,background) * dpr;
   }
@@ -128,8 +133,10 @@ export default function ParticleField({ root, light, count, onStatus }: Props) {
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 2000);
     camera.position.z = 1000;
     const geometry = new THREE.BufferGeometry();
-    const ambientCount = Math.round(count * 1.5);
-    const total = count + ambientCount;
+    // Allocate a bounded pool once. Resizing changes only the draw range,
+    // preserving the renderer, particle identities and keyboard focus.
+    const total = count + Math.round(count * 1.5 * MAX_AMBIENT_MULTIPLIER);
+    let activeTotal = count;
     const shapes = Object.fromEntries(
       (["code", "read", "ask", "check"] as Shape[]).map((s) => {
         const positions = new Float32Array(total * 3);
@@ -265,6 +272,8 @@ export default function ParticleField({ root, light, count, onStatus }: Props) {
     const resize = () => {
       width = innerWidth;
       height = innerHeight;
+      activeTotal = count + ambientParticleCount(width, height, count);
+      geometry.setDrawRange(0, activeTotal);
       renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
       renderer.setSize(width, height);
       uniforms.viewport.value.set(width, height);
@@ -485,7 +494,7 @@ export default function ParticleField({ root, light, count, onStatus }: Props) {
         spread = uniforms.spread.value;
       const yaw = Math.sin(elapsed * 0.16) * 0.035 + uniforms.tilt.value.x;
       const pitch = uniforms.tilt.value.y;
-      for (let i = 0; i < total; i++) {
+      for (let i = 0; i < activeTotal; i++) {
         const j = i * 3,
           seed = particleSeed(i);
         let x =

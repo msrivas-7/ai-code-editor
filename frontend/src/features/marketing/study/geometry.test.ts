@@ -6,10 +6,20 @@ import {
   particleSeed,
   smoothProgress,
   shapeScrollAnchor,
+  ambientParticleCount,
   type Shape,
 } from "./geometry";
 
 describe("local marketing particle geometry", () => {
+  it("preserves normal-screen density and adds bounded atmosphere on large viewports", () => {
+    expect(ambientParticleCount(390, 844, 420)).toBe(630);
+    expect(ambientParticleCount(1280, 900, 420)).toBe(630);
+    expect(ambientParticleCount(1920, 1080, 420)).toBe(1134);
+    expect(ambientParticleCount(2560, 1440, 420)).toBe(2016);
+    expect(ambientParticleCount(3840, 2160, 420)).toBe(2520);
+    expect(ambientParticleCount(7680, 4320, 420)).toBe(2520);
+    expect(ambientParticleCount(900, 1280, 420)).toBe(630);
+  });
   it("assembles the initial hero before scrolling even in a tall viewport", () => {
     expect(shapeScrollAnchor(430, 1000)).toBe(0);
     expect(shapeScrollAnchor(430, 1320)).toBe(0);

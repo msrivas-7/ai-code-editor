@@ -12,8 +12,11 @@ no mutation of existing paths and chmod only on newly created directories;
 Linux/macOS retain exact POSIX mode assertions. Build/test jobs use explicit
 fail-fast Bash, with native-command and pipeline negative controls on each OS.
 Local backend suite (1424 passed, 29 existing skips), typecheck, baseline and
-governance checks, four shell regressions and actionlint pass; hosted Windows
-confirmation is required before merge.
+governance checks, four shell regressions and actionlint pass. Hosted Windows
+job 101894481739 confirms all 31 localDocker tests pass and deliberate command/
+pipeline failures propagate correctly; CI/E2E/security on 8ba0252 are green and
+Codex returned no new findings. The user then requested the responsive refinement
+below, which needs fresh final-head review and CI before merge.
 
 Experiment harness: `1692c52e-76b0-4fa4-ae20-a334eb578724`.
 Branch-bound release harness: `79523664-9004-44ba-97b6-6ad58d64c4e2`.
@@ -49,7 +52,8 @@ superseded by that explicit authorization. A green unit suite alone is insuffici
 - The header contains only brand and sign-in/dashboard navigation. Local testing
   controls, density selector, theme toggle and free/card/time fine print are gone.
 - The user chose system Reduce Motion handling instead of a pause button after
-  comparing Astra. Reduced-motion and compact layouts show static original glyphs.
+  comparing Astra. Only system Reduce Motion selects static original glyphs;
+  phones retain animation, with smaller sprites inside compact sculptures.
   The public composition stays dark under either system color preference.
 
 The hero is deliberately more cinematic than the baseline. On a 960×863 viewport,
@@ -101,7 +105,7 @@ or establish whole-site accessibility compliance.
 | --- | --- |
 | Direct Three.js Points and original glyph atlas | One scene/draw call, not a DOM element per glyph |
 | DOM-derived scroll keyframes | Reversible native scrolling; no scroll hijacking |
-| 420 foreground + 630 ambient glyphs, capped DPR 1.5 | Current visual choice; not claimed as an optimized device-independent density |
+| 420 foreground + 630–2520 ambient glyphs, capped DPR 1.5 | CSS viewport area increases atmosphere above 1280×900; fixed capped pool/draw range avoids renderer recreation on resize |
 | Four morph targets | Brackets, book, conversation and check reinforce programming/learning |
 | Per-glyph velocity and damped return | Cursor gestures feel carried rather than radially repelled |
 | Static SVG fallback, lazy renderer | Text and acquisition remain available before graphics load or after failure |
@@ -158,8 +162,8 @@ identifies its commit. These are local-build images, not production proof.
 The first production integration hit the unchanged 120 KB per-chunk gzip budget:
 graphics chunk 131,439 bytes; all JS 632,053 bytes, below the 700 KB total budget.
 Splitting the actual Three package core from its WebGL renderer corrected the
-packaging without raising limits. After UX-196, all-JS gzip is 633,954 bytes; largest chunk
-90,513 bytes; CSS 19,657 bytes; HTML 1,193 bytes. Both graphics chunks remain lazy,
+packaging without raising limits. After responsive refinement, all-JS gzip is 634,016 bytes; largest chunk
+90,640 bytes; CSS 19,657 bytes; HTML 1,195 bytes. Both graphics chunks remain lazy,
 and their successful load/render was verified in the optimized build.
 Development-server timings are not production payload benchmarks; the brief
 desktop frame sample is not GPU time, sustained load or low-end-device proof.
@@ -182,6 +186,32 @@ desktop frame sample is not GPU time, sustained load or low-end-device proof.
   and all 17 marketing E2E checks passed with retries disabled. Release harness
   `e9ca7c5e-8ee8-4b33-8f45-57c63eb587c5` holds browser evidence; production
   confirmation remains required.
+- **UX-197 — compact chapter sculpture becomes an overbright cluster:** found
+  during the newly enabled phone-motion browser pass. Foreground sprite sizes
+  now scale with assembled sculpture size; scattered/ambient glyph sizes and
+  normal desktop shapes remain unchanged. The small book silhouette is distinct
+  in the actual in-app browser after the correction.
+
+### User-approved responsive refinement
+
+Phones no longer disable motion by width. Resize retains the scene and focus;
+Reduce Motion still removes it and safely transfers artwork focus to the headline.
+Ambient counts are 630 at normal/phone sizes, 1134 at 1920×1080, 2016 at 2560×1440,
+and capped at 2520 at 3840×2160 and above. These use CSS area, not physical DPR.
+Only active particles are updated/drawn; the fixed 420-particle contours keep
+their identity. All 570 frontend tests and 34 complete Chromium/WebKit marketing
+checks pass without retries. macOS WebKit link traversal uses Apple's documented
+Option-Tab; its default plain Tab skips links, not an application focus defect.
+
+Actual in-app checks cover phone/desktop resize, chapter clarity, walkthrough
+state, focus, light system preference, reduced motion and graphics recovery.
+At 3840×2160 CSS pixels, DOM bounds confirmed centered content/no overflow and
+an 85-frame local sample measured median 16.7 ms, p95 17.6 ms (DPR 1). This is
+not physical-phone, sustained GPU or battery evidence. The in-app screenshot
+capture cropped/tiled the emulated 4K surface; use the valid 1920px capture for
+visual evidence, not those diagnostic captures. Native touch-swipe injection is
+unsupported in this in-app tool: live scrolling was inspected with its scroll
+control, supplemented by touch-context tap/layout checks in Chromium/WebKit.
 
 ## Completion checklist
 

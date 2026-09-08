@@ -173,13 +173,10 @@ test.describe("marketing page (Phase 22C) — anonymous", () => {
 });
 
 test.describe("marketing page (Phase 22C) — reduced motion", () => {
-  for (const interruption of [
-    "reduced motion",
-    "compact viewport",
-    "context loss",
-  ] as const) {
+  for (const interruption of ["reduced motion", "context loss"] as const) {
     test(`hands focused artwork to the headline on ${interruption}`, async ({
       page,
+      browserName,
     }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -192,8 +189,6 @@ test.describe("marketing page (Phase 22C) — reduced motion", () => {
       await expect(artwork).toBeFocused();
       if (interruption === "reduced motion") {
         await page.emulateMedia({ reducedMotion: "reduce" });
-      } else if (interruption === "compact viewport") {
-        await page.setViewportSize({ width: 390, height: 844 });
       } else {
         const lost = await page
           .locator(".motion-study-canvas canvas")
@@ -208,7 +203,11 @@ test.describe("marketing page (Phase 22C) — reduced motion", () => {
       }
       await expect(artwork).toHaveCount(0);
       await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
-      await page.keyboard.press("Tab");
+      // macOS WebKit defaults to skipping links with plain Tab; Option-Tab
+      // is Apple's documented full-navigation shortcut (Safari cpsh003).
+      await page.keyboard.press(
+        browserName === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab",
+      );
       await expect(
         page.getByRole("link", { name: /try your first lesson/i }).first(),
       ).toBeFocused();
@@ -323,6 +322,47 @@ test.describe("marketing page (Phase 22C) — mobile viewport", () => {
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
+  });
+
+  test("keeps animation across phone sizes and stops only for reduced motion", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/");
+    const canvas = page.locator(".motion-study-canvas canvas");
+    const artwork = page.getByRole("button", {
+      name: /gently rotate the code glyphs/i,
+    });
+    await expect(artwork).toBeVisible();
+    await expect(canvas).toHaveCount(1);
+    await artwork.focus();
+    for (const viewport of [
+      { width: 844, height: 390 },
+      { width: 320, height: 740 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect(artwork).toBeFocused();
+      await expect(canvas).toHaveCount(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    // The artwork must not capture vertical touch scrolling.
+    await expect(artwork).toHaveCSS("touch-action", "pan-y");
+    await page.getByRole("button", { name: "03 Check" }).tap();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(canvas).toHaveCount(0);
+    await expect(artwork).toHaveCount(0);
+    await expect(page.locator(".study-still").first()).toBeVisible();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(canvas).toHaveCount(1);
+    await expect(artwork).toBeVisible();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
   });
 
   test("renders without horizontal overflow at iPhone 13 width", async ({

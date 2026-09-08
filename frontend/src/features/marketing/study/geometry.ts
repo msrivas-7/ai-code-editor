@@ -1,5 +1,18 @@
 /** Original contours for the local design study. No reference-site assets. */
 export type Shape = "code" | "read" | "ask" | "check";
+export const MAX_AMBIENT_MULTIPLIER = 4;
+/** Scale atmosphere by CSS viewport area, never physical pixel density. */
+export function ambientParticleCount(
+  width: number,
+  height: number,
+  foreground: number,
+) {
+  const areaScale = Math.max(
+    1,
+    Math.min(MAX_AMBIENT_MULTIPLIER, (width * height) / (1280 * 900)),
+  );
+  return Math.round(foreground * 1.5 * areaScale);
+}
 /** A shape above the viewport midpoint must still assemble at page start. */
 export function shapeScrollAnchor(pageCenter: number, viewportHeight: number) {
   return Math.max(0, pageCenter - viewportHeight / 2);
