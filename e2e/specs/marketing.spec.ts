@@ -1,8 +1,8 @@
-// Phase 22C: marketing page (`/`) e2e. Exercises:
+// Public glyph homepage (`/`) e2e. Preserves Phase 22C acquisition contracts:
 //   - anonymous visitor lands on / and sees the hero claim + nav
 //   - the primary CTA starts the no-signup lesson; signup is secondary
 //   - "Sign in" anchor leads to /login
-//   - "How it works" anchor smooth-scrolls to the Section 2 content
+//   - the walkthrough anchor reaches reversible Read / Ask / Check content
 //   - logged-in users hitting / are NOT redirected; they see the
 //     marketing page with a "Dashboard" affordance and a CTA that
 //     points at /start with "Continue learning" copy
@@ -36,12 +36,11 @@ test.describe("marketing page (Phase 22C) — anonymous", () => {
     await expect(hero).toBeVisible({ timeout: 5_000 });
     await expect(hero).toHaveText(HERO_CLAIM);
 
-    // Match-cut panel renders a JetBrains Mono code line — the typewriter
-    // is mid-animation when the assertion runs, so we assert on the string
-    // literal "Maya" we know lands within the first ~250ms (line 1 of
-    // the new Python TypeError beat).
-    const monoLine = page.getByText(/Maya/, { exact: false });
-    await expect(monoLine.first()).toBeVisible({ timeout: 5_000 });
+    // The linked walkthrough is authored HTML, never a simulated live AI call.
+    await expect(
+      page.getByText("Illustrative walkthrough · not live AI"),
+    ).toBeVisible();
+    await expect(page.getByText("average.py", { exact: true })).toBeVisible();
 
     // Primary CTA (in-hero). Two CTAs on the page (hero + repeat) —
     // both share the label, so .first() is fine.
@@ -49,10 +48,9 @@ test.describe("marketing page (Phase 22C) — anonymous", () => {
     await expect(heroCta.first()).toBeVisible();
     const heroHref = await heroCta.first().getAttribute("href");
     expect(heroHref).toMatch(/\/try\/lesson\/python-fundamentals\/hello-world/);
-    await expect(page.getByRole("link", { name: /create a free account/i })).toHaveAttribute(
-      "href",
-      /\/signup/,
-    );
+    await expect(
+      page.getByRole("link", { name: /create an account/i }),
+    ).toHaveAttribute("href", /\/signup/);
 
     // Top-right Sign in anchor (in the marketing nav).
     const signIn = page.getByRole("link", { name: /^sign in$/i }).first();
@@ -60,48 +58,80 @@ test.describe("marketing page (Phase 22C) — anonymous", () => {
     await expect(signIn).toHaveAttribute("href", /\/login/);
   });
 
-  test("clicking the primary CTA navigates directly to the no-signup lesson", async ({ page }) => {
+  test("clicking the primary CTA navigates directly to the no-signup lesson", async ({
+    page,
+  }) => {
     await page.goto("/");
-    const cta = page.getByRole("link", { name: /try your first lesson/i }).first();
+    const cta = page
+      .getByRole("link", { name: /try your first lesson/i })
+      .first();
     await cta.click();
     await expect(page).toHaveURL(
       /\/try\/lesson\/python-fundamentals\/hello-world$/,
     );
   });
 
-  test("primary action is visible without scrolling on a common laptop screen", async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  test("cinematic introduction never gates the primary action or traps scrolling", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 720 },
+    });
     const page = await context.newPage();
     await page.goto("/");
-    const cta = page.getByRole("link", { name: /try your first lesson/i }).first();
+    const cta = page
+      .getByRole("link", { name: /try your first lesson/i })
+      .first();
     await expect(cta).toBeVisible();
-    const box = await cta.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y + box!.height).toBeLessThanOrEqual(720);
+    // Approved redesign puts the artwork before the headline/CTA. Verify
+    // access instead of retaining the superseded above-the-fold composition.
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await cta.scrollIntoViewIfNeeded();
+    await expect(cta).toBeInViewport();
+    await cta.click();
+    await expect(page).toHaveURL(
+      /\/try\/lesson\/python-fundamentals\/hello-world$/,
+    );
     await context.close();
   });
 
-  test("the three How-it-works beats render below the hero", async ({
+  test("the linked Read Ask Check walkthrough is reversible and useful", async ({
     page,
   }) => {
     await page.goto("/");
-    // Force the section into viewport for assertion. JSDOM-style hash
-    // anchors are flakey under Lenis smooth-scroll; we scroll the
-    // element into view directly instead.
-    await page.locator("#how-it-works").scrollIntoViewIfNeeded();
-
-    await expect(page.getByRole("heading", { name: "Read." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Ask." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Check." })).toBeVisible();
+    await page.getByRole("link", { name: /See how learning happens/ }).click();
+    await expect(page).toHaveURL(/#study-demo$/);
+    const stages = page.getByRole("group", { name: "Walkthrough stages" });
+    await stages.getByRole("button", { name: /Ask/ }).click();
+    await expect(page.getByText(/Trace total after each pass/)).toBeVisible();
+    await stages.getByRole("button", { name: /Check/ }).click();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await expect(
+      page.getByText(/Assignment kept only the last score/),
+    ).toBeVisible();
+    await stages.getByRole("button", { name: /Read/ }).click();
+    await expect(page.locator(".study-output samp")).toHaveText(
+      "3.3333333333333335",
+    );
+    await expect(stages.getByRole("button", { name: /Read/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
-  test("essential How-it-works copy is never animation-gated at zero opacity", async ({ page }) => {
+  test("essential How-it-works copy is never animation-gated at zero opacity", async ({
+    page,
+  }) => {
     await page.goto("/");
-    const section = page.locator("#how-it-works");
-    const hiddenEssential = await section.locator("h3, p").evaluateAll((nodes) =>
-      nodes.filter((node) => Number.parseFloat(getComputedStyle(node).opacity) === 0).length,
-    );
+    const section = page.locator("#study-demo");
+    const hiddenEssential = await section
+      .locator("h3, p")
+      .evaluateAll(
+        (nodes) =>
+          nodes.filter(
+            (node) => Number.parseFloat(getComputedStyle(node).opacity) === 0,
+          ).length,
+      );
     expect(hiddenEssential).toBe(0);
   });
 
@@ -143,6 +173,97 @@ test.describe("marketing page (Phase 22C) — anonymous", () => {
 });
 
 test.describe("marketing page (Phase 22C) — reduced motion", () => {
+  for (const interruption of ["reduced motion", "context loss"] as const) {
+    test(`hands focused artwork to the headline on ${interruption}`, async ({
+      page,
+      browserName,
+    }) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.goto("/");
+      const artwork = page.getByRole("button", {
+        name: /gently rotate the code glyphs/i,
+      });
+      await expect(artwork).toBeVisible();
+      await artwork.focus();
+      await expect(artwork).toBeFocused();
+      if (interruption === "reduced motion") {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+      } else {
+        const lost = await page
+          .locator(".motion-study-canvas canvas")
+          .evaluate((canvas) => {
+            const extension = (canvas as HTMLCanvasElement)
+              .getContext("webgl2")
+              ?.getExtension("WEBGL_lose_context");
+            extension?.loseContext();
+            return !!extension;
+          });
+        expect(lost).toBe(true);
+      }
+      await expect(artwork).toHaveCount(0);
+      await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+      // macOS WebKit defaults to skipping links with plain Tab; Option-Tab
+      // is Apple's documented full-navigation shortcut (Safari cpsh003).
+      await page.keyboard.press(
+        browserName === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab",
+      );
+      await expect(
+        page.getByRole("link", { name: /try your first lesson/i }).first(),
+      ).toBeFocused();
+    });
+  }
+
+  test("responds to a live reduced-motion change without losing demo state", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page
+      .getByRole("group", { name: "Walkthrough stages" })
+      .getByRole("button", { name: /Check/ })
+      .click();
+    const check = page.getByRole("button", { name: "03 Check" });
+    await check.focus();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(page.locator(".motion-study-canvas canvas")).toHaveCount(0);
+    await expect(page.locator("[data-field-interaction]")).toHaveCount(0);
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await expect(check).toBeFocused();
+    await expect(
+      page.getByRole("button", { name: /pause animation/i }),
+    ).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await expect(
+      page.getByRole("link", { name: /try your first lesson/i }).first(),
+    ).toHaveAttribute("href", /\/try\/lesson\//);
+  });
+
+  test("graphics module failure leaves content usable and reload recovers", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.route("**/ParticleField*", (route) => route.abort());
+    await page.goto("/");
+    await expect(page.getByText(/Motion could not load/)).toBeVisible();
+    await page
+      .getByRole("group", { name: "Walkthrough stages" })
+      .getByRole("button", { name: /Ask/ })
+      .click();
+    await expect(page.getByText(/Trace total after each pass/)).toBeVisible();
+    await page.unroute("**/ParticleField*");
+    await page.getByRole("button", { name: "Reload page" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      HERO_CLAIM,
+    );
+    await expect(page.getByText(/Motion could not load/)).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("group", { name: "Walkthrough stages" })
+        .getByRole("button", { name: /Read/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("renders the hero in its final state statically", async ({ page }) => {
     // Force the prefers-reduced-motion media query BEFORE navigation so
     // the very first render of MatchCutHero sees `reduce === true` and
@@ -157,15 +278,12 @@ test.describe("marketing page (Phase 22C) — reduced motion", () => {
     await expect(hero).toBeVisible({ timeout: 3_000 });
     await expect(hero).toHaveText(HERO_CLAIM);
 
-    // The match-cut panel skips its scheduled beats and renders the
-    // final state directly — code visible AND tutor question visible
-    // from first paint, no waiting on the ~8.4s play-through.
-    await expect(page.getByText(/Maya/).first()).toBeVisible({
-      timeout: 3_000,
-    });
+    await expect(page.locator(".motion-study-canvas canvas")).toHaveCount(0);
+    await expect(page.locator("[data-field-interaction]")).toHaveCount(0);
+    await expect(page.locator(".study-still")).toHaveCount(3);
     await expect(
-      page.getByText(/Why does this fail when points is 100\?/),
-    ).toBeVisible({ timeout: 3_000 });
+      page.getByRole("heading", { name: "Find the average score" }),
+    ).toBeVisible();
 
     // CTA still functions.
     const cta = page
@@ -176,7 +294,9 @@ test.describe("marketing page (Phase 22C) — reduced motion", () => {
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   });
 
-  test("360px viewport has no essential horizontal overflow", async ({ browser }) => {
+  test("360px viewport has no essential horizontal overflow", async ({
+    browser,
+  }) => {
     const context = await browser.newContext({
       viewport: { width: 360, height: 800 },
       isMobile: true,
@@ -198,7 +318,52 @@ test.describe("marketing page (Phase 22C) — mobile viewport", () => {
   // iPhone 13 portrait dimensions. Setting just the viewport (rather
   // than `...devices["iPhone 13"]`) sidesteps Playwright's "can't
   // change defaultBrowserType inside describe" constraint.
-  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test.use({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+
+  test("keeps animation across phone sizes and stops only for reduced motion", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/");
+    const canvas = page.locator(".motion-study-canvas canvas");
+    const artwork = page.getByRole("button", {
+      name: /gently rotate the code glyphs/i,
+    });
+    await expect(artwork).toBeVisible();
+    await expect(canvas).toHaveCount(1);
+    await artwork.focus();
+    for (const viewport of [
+      { width: 844, height: 390 },
+      { width: 320, height: 740 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect(artwork).toBeFocused();
+      await expect(canvas).toHaveCount(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    // The artwork must not capture vertical touch scrolling.
+    await expect(artwork).toHaveCSS("touch-action", "pan-y");
+    await page.getByRole("button", { name: "03 Check" }).tap();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(canvas).toHaveCount(0);
+    await expect(artwork).toHaveCount(0);
+    await expect(page.locator(".study-still").first()).toBeVisible();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(canvas).toHaveCount(1);
+    await expect(artwork).toBeVisible();
+    await expect(page.locator(".study-output samp")).toHaveText("8.0");
+  });
 
   test("renders without horizontal overflow at iPhone 13 width", async ({
     page,
@@ -242,19 +407,16 @@ authedTest.describe("marketing page (Phase 22C) — authed nav swap", () => {
     },
   );
 
-  authedTest(
-    "clicking Dashboard navigates to /start",
-    async ({ page }) => {
-      await page.goto("/");
-      // The URL assertion below owns navigation readiness. Avoid making the
-      // click also wait for every scheduled navigation because the public-app
-      // auth handoff can replace the active React subtree during that wait.
-      await page.getByRole("link", { name: /^dashboard/i }).click({
-        noWaitAfter: true,
-      });
-      await authedExpect(page).toHaveURL(/\/start$/, { timeout: 5_000 });
-    },
-  );
+  authedTest("clicking Dashboard navigates to /start", async ({ page }) => {
+    await page.goto("/");
+    // The URL assertion below owns navigation readiness. Avoid making the
+    // click also wait for every scheduled navigation because the public-app
+    // auth handoff can replace the active React subtree during that wait.
+    await page.getByRole("link", { name: /^dashboard/i }).click({
+      noWaitAfter: true,
+    });
+    await authedExpect(page).toHaveURL(/\/start$/, { timeout: 5_000 });
+  });
 
   authedTest(
     "primary CTA reads 'Continue learning' and points at /start when authed",
