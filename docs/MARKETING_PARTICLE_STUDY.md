@@ -6,8 +6,14 @@ local validation complete. PR review, CI, merge and production verification rema
 PR: [#50](https://github.com/msrivas-7/CodeTutor-AI/pull/50). Initial E2E run had
 three flaky jobs (onboarding fixture 500, share-button stability, Escape timing);
 only the failed jobs were rerun once and the rerun passed. Review identified
-UX-196 below. A pre-existing Windows POSIX-mode assertion is also masked by later
-successful commands in its CI step; separate CI-hardening scope awaits approval.
+UX-196 below. The user approved fixing the pre-existing Windows assertion and
+CI failure masking in this PR. All platforms retain real-filesystem checks for
+no mutation of existing paths and chmod only on newly created directories;
+Linux/macOS retain exact POSIX mode assertions. Build/test jobs use explicit
+fail-fast Bash, with native-command and pipeline negative controls on each OS.
+Local backend suite (1424 passed, 29 existing skips), typecheck, baseline and
+governance checks, four shell regressions and actionlint pass; hosted Windows
+confirmation is required before merge.
 
 Experiment harness: `1692c52e-76b0-4fa4-ae20-a334eb578724`.
 Branch-bound release harness: `79523664-9004-44ba-97b6-6ad58d64c4e2`.
@@ -138,7 +144,7 @@ as a substitute. CI-oriented automation supplements those interactions.
 | Public controls | No testing controls or pause; footer destinations restored; actual Continue → dashboard → sign-out → Privacy → home → anonymous first lesson → skip intro/welcome reaches enabled editor controls |
 | Automated | Full frontend suite: 569 tests; typecheck/build; 16 homepage + zero-state first-journey E2E checks passed with retries disabled |
 | Performance | Lighthouse homepage performance 0.98, LCP 2104 ms, CLS 0, TBT 0; why-not page 0.99/LCP 1955 ms. Local optimized desktop sample: 60 frame intervals, median 16.7 ms, p95 16.8 ms, max 17.5 ms at 1280×720/DPR 2 (renderer cap 1.5) |
-| PR/release | PR #50 published; initial CI and failed-job E2E rerun green. UX-196 review correction below; production deployment and browser confirmation remain pending. A pre-existing Windows test/fail-fast discrepancy is awaiting scope approval. |
+| PR/release | PR #50 published; initial CI and failed-job E2E rerun green. UX-196 and approved Windows CI correction below; final-head CI/review, production deployment and browser confirmation remain pending. |
 
 Review images, captured from the optimized local build without changing page content:
 [hero](images/marketing-redesign/hero.png) and

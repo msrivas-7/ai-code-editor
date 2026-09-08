@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, type MockInstance } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -113,18 +113,36 @@ describe("ensureNoSymlinkInPath", () => {
 
   it("preserves existing bind paths and applies the requested mode only to directories it creates", async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "runner-mode-"));
+    let chmod: MockInstance<typeof fs.chmod> | undefined;
     try {
       await fs.chmod(tmp, 0o700);
       await fs.mkdir(path.join(tmp, "a"), { mode: 0o711 });
+      const rootMode = (await fs.stat(tmp)).mode;
+      const parentMode = (await fs.stat(path.join(tmp, "a"))).mode;
+      // Pass through to the real filesystem while checking the no-rechmod
+      // contract on every OS, including Windows without POSIX mode bits.
+      chmod = vi.spyOn(fs, "chmod");
       const target = path.join(tmp, "a", "b");
       await ensureNoSymlinkInPath(tmp, target, 0o707);
       // Existing bind-mount paths may be reported as UID 0 by Docker Desktop
       // and reject chmod from the UID-1100 backend. Re-validating their type
       // without mutating their mode keeps repeated snapshots idempotent.
-      expect((await fs.stat(tmp)).mode & 0o777).toBe(0o700);
-      expect((await fs.stat(path.join(tmp, "a"))).mode & 0o777).toBe(0o711);
-      expect((await fs.stat(target)).mode & 0o777).toBe(0o707);
+      expect((await fs.stat(tmp)).mode).toBe(rootMode);
+      expect((await fs.stat(path.join(tmp, "a"))).mode).toBe(parentMode);
+      expect((await fs.stat(target)).isDirectory()).toBe(true);
+      expect(chmod).toHaveBeenCalledExactlyOnceWith(target, 0o707);
+      // Node on Windows supports write permission, not owner/group/other
+      // POSIX modes. Keep exact mode enforcement on Linux and macOS.
+      if (process.platform !== "win32") {
+        expect(rootMode & 0o777).toBe(0o700);
+        expect(parentMode & 0o777).toBe(0o711);
+        expect((await fs.stat(target)).mode & 0o777).toBe(0o707);
+      }
+      chmod.mockClear();
+      await ensureNoSymlinkInPath(tmp, target, 0o707);
+      expect(chmod).not.toHaveBeenCalled();
     } finally {
+      chmod?.mockRestore();
       await fs.rm(tmp, { recursive: true, force: true });
     }
   });
